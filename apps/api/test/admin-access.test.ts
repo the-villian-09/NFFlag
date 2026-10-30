@@ -40,7 +40,7 @@ describe("admin access", () => {
     const pub = await agent().get("/api/v1/flags");
     expect(pub.body.enabled).toContain("r1b.registration");
     const audit = await db.select().from(auditLogs).where(eq(auditLogs.targetId, "r1b.registration"));
-    expect(audit[0]?.actorUserId).toBe(adminId);
+    expect(audit.some((a) => a.actorUserId === adminId && a.action.includes("flag"))).toBe(true);
   });
 
   it("can require an authenticator app for a role, enforced until the user sets one up", async () => {

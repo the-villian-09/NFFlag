@@ -165,6 +165,26 @@ gcloud run jobs execute nffl-migrate-$ENV_NAME --region=$REGION --wait \
 
 
 
+## 8b. Square payments (R1b)
+
+The developer's own Square app serves both environments. Nobody needs the league's Square password.
+
+| | Staging (`staging.nfflag.com`) | Production (`nfflag.com`) |
+| --- | --- | --- |
+| Square environment | Sandbox (test cards, no money moves) | Production |
+| Account charged | Developer's Sandbox account, or a Sandbox test account connected in Admin → Payments | The league's account, connected by a Super Admin in Admin → Payments |
+
+1. In the [Square Developer Dashboard](https://developer.squareup.com/apps), open the app. For each environment (Sandbox / Production toggle):
+   - **OAuth → Redirect URL:** `https://staging.nfflag.com/api/v1/square/oauth/callback` (Sandbox) or `https://nfflag.com/api/v1/square/oauth/callback` (Production).
+   - **Webhooks → Add subscription:** URL `https://staging.nfflag.com/api/v1/webhooks/square` (or `https://nfflag.com/...`), API version 2026-01-22,
+     events `payment.created`, `payment.updated`, `refund.created`, `refund.updated`, `oauth.authorization.revoked`. Copy its **signature key**.
+2. In Cloud Shell, from the `infra` folder: `bash set-square.sh staging nffl-staging-513215` (or `prod nffl-production`). It asks for the
+   Application ID, Application secret, (Sandbox only) access token and location ID, and the webhook signature key, at hidden prompts.
+3. Turn on **R1b: registration and Square checkout** in Admin → Release switches, set up the season and divisions in Admin → Seasons,
+   and (production) click **Connect Square** in Admin → Payments while signed in to Square as the league's account owner.
+
+Disconnect: Admin → Payments → Disconnect Square (type DISCONNECT). Checkout stops at once and Super Admins are emailed.
+
 ## 9. Backups and restore drill (required before Dec 1)
 
 Automated daily backups and point-in-time recovery are on (section 2). Rehearse a restore into a

@@ -13,6 +13,10 @@ export type ErrorCode =
   | "CONFLICT"
   | "VALIDATION_FAILED"
   | "FEATURE_DISABLED"
+  | "DIVISION_FULL"
+  | "PAYMENT_FAILED"
+  | "PAYMENT_PENDING"
+  | "PAYMENTS_UNAVAILABLE"
   | "INTERNAL";
 
 export class HttpError extends Error {

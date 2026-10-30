@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
 import { api, ApiError, authApi } from "@/lib/api";
+import { fmtDate, money, StatusBadge } from "@/lib/format";
 import { isAdmin, useMe } from "@/lib/use-me";
 
 interface Household {
@@ -13,7 +14,25 @@ interface Household {
   phone: string | null;
 }
 
-/** Parent dashboard. R1b adds children, registrations and payment status here. */
+interface Player {
+  id: string;
+  firstName: string;
+  lastName: string;
+  birthDate: string;
+}
+interface Reg {
+  id: string;
+  status: string;
+  playerName: string;
+  playerLastName: string;
+  divisionName: string;
+  seasonName: string;
+  totalCents: number;
+  decisionReason: string | null;
+  payment: { receiptUrl: string | null; refundedCents: number } | null;
+}
+
+/** Parent dashboard: family, players, registrations and payment status, security. */
 export default function DashboardPage() {
   const router = useRouter();
   const { me, loading } = useMe();
@@ -90,13 +109,121 @@ export default function DashboardPage() {
             </p>
           )}
         </section>
-        <section className="card">
-          <h2>Registration</h2>
-          <p className="muted">You'll add your children and register here when registration opens.</p>
-        </section>
+        {household && <PlayersCard />}
+        {household && <RegistrationsCard />}
         <SecurityCard enabled={me.mfa.enabled} required={me.mfa.required === "totp"} />
       </div>
     </main>
+  );
+}
+
+function PlayersCard() {
+  const [players, setPlayers] = useState<Player[] | null>(null);
+  useEffect(() => {
+    api
+      .get<{ items: Player[] }>("/players")
+      .then((r) => setPlayers(r.items))
+      .catch(() => setPlayers([]));
+  }, []);
+  return (
+    <section className="card">
+      <h2>Players</h2>
+      {!players ? (
+        <p className="muted">Loading…</p>
+      ) : players.length === 0 ? (
+        <p className="muted">Add each child who will play.</p>
+      ) : (
+        <ul className="list">
+          {players.map((p) => (
+            <li key={p.id}>
+              <span>
+                <span className="who">
+                  {p.firstName} {p.lastName}
+                </span>
+                <br />
+                <span className="muted">Born {fmtDate(p.birthDate)}</span>
+              </span>
+              <Link className="btn ghost small" href={`/players/${p.id}`}>
+                Edit
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p style={{ marginTop: 16 }}>
+        <Link className="btn ghost small" href="/players/new">
+          + Add a player
+        </Link>
+      </p>
+    </section>
+  );
+}
+
+function RegistrationsCard() {
+  const [regs, setRegs] = useState<Reg[] | null>(null);
+  const [open, setOpen] = useState<boolean | null>(null);
+  useEffect(() => {
+    api
+      .get<{ items: Reg[] }>("/registrations")
+      .then((r) => setRegs(r.items))
+      .catch(() => setRegs([]));
+    api
+      .get<{ enabled: boolean; window: { open: boolean } }>("/registration/options")
+      .then((o) => setOpen(o.enabled && o.window.open))
+      .catch(() => setOpen(false));
+  }, []);
+  return (
+    <section className="card">
+      <h2>Registrations</h2>
+      {!regs ? (
+        <p className="muted">Loading…</p>
+      ) : regs.length === 0 ? (
+        <p className="muted">{open ? "Registration is open." : "Registration isn't open yet. You can add your players now."}</p>
+      ) : (
+        <ul className="list">
+          {regs.map((r) => (
+            <li key={r.id}>
+              <span>
+                <span className="who">
+                  {r.playerName} {r.playerLastName}
+                </span>
+                <br />
+                <span className="muted">
+                  {r.divisionName} · {r.seasonName} · {money(r.totalCents)}
+                  {r.payment?.refundedCents ? ` · ${money(r.payment.refundedCents)} refunded` : ""}
+                </span>
+                {r.status === "rejected" && r.decisionReason && (
+                  <>
+                    <br />
+                    <span className="muted">Reason: {r.decisionReason}</span>
+                  </>
+                )}
+              </span>
+              <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <StatusBadge status={r.status} />
+                {(r.status === "pending_payment" || r.status === "expired") && open && (
+                  <Link className="btn small" href={`/register?registration=${r.id}`}>
+                    Finish payment
+                  </Link>
+                )}
+                {r.payment?.receiptUrl && (
+                  <a href={r.payment.receiptUrl} target="_blank" rel="noopener noreferrer">
+                    Receipt
+                  </a>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {open && (
+        <p style={{ marginTop: 16 }}>
+          <Link className="btn" href="/register">
+            Register a player
+          </Link>
+        </p>
+      )}
+    </section>
   );
 }
 

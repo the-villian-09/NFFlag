@@ -11,7 +11,21 @@ export interface DefaultPage {
   body: string;
 }
 
-export const PAGE_SLUGS = ["about", "rules", "coaches", "faq", "contact", "privacy", "terms"] as const;
+export const PAGE_SLUGS = [
+  "about",
+  "rules",
+  "coaches",
+  "faq",
+  "contact",
+  "privacy",
+  "terms",
+  "waiver-liability",
+  "waiver-medical",
+  "waiver-media",
+] as const;
+
+/** Waivers a parent must accept to register (shown in the registration flow, edited like any page). */
+export const WAIVER_SLUGS = ["waiver-liability", "waiver-medical", "waiver-media"] as const;
 export type PageSlug = (typeof PAGE_SLUGS)[number];
 
 export const DEFAULT_PAGES: DefaultPage[] = [
@@ -233,6 +247,41 @@ These terms are governed by the laws of the State of Florida.
 [LEAGUE LEGAL NAME, MAILING ADDRESS, EMAIL]`,
   },
 ];
+
+const DRAFT_NOTICE =
+  "> **Placeholder wording, pending review by the league's attorney (D-08).** Replace this text in Admin → Site content before registration opens.\n\n";
+
+DEFAULT_PAGES.push(
+  {
+    slug: "waiver-liability",
+    title: "Participation waiver and release",
+    body:
+      DRAFT_NOTICE +
+      `I am the parent or legal guardian of the player named in this registration. I understand that flag football is a physical activity and that injuries can happen, including injuries from contact with other players, the ground or equipment.
+
+I agree that my child may take part in [LEAGUE NAME] practices, games and events, and I accept the risks of participation. I release [LEAGUE NAME], its volunteers, coaches, officials and sponsors from claims arising from ordinary participation, to the extent allowed by Florida law.
+
+I agree that my child will follow the league's rules and code of conduct.`,
+  },
+  {
+    slug: "waiver-medical",
+    title: "Medical authorization",
+    body:
+      DRAFT_NOTICE +
+      `If my child is injured or becomes ill during a league activity and I cannot be reached, I authorize league coaches and officials to seek emergency medical treatment for my child.
+
+I confirm that the medical and emergency-contact information I have provided is accurate, and I will update it if anything changes.`,
+  },
+  {
+    slug: "waiver-media",
+    title: "Photo and video release",
+    body:
+      DRAFT_NOTICE +
+      `I agree that photos and video of my child taken at league activities may be used on the league's website, social media and printed materials. The league will not publish my child's full name together with their photo without my permission.
+
+To opt out at any time, contact [LEAGUE EMAIL].`,
+  },
+);
 
 export interface Announcement {
   enabled: boolean;

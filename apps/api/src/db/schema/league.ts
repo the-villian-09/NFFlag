@@ -1,9 +1,10 @@
 /**
  * League tables used from R0/R1: households, seasons, divisions.
- * Players, registrations, orders and payments are added in R1b migrations.
+ * R1b adds players, medical details, registrations, payments, refunds and the
+ * Square connection.
  */
 import { sql } from "drizzle-orm";
-import { check, date, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { user } from "./auth.js";
 
 export const households = pgTable("households", {
@@ -91,3 +92,181 @@ export const divisions = pgTable(
     check("price_nonneg", sql`${t.priceCents} >= 0`),
   ],
 );
+
+/* ---------------------------------------------------------------- R1b ---- */
+
+export const players = pgTable(
+  "players",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    firstName: text("first_name").notNull(),
+    lastName: text("last_name").notNull(),
+    preferredName: text("preferred_name"),
+    birthDate: date("birth_date").notNull(),
+    /** boy | girl — used to match a division's gender policy. */
+    gender: text("gender").notNull(),
+    shirtSize: text("shirt_size"),
+    school: text("school"),
+    grade: text("grade"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("players_household_idx").on(t.householdId), check("player_gender", sql`${t.gender} in ('boy','girl')`)],
+);
+
+/**
+ * Medical and emergency details, kept apart from `players` so ordinary queries
+ * never touch them. Only users with `medical.read` see these in the admin portal,
+ * and the audit log redacts them by key name.
+ */
+export const playerMedical = pgTable("player_medical", {
+  playerId: uuid("player_id")
+    .primaryKey()
+    .references(() => players.id, { onDelete: "cascade" }),
+  allergies: text("allergies"),
+  medicalConditions: text("medical_conditions"),
+  medications: text("medications"),
+  medicalInstructions: text("medical_instructions"),
+  physicianName: text("physician_name"),
+  physicianPhone: text("physician_phone"),
+  emergencyContactName: text("emergency_contact_name").notNull(),
+  emergencyContactPhone: text("emergency_contact_phone").notNull(),
+  emergencyContactRelationship: text("emergency_contact_relationship"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Statuses that hold (or used) a spot in a division. */
+export const ACTIVE_REGISTRATION_STATUSES = ["pending_payment", "processing", "paid", "approved"] as const;
+
+export const registrations = pgTable(
+  "registrations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seasonId: uuid("season_id")
+      .notNull()
+      .references(() => seasons.id),
+    divisionId: uuid("division_id")
+      .notNull()
+      .references(() => divisions.id),
+    playerId: uuid("player_id")
+      .notNull()
+      .references(() => players.id),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id),
+    submittedBy: text("submitted_by").references(() => user.id, { onDelete: "set null" }),
+    /**
+     * pending_payment → processing → paid (awaiting review) → approved | rejected
+     * Also: expired (hold ran out unpaid), cancelled (by family or admin).
+     */
+    status: text("status").notNull().default("pending_payment"),
+    holdExpiresAt: timestamp("hold_expires_at", { withTimezone: true }),
+    /** Division price, processing fee charged to the family (0 when the league absorbs it), and total. */
+    priceCents: integer("price_cents").notNull(),
+    feeCents: integer("fee_cents").notNull().default(0),
+    totalCents: integer("total_cents").notNull(),
+    /** [{ slug, title, version, sha256, signerName, acceptedAt }] */
+    waivers: jsonb("waivers").notNull().default([]),
+    paymentError: text("payment_error"),
+    decision: text("decision"), // approved | rejected
+    decisionReason: text("decision_reason"),
+    decidedBy: text("decided_by").references(() => user.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("reg_division_status_idx").on(t.divisionId, t.status),
+    index("reg_household_idx").on(t.householdId),
+    // One live registration per child per season.
+    uniqueIndex("reg_one_active_per_player")
+      .on(t.seasonId, t.playerId)
+      .where(sql`${t.status} in ('pending_payment','processing','paid','approved')`),
+  ],
+);
+
+export const payments = pgTable(
+  "payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    registrationId: uuid("registration_id")
+      .notNull()
+      .references(() => registrations.id),
+    provider: text("provider").notNull().default("square"),
+    /** sandbox | production */
+    providerEnvironment: text("provider_environment").notNull(),
+    providerPaymentId: text("provider_payment_id").notNull(),
+    merchantId: text("merchant_id"),
+    locationId: text("location_id"),
+    /** Square status: APPROVED | PENDING | COMPLETED | CANCELED | FAILED */
+    status: text("status").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    refundedCents: integer("refunded_cents").notNull().default(0),
+    cardBrand: text("card_brand"),
+    cardLast4: text("card_last4"),
+    receiptUrl: text("receipt_url"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("payments_provider_id").on(t.providerPaymentId), index("payments_reg_idx").on(t.registrationId)],
+);
+
+export const refunds = pgTable(
+  "refunds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    paymentId: uuid("payment_id")
+      .notNull()
+      .references(() => payments.id),
+    providerRefundId: text("provider_refund_id"),
+    /** PENDING | COMPLETED | REJECTED | FAILED */
+    status: text("status").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    reason: text("reason").notNull(),
+    issuedBy: text("issued_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("refunds_provider_id").on(t.providerRefundId), index("refunds_payment_idx").on(t.paymentId)],
+);
+
+/**
+ * The league's Square seller account, connected by a Super Admin through Square
+ * OAuth. One row (id = 'default'). Tokens are encrypted at rest (lib/crypto.ts).
+ */
+export const squareConnection = pgTable("square_connection", {
+  id: text("id").primaryKey().default("default"),
+  environment: text("environment").notNull(),
+  merchantId: text("merchant_id").notNull(),
+  merchantName: text("merchant_name"),
+  locationId: text("location_id"),
+  locationName: text("location_name"),
+  accessTokenEnc: text("access_token_enc").notNull(),
+  refreshTokenEnc: text("refresh_token_enc"),
+  accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+  scopes: text("scopes"),
+  connectedBy: text("connected_by").references(() => user.id, { onDelete: "set null" }),
+  connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+  lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true }),
+  lastRefreshError: text("last_refresh_error"),
+});
+
+/** One-time OAuth `state` values (CSRF protection for Connect Square). */
+export const squareOauthStates = pgTable("square_oauth_states", {
+  state: text("state").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Square webhook event ids already handled (deliveries can repeat). */
+export const squareWebhookEvents = pgTable("square_webhook_events", {
+  eventId: text("event_id").primaryKey(),
+  eventType: text("event_type").notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+});

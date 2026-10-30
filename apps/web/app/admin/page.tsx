@@ -13,10 +13,7 @@ interface Flag {
   description: string | null;
 }
 
-/**
- * Admin portal home. R1b adds Registrations, Eligibility, Payments and
- * Season setup screens alongside these platform controls.
- */
+/** Admin portal home: links to each admin area the user has permission for, plus release switches. */
 export default function AdminPage() {
   const router = useRouter();
   const { me, loading } = useMe();
@@ -54,14 +51,33 @@ export default function AdminPage() {
       </p>
       <h1>Admin portal</h1>
       <div className="grid">
-        <div className="card">
-          <h2>Registrations</h2>
-          <p className="muted">Arrives with R1b (registration and payments).</p>
-        </div>
-        <div className="card">
-          <h2>Season setup</h2>
-          <p className="muted">Arrives with R1b.</p>
-        </div>
+        {me.permissions.includes("registrations.read") && (
+          <div className="card">
+            <h2>Registrations</h2>
+            <p className="muted">Review new registrations, approve or reject, refund, and download a spreadsheet.</p>
+            <Link className="btn small" href="/admin/registrations">
+              Open registrations
+            </Link>
+          </div>
+        )}
+        {me.permissions.includes("seasons.read") && (
+          <div className="card">
+            <h2>Seasons and divisions</h2>
+            <p className="muted">Registration dates, divisions, age ranges, prices and capacity.</p>
+            <Link className="btn small" href="/admin/seasons">
+              Set up seasons
+            </Link>
+          </div>
+        )}
+        {me.permissions.includes("payments.read") && (
+          <div className="card">
+            <h2>Payments</h2>
+            <p className="muted">Connect or disconnect Square, and choose who pays the card fee.</p>
+            <Link className="btn small" href="/admin/payments">
+              Payment settings
+            </Link>
+          </div>
+        )}
         {me.permissions.includes("content.manage") && (
           <div className="card">
             <h2>Site content</h2>

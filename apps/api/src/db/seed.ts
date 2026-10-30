@@ -11,6 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { db, pool, type DbOrTx } from "./client.js";
 import { seedContent } from "../modules/content/routes.js";
+import { seedPaymentSettings } from "../modules/registration/settings.js";
 import { divisions, featureFlags, permissions, rolePermissions, roles, seasons } from "./schema/index.js";
 
 const ROLE_NAMES: Record<RoleKey, string> = {
@@ -62,6 +63,7 @@ export async function seedPlatform(conn: DbOrTx = db) {
 
   await conn.insert(featureFlags).values(FEATURE_FLAGS).onConflictDoNothing();
   await seedContent(conn);
+  await seedPaymentSettings(conn);
 }
 
 /** Placeholder data so dev/staging screens have something to show. Not for prod. */

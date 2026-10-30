@@ -22,6 +22,23 @@ const envSchema = z.object({
   /** Admin portal idle timeout in minutes. */
   ADMIN_IDLE_MINUTES: z.coerce.number().default(30),
   LOG_LEVEL: z.string().default("info"),
+
+  /* Square (R1b). Staging uses the Sandbox; production connects the league's own
+     Square account through OAuth (Admin → Payments → Connect Square). */
+  SQUARE_ENVIRONMENT: z.enum(["sandbox", "production"]).default("sandbox"),
+  /** Developer app id (public; also used by the card form in the browser). */
+  SQUARE_APPLICATION_ID: z.string().optional(),
+  /** OAuth client secret of the developer app. Needed for Connect/Disconnect. */
+  SQUARE_APPLICATION_SECRET: z.string().optional(),
+  /**
+   * Sandbox only: the developer app's Sandbox access token, used when no account
+   * has been connected through OAuth. Ignored in production.
+   */
+  SQUARE_ACCESS_TOKEN: z.string().optional(),
+  /** Location to charge with SQUARE_ACCESS_TOKEN (Sandbox fallback only). */
+  SQUARE_LOCATION_ID: z.string().optional(),
+  /** Signature key of the webhook subscription in the Square developer dashboard. */
+  SQUARE_WEBHOOK_SIGNATURE_KEY: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

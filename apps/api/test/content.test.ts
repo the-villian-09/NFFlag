@@ -78,7 +78,18 @@ describe("admin content editing", () => {
   it("edits a page, clears the placeholder flag and audits the change", async () => {
     const list = await admin.get("/api/v1/admin/content/pages");
     expect(list.status).toBe(200);
-    expect(list.body.items.map((p: { slug: string }) => p.slug)).toEqual(["about", "rules", "coaches", "faq", "contact", "privacy", "terms"]);
+    expect(list.body.items.map((p: { slug: string }) => p.slug)).toEqual([
+      "about",
+      "rules",
+      "coaches",
+      "faq",
+      "contact",
+      "privacy",
+      "terms",
+      "waiver-liability",
+      "waiver-medical",
+      "waiver-media",
+    ]);
 
     const res = await admin.put("/api/v1/admin/content/pages/faq").send({ title: "FAQ", body: "## Updated\n\nNew answer." });
     expect(res.status).toBe(200);

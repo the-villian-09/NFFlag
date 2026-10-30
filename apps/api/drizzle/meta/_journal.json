@@ -22,6 +22,13 @@
       "when": 1793397760121,
       "tag": "0002_site_content",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793403430723,
+      "tag": "0003_r1b_registration",
+      "breakpoints": true
     }
   ]
 }
