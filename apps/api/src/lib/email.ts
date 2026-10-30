@@ -49,19 +49,24 @@ export class MemoryEmailSender implements EmailSender {
 class ResendEmailSender implements EmailSender {
   private client: Resend;
   constructor(apiKey: string) {
-    this.client = new Resend(apiKey);
+    // Trim: a pasted key often carries a trailing newline.
+    this.client = new Resend(apiKey.trim());
   }
   async send(message: EmailMessage) {
     const subjectPrefix = env.APP_ENV === "prod" ? "" : `[${env.APP_ENV}] `;
-    const { error } = await this.client.emails.send({
+    const { data, error } = await this.client.emails.send({
       from: env.EMAIL_FROM,
       to: message.to,
       subject: subjectPrefix + message.subject,
       text: message.text,
       html: message.html,
-      tags: [{ name: "template", value: message.template }],
+      tags: [{ name: "template", value: message.template.replace(/[^A-Za-z0-9_-]/g, "_") }],
     });
-    if (error) throw new Error(`Resend error: ${error.message}`);
+    if (error) {
+      logger.error({ template: message.template, resendError: error.message }, `Resend error: ${error.message}`);
+      throw new Error(`Resend error: ${error.message}`);
+    }
+    logger.info({ template: message.template, resendId: data?.id }, "email sent via Resend");
   }
 }
 
