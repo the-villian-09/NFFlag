@@ -7,7 +7,7 @@ and leave a pointer to the question. Update this file when a decision is made.
 | --- | --- | --- | --- |
 | D-01 | Legal entity and merchant of record (Square account, Resend domain, waivers) | Nov 6 | Open |
 | D-02 | Stack | Nov 2 | **Decided Oct 30:** API + Postgres on GCP (Cloud Run, Cloud SQL), front end on Vercel (Next.js). Auth: Better Auth inside the API. |
-| D-03 | Domain, logo files, flyer color codes (brand tokens live in `apps/web/app/globals.css`) | Nov 9 | Open |
+| D-03 | Domain, logo files, flyer color codes (brand tokens live in `apps/web/app/globals.css`) | Nov 9 | **Domain decided Oct 30:** nfflag.com (production), staging.nfflag.com (staging); DNS at GoDaddy. Logo and colors still open. |
 | D-04 | Seat hold length while checkout is pending | Nov 20 | Open |
 | D-05 | Payment that arrives after its hold expired: auto-refund, honor over cap, or waitlist with credit | Nov 20 | Open |
 | D-06 | Who absorbs Square fees; full refund for a rejected child? | Nov 20 | Open |

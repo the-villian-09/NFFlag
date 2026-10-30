@@ -11,8 +11,8 @@
 #
 # Optional settings (put them before `bash`):
 #   REGION=us-east1                       Google Cloud region
-#   APP_BASE_URL=https://staging.your-domain   The site address families will use
-#                                         (set it once the Vercel domain exists, then re-run)
+#   APP_BASE_URL=https://...               Site address (default staging.nfflag.com / nfflag.com)
+#   EMAIL_FROM="NFFL <no-reply@nfflag.com>"  Sender for account emails
 #   RESEND_API_KEY=re_...                 Turns on real email sending (re-run to add later)
 #   DB_TIER=db-f1-micro                   Cloud SQL machine size
 #
@@ -37,7 +37,9 @@ GITHUB_REPO_ID="1439832091"   # permanent numeric id; survives renames
 INSTANCE="nffl-$ENV_NAME"
 DB_NAME="nffl"
 DB_USER="nffl_app"
-APP_BASE_URL="${APP_BASE_URL:-https://nffl-$ENV_NAME.example.com}"
+if [[ "$ENV_NAME" == "prod" ]]; then DEFAULT_SITE="https://nfflag.com"; else DEFAULT_SITE="https://staging.nfflag.com"; fi
+APP_BASE_URL="${APP_BASE_URL:-$DEFAULT_SITE}"
+EMAIL_FROM="${EMAIL_FROM:-NFFL <no-reply@nfflag.com>}"
 RESEND_API_KEY="${RESEND_API_KEY:-}"
 if [[ "$ENV_NAME" == "prod" ]]; then DB_TIER="${DB_TIER:-db-g1-small}"; else DB_TIER="${DB_TIER:-db-f1-micro}"; fi
 PLACEHOLDER_IMAGE="us-docker.pkg.dev/cloudrun/container/hello"
@@ -166,7 +168,7 @@ ok "API can reach the database and its secrets; deployer can deploy"
 step "5. API service, migrate job and worker job (placeholder image until the first deploy)"
 SECRETS="DATABASE_URL=nffl-database-url:latest,BETTER_AUTH_SECRET=nffl-auth-secret:latest"
 $HAVE_RESEND && SECRETS="$SECRETS,RESEND_API_KEY=nffl-resend-key:latest"
-ENVVARS="^|^APP_ENV=$ENV_NAME|APP_BASE_URL=$APP_BASE_URL|EMAIL_FROM=NFFL <no-reply@nffl.example.com>|NODE_ENV=production"
+ENVVARS="^|^APP_ENV=$ENV_NAME|APP_BASE_URL=$APP_BASE_URL|EMAIL_FROM=$EMAIL_FROM|NODE_ENV=production"
 
 if gcloud run services describe "nffl-api-$ENV_NAME" >/dev/null 2>&1; then
   gcloud run services update "nffl-api-$ENV_NAME" --region="$REGION" \
