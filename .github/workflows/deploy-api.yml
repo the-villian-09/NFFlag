@@ -34,35 +34,63 @@ jobs:
       PROJECT: ${{ vars.GCP_PROJECT_ID }}
       IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/nffl/api:${{ github.sha }}
     steps:
+      # Until infra/README.md sections 1–6 are done for this environment, the
+      # GCP variables don't exist: skip the deploy with a notice instead of failing.
+      - name: Check Google Cloud setup
+        id: setup
+        env:
+          WIF: ${{ vars.GCP_WIF_PROVIDER }}
+          SA: ${{ vars.GCP_DEPLOY_SA }}
+        run: |
+          missing=""
+          [ -z "$PROJECT" ] && missing="$missing GCP_PROJECT_ID"
+          [ -z "$REGION" ] && missing="$missing GCP_REGION"
+          [ -z "$WIF" ] && missing="$missing GCP_WIF_PROVIDER"
+          [ -z "$SA" ] && missing="$missing GCP_DEPLOY_SA"
+          if [ -n "$missing" ]; then
+            echo "::notice title=Deploy skipped::Google Cloud isn't set up for '$ENV_NAME' yet. Missing GitHub environment variables:$missing. See infra/README.md."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.setup.outputs.ready == 'true'
 
       - uses: google-github-actions/auth@v2
+        if: steps.setup.outputs.ready == 'true'
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SA }}
 
       - uses: google-github-actions/setup-gcloud@v2
+        if: steps.setup.outputs.ready == 'true'
 
       - name: Build and push image
+        if: steps.setup.outputs.ready == 'true'
         run: |
           gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
           docker build -f apps/api/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
 
       - name: Run migrations and seed
+        if: steps.setup.outputs.ready == 'true'
         run: |
           gcloud run jobs update "nffl-migrate-$ENV_NAME" --region "$REGION" --image "$IMAGE"
           gcloud run jobs execute "nffl-migrate-$ENV_NAME" --region "$REGION" --wait
 
       - name: Deploy service
+        if: steps.setup.outputs.ready == 'true'
         run: |
           gcloud run deploy "nffl-api-$ENV_NAME" --region "$REGION" --image "$IMAGE" --quiet
 
       - name: Update outbox worker job
+        if: steps.setup.outputs.ready == 'true'
         run: |
           gcloud run jobs update "nffl-worker-$ENV_NAME" --region "$REGION" --image "$IMAGE"
 
       - name: Smoke test
+        if: steps.setup.outputs.ready == 'true'
         run: |
           URL=$(gcloud run services describe "nffl-api-$ENV_NAME" --region "$REGION" --format 'value(status.url)')
           curl --fail --silent "$URL/api/v1/ready"
