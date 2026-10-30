@@ -2,6 +2,16 @@
 
 API and database on Google Cloud; front end on Vercel.
 
+> **Quick path:** sections 1–6 are automated by [`setup-gcp.sh`](setup-gcp.sh). In Google Cloud Shell:
+>
+> ```bash
+> curl -fsSLO https://raw.githubusercontent.com/the-villian-09/NFFlag/main/infra/setup-gcp.sh
+> bash setup-gcp.sh staging nffl-staging-513215
+> ```
+>
+> It's safe to re-run and prints the four GitHub variables at the end. The manual steps below
+> describe the same setup, for reference or troubleshooting.
+
 ```
 Browser ──▶ Vercel (Next.js, apps/web)
               │  /api/* is proxied (next.config.ts rewrites)
