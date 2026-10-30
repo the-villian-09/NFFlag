@@ -62,6 +62,15 @@ export default function AdminPage() {
           <h2>Season setup</h2>
           <p className="muted">Arrives with R1b.</p>
         </div>
+        {me.permissions.includes("content.manage") && (
+          <div className="card">
+            <h2>Site content</h2>
+            <p className="muted">Edit public pages, the announcement banner and contact details, and read contact-form messages.</p>
+            <Link className="btn small" href="/admin/content">
+              Manage content
+            </Link>
+          </div>
+        )}
       </div>
 
       {canFlags && (

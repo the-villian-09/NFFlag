@@ -37,7 +37,7 @@ async function main() {
       after: row,
       reason: "bootstrap via grant-role script",
     });
-    console.log(`Granted ${role} to ${email}. They'll be asked to set up an authenticator app at next sign-in.`);
+    console.log(`Granted ${role} to ${email}. It takes effect the next time they load a page.`);
   });
 }
 

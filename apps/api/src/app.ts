@@ -12,6 +12,7 @@ import { logger } from "./lib/logger.js";
 import { accountsRouter } from "./modules/accounts/routes.js";
 import { adminRouter } from "./modules/admin/routes.js";
 import { auth } from "./modules/auth/auth.js";
+import { adminContentRouter, publicContentRouter } from "./modules/content/routes.js";
 import { leagueRouter } from "./modules/league/routes.js";
 import { platformRouter } from "./modules/platform/routes.js";
 
@@ -42,6 +43,8 @@ export function createApp() {
   app.use("/api/v1", platformRouter);
   app.use("/api/v1", leagueRouter);
   app.use("/api/v1", accountsRouter);
+  app.use("/api/v1", publicContentRouter);
+  app.use("/api/v1/admin/content", adminContentRouter);
   app.use("/api/v1/admin", adminRouter);
   // R1b: app.use("/api/v1", registrationRouter); app.use("/api/v1/admin", adminRegistrationRouter);
 

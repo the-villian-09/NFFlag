@@ -12,6 +12,8 @@ export interface EmailMessage {
   subject: string;
   text: string;
   html?: string;
+  /** Where replies go (e.g. the family who used the contact form). */
+  replyTo?: string;
   /** Logical template name, for delivery tracking. */
   template: string;
 }
@@ -60,6 +62,7 @@ class ResendEmailSender implements EmailSender {
       subject: subjectPrefix + message.subject,
       text: message.text,
       html: message.html,
+      replyTo: message.replyTo,
       tags: [{ name: "template", value: message.template.replace(/[^A-Za-z0-9_-]/g, "_") }],
     });
     if (error) {

@@ -5,13 +5,15 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const LINKS = [
+  { href: "/about", label: "About" },
   { href: "/#divisions", label: "Divisions" },
   { href: "/#schedule", label: "Schedule" },
   { href: "/#fees", label: "Fees" },
+  { href: "/contact", label: "Contact" },
 ];
 
 /**
- * Header navigation. Desktop: one row of links. Phones (≤760px): Register
+ * Header navigation. Desktop: one row of links. Phones and small tablets (≤960px): Register
  * button plus a menu button that opens a full-width list.
  */
 export function SiteNav() {
