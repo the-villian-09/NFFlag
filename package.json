@@ -1,0 +1,14 @@
+{
+  "name": "nffl",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "db:migrate": "pnpm --filter @nffl/api db:migrate",
+    "db:seed": "pnpm --filter @nffl/api db:seed"
+  }
+}
