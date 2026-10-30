@@ -65,7 +65,7 @@ export const ROLE_KEYS = [
 
 export type RoleKey = (typeof ROLE_KEYS)[number];
 
-/** Roles that must use an authenticator app (TOTP) on every login. */
+/** Roles that can see other families' data. Candidates for requiring an authenticator app later. */
 export const STAFF_ROLES: readonly RoleKey[] = [
   "super_admin",
   "league_admin",

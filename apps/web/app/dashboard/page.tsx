@@ -94,7 +94,64 @@ export default function DashboardPage() {
           <h2>Registration</h2>
           <p className="muted">You'll add your children and register here when registration opens.</p>
         </section>
+        <SecurityCard enabled={me.mfa.enabled} required={me.mfa.required === "totp"} />
       </div>
     </main>
+  );
+}
+
+/** Optional two-step sign-in: turn on (choose method) or off (needs password). */
+function SecurityCard({ enabled, required }: { enabled: boolean; required: boolean }) {
+  const { busy, error, run } = useAction();
+  const [on, setOn] = useState(enabled);
+  const [confirming, setConfirming] = useState(false);
+
+  async function turnOff(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const password = String(new FormData(e.currentTarget).get("password"));
+    if ((await run(() => authApi.disableTwoStep(password))) !== undefined) {
+      setOn(false);
+      setConfirming(false);
+    }
+  }
+
+  return (
+    <section className="card">
+      <h2>Security</h2>
+      <p>
+        Two-step sign-in: <strong>{on ? "On" : "Off"}</strong>
+      </p>
+      {!on && (
+        <>
+          <p className="muted">Optional. Adds a code check when you sign in on a new device.</p>
+          <Link className="btn ghost" href="/setup-mfa">
+            Turn on
+          </Link>
+        </>
+      )}
+      {on && required && <p className="muted">Required by the league for your role.</p>}
+      {on && !required && !confirming && (
+        <button className="btn ghost" onClick={() => setConfirming(true)}>
+          Turn off
+        </button>
+      )}
+      {on && !required && confirming && (
+        <form className="stack" onSubmit={turnOff}>
+          <ErrorAlert error={error} />
+          <label>
+            Confirm your password
+            <input type="password" name="password" autoComplete="current-password" required />
+          </label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn" disabled={busy}>
+              Turn off
+            </button>
+            <button type="button" className="btn ghost" onClick={() => setConfirming(false)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }

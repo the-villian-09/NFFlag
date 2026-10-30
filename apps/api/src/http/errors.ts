@@ -6,7 +6,6 @@ import { logger } from "../lib/logger.js";
 export type ErrorCode =
   | "UNAUTHENTICATED"
   | "SESSION_IDLE"
-  | "EMAIL_NOT_VERIFIED"
   | "MFA_ENROLLMENT_REQUIRED"
   | "FORBIDDEN"
   | "NOT_FOUND"

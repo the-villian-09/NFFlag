@@ -5,7 +5,7 @@
  * Safe to re-run on every deploy: it inserts missing rows and never removes
  * grants an admin changed by hand.
  */
-import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, ROLE_KEYS, STAFF_ROLES, type RoleKey } from "@nffl/shared";
+import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, ROLE_KEYS, type RoleKey } from "@nffl/shared";
 import { sql } from "drizzle-orm";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,19 +46,13 @@ export async function seedPlatform(conn: DbOrTx = db) {
     .values(PERMISSIONS.map((key) => ({ key })))
     .onConflictDoNothing();
 
+  // Two-step sign-in is optional for every role by default (decision Oct 30).
+  // An admin can later require an authenticator app for a role by setting
+  // roles.requires_totp = true; re-seeding never overwrites that choice.
   await conn
     .insert(roles)
-    .values(
-      ROLE_KEYS.map((key) => ({
-        key,
-        name: ROLE_NAMES[key],
-        requiresTotp: STAFF_ROLES.includes(key),
-      })),
-    )
-    .onConflictDoUpdate({
-      target: roles.key,
-      set: { name: sql`excluded.name`, requiresTotp: sql`excluded.requires_totp` },
-    });
+    .values(ROLE_KEYS.map((key) => ({ key, name: ROLE_NAMES[key], requiresTotp: false })))
+    .onConflictDoUpdate({ target: roles.key, set: { name: sql`excluded.name` } });
 
   const grants = ROLE_KEYS.flatMap((roleKey) =>
     DEFAULT_ROLE_PERMISSIONS[roleKey].map((permissionKey) => ({ roleKey, permissionKey })),

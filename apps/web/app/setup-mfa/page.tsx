@@ -1,27 +1,55 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
 import { authApi } from "@/lib/api";
 import { useMe } from "@/lib/use-me";
 
 /**
- * First-time two-step sign-in setup.
- *  - Families: confirm an emailed code.
- *  - Staff (any coaching/admin role): authenticator app + backup codes.
+ * Turn on two-step sign-in. Optional for everyone, with a choice of method.
+ * If an admin has set one of the user's roles to require an authenticator
+ * app, only that option is shown and it can't be skipped.
  */
 export default function SetupMfaPage() {
   const { me, loading } = useMe({ allowIncompleteMfa: true });
   const router = useRouter();
+  const [method, setMethod] = useState<"email" | "app" | null>(null);
+  const required = me?.mfa.required === "totp";
+  const alreadyOn = !!me && me.mfa.enabled && (!required || me.mfa.totpEnrolled);
 
-  if (loading || !me) return <div className="auth-wrap muted">Loading…</div>;
-  if (me.mfa.complete) {
-    router.replace("/dashboard");
-    return null;
-  }
-  return me.mfa.required === "totp" ? <TotpSetup /> : <EmailSetup email={me.user.email} />;
+  useEffect(() => {
+    if (alreadyOn) router.replace("/dashboard");
+  }, [alreadyOn, router]);
+
+  if (loading || !me || alreadyOn) return <div className="auth-wrap muted">Loading…</div>;
+  if (required || method === "app") return <TotpSetup required={required} />;
+  if (method === "email") return <EmailSetup email={me.user.email} />;
+
+  return (
+    <div className="auth-wrap">
+      <div className="card">
+        <h1>Two-step sign-in</h1>
+        <p>
+          Add a second check when you sign in on a new device. It's optional, and you can turn it off later from your
+          account.
+        </p>
+        <div style={{ display: "grid", gap: 12, marginTop: 20 }}>
+          <button className="btn" onClick={() => setMethod("email")}>
+            Email me a code
+          </button>
+          <button className="btn ghost" onClick={() => setMethod("app")}>
+            Use an authenticator app
+          </button>
+        </div>
+        <p className="muted" style={{ marginTop: 16 }}>
+          <Link href="/dashboard">Not now</Link>
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function EmailSetup({ email }: { email: string }) {
@@ -41,16 +69,16 @@ function EmailSetup({ email }: { email: string }) {
   return (
     <div className="auth-wrap">
       <div className="card">
-        <h1>Protect your account</h1>
+        <h1>Email codes</h1>
         <p>
-          Your account holds your children's information, so we use two-step sign-in. When you sign in on a new device,
-          we'll email a code to <strong>{email}</strong>.
+          When you sign in on a new device, we'll email a 6-digit code to <strong>{email}</strong>. First, let's make
+          sure codes reach you.
         </p>
         {!sent ? (
           <div style={{ display: "grid", gap: 16 }}>
             <ErrorAlert error={error} />
             <button className="btn" onClick={send} disabled={busy}>
-              {busy ? "Sending…" : "Send me a code to turn it on"}
+              {busy ? "Sending…" : "Send a test code"}
             </button>
           </div>
         ) : (
@@ -73,7 +101,7 @@ function EmailSetup({ email }: { email: string }) {
   );
 }
 
-function TotpSetup() {
+function TotpSetup({ required }: { required: boolean }) {
   const router = useRouter();
   const { busy, error, run } = useAction();
   const [setup, setSetup] = useState<{ qr: string; uri: string; backupCodes: string[] } | null>(null);
@@ -84,7 +112,11 @@ function TotpSetup() {
     const password = String(new FormData(e.currentTarget).get("password"));
     const res = await run(() => authApi.enableTotp(password));
     if (!res) return;
-    setSetup({ uri: res.totpURI, backupCodes: res.backupCodes, qr: await QRCode.toDataURL(res.totpURI, { margin: 1, width: 220 }) });
+    setSetup({
+      uri: res.totpURI,
+      backupCodes: res.backupCodes,
+      qr: await QRCode.toDataURL(res.totpURI, { margin: 1, width: 220 }),
+    });
   }
   async function confirm(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -117,10 +149,12 @@ function TotpSetup() {
   return (
     <div className="auth-wrap">
       <div className="card">
-        <h1>Set up your authenticator app</h1>
+        <h1>Authenticator app</h1>
         <p>
-          Staff accounts can see family and player information, so they need an authenticator app such as Google
-          Authenticator, Microsoft Authenticator or 1Password.
+          {required
+            ? "The league requires an authenticator app for your role. "
+            : ""}
+          Use an app such as Google Authenticator, Microsoft Authenticator or 1Password.
         </p>
         {!setup ? (
           <form className="stack" onSubmit={start}>
@@ -151,6 +185,11 @@ function TotpSetup() {
               {busy ? "Checking…" : "Confirm"}
             </button>
           </form>
+        )}
+        {!required && !setup && (
+          <p className="muted" style={{ marginTop: 16 }}>
+            <Link href="/dashboard">Not now</Link>
+          </p>
         )}
       </div>
     </div>

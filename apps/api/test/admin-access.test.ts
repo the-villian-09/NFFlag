@@ -1,19 +1,9 @@
 import type { RoleKey } from "@nffl/shared";
 import { eq, sql } from "drizzle-orm";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../src/db/client.js";
-import { auditLogs, sessionActivity, user, userRoleAssignments } from "../src/db/schema/index.js";
-import {
-  agent,
-  enrollEmailMfa,
-  enrollTotp,
-  mail,
-  PASSWORD,
-  signUpVerified,
-  totpFromUri,
-  uniqueEmail,
-  type Agent,
-} from "./helpers.js";
+import { auditLogs, roles, sessionActivity, user, userRoleAssignments } from "../src/db/schema/index.js";
+import { agent, enrollEmailMfa, enrollTotp, mail, signUp, uniqueEmail, type Agent } from "./helpers.js";
 
 async function grant(email: string, role: RoleKey) {
   const [u] = await db.select().from(user).where(eq(user.email, email));
@@ -25,46 +15,22 @@ describe("admin access", () => {
   let adminEmail: string;
   let admin: Agent;
   let adminId: string;
-  let totpUri: string;
 
   beforeAll(async () => {
     adminEmail = uniqueEmail("admin");
     admin = agent();
-    await signUpVerified(admin, adminEmail, "League Admin");
+    await signUp(admin, adminEmail, "League Admin");
     adminId = await grant(adminEmail, "super_admin");
   });
 
-  it("requires an authenticator app (not email codes) for staff", async () => {
-    const me = await admin.get("/api/v1/me");
-    expect(me.body.mfa).toMatchObject({ required: "totp", complete: false });
-    const blocked = await admin.get("/api/v1/admin/flags");
-    expect(blocked.status).toBe(403);
-    expect(blocked.body.error.required).toBe("totp");
-
-    // Email-code enrollment does not satisfy staff policy, and no code is emailed.
-    const before = mail.sent.length;
-    await admin.post("/api/auth/two-factor/send-otp").send({});
-    expect(mail.sent.length).toBe(before);
+  afterAll(async () => {
+    await db.update(roles).set({ requiresTotp: false });
   });
 
-  it("allows the admin portal once TOTP is confirmed", async () => {
-    const { uri, backupCodes } = await enrollTotp(admin);
-    totpUri = uri;
-    expect(backupCodes).toHaveLength(10);
+  it("lets admins in without two-step sign-in by default", async () => {
     const me = await admin.get("/api/v1/me");
-    expect(me.body.mfa).toMatchObject({ required: "totp", complete: true, totpEnrolled: true });
-    const flags = await admin.get("/api/v1/admin/flags");
-    expect(flags.status).toBe(200);
-    expect(flags.body.items.length).toBeGreaterThan(5);
-  });
-
-  it("asks staff for an authenticator code at every new sign-in", async () => {
-    const device = agent();
-    const signIn = await device.post("/api/auth/sign-in/email").send({ email: adminEmail, password: PASSWORD });
-    expect(signIn.body.twoFactorRedirect).toBe(true);
-    const ok = await device.post("/api/auth/two-factor/verify-totp").send({ code: totpFromUri(totpUri) });
-    expect(ok.status).toBe(200);
-    expect((await device.get("/api/v1/admin/flags")).status).toBe(200);
+    expect(me.body.mfa).toMatchObject({ required: "none", complete: true });
+    expect((await admin.get("/api/v1/admin/flags")).status).toBe(200);
   });
 
   it("audits feature-flag changes and exposes enabled flags publicly", async () => {
@@ -77,35 +43,57 @@ describe("admin access", () => {
     expect(audit[0]?.actorUserId).toBe(adminId);
   });
 
+  it("can require an authenticator app for a role, enforced until the user sets one up", async () => {
+    const leagueEmail = uniqueEmail("league-admin");
+    const leagueAdmin = agent();
+    await signUp(leagueAdmin, leagueEmail);
+    await grant(leagueEmail, "league_admin");
+    expect((await leagueAdmin.get("/api/v1/admin/audit")).status).toBe(200);
+
+    const set = await admin.put("/api/v1/admin/roles/league_admin/mfa").send({ requiresTotp: true });
+    expect(set.status).toBe(200);
+    expect(set.body.role.requiresTotp).toBe(true);
+
+    const blocked = await leagueAdmin.get("/api/v1/admin/audit");
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.error).toMatchObject({ code: "MFA_ENROLLMENT_REQUIRED", required: "totp" });
+
+    // Email codes don't satisfy that rule, and none is sent.
+    const before = mail.sent.length;
+    await leagueAdmin.post("/api/auth/two-factor/send-otp").send({});
+    expect(mail.sent.length).toBe(before);
+
+    await enrollTotp(leagueAdmin);
+    expect((await leagueAdmin.get("/api/v1/admin/audit")).status).toBe(200);
+
+    // Super Admin role unaffected.
+    expect((await admin.get("/api/v1/admin/flags")).status).toBe(200);
+    await admin.put("/api/v1/admin/roles/league_admin/mfa").send({ requiresTotp: false });
+  });
+
   it("forbids parents from admin routes", async () => {
-    const email = uniqueEmail("nosy-parent");
     const p = agent();
-    await signUpVerified(p, email);
-    await enrollEmailMfa(p, email);
+    await signUp(p, uniqueEmail("nosy-parent"));
     const res = await p.get("/api/v1/admin/flags");
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe("FORBIDDEN");
   });
 
   it("does not let one family see another family's household", async () => {
-    const aEmail = uniqueEmail("fam-a");
     const a = agent();
-    await signUpVerified(a, aEmail);
-    await enrollEmailMfa(a, aEmail);
+    await signUp(a, uniqueEmail("fam-a"));
     await a.post("/api/v1/households").send({ displayName: "Family A" });
 
-    const bEmail = uniqueEmail("fam-b");
     const b = agent();
-    await signUpVerified(b, bEmail);
-    await enrollEmailMfa(b, bEmail);
+    await signUp(b, uniqueEmail("fam-b"));
     const res = await b.get("/api/v1/households/me");
     expect(res.status).toBe(404);
   });
 
-  it("lets a Super Admin reset another user's MFA, with a reason, and signs them out", async () => {
+  it("lets a Super Admin reset another user's two-step sign-in, with a reason, and signs them out", async () => {
     const email = uniqueEmail("locked-out");
     const victim = agent();
-    await signUpVerified(victim, email);
+    await signUp(victim, email);
     await enrollEmailMfa(victim, email);
     const [u] = await db.select().from(user).where(eq(user.email, email));
 

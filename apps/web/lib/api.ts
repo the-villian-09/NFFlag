@@ -41,7 +41,7 @@ export const api = {
 /** Auth endpoints (Better Auth on the API). */
 export const authApi = {
   signUp: (b: { name: string; email: string; password: string }) =>
-    request<unknown>("POST", "/api/auth/sign-up/email", { ...b, callbackURL: "/setup-mfa" }),
+    request<unknown>("POST", "/api/auth/sign-up/email", b),
   signIn: (b: { email: string; password: string }) =>
     request<{ twoFactorRedirect?: boolean }>("POST", "/api/auth/sign-in/email", b),
   signOut: () => request<unknown>("POST", "/api/auth/sign-out", {}),
@@ -60,12 +60,18 @@ export const authApi = {
   verifyBackupCode: (code: string) => request<unknown>("POST", "/api/auth/two-factor/verify-backup-code", { code }),
   enableTotp: (password: string) =>
     request<{ totpURI: string; backupCodes: string[] }>("POST", "/api/auth/two-factor/enable", { password }),
+  disableTwoStep: (password: string) => request<unknown>("POST", "/api/auth/two-factor/disable", { password }),
 };
 
 export interface Me {
   user: { id: string; name: string; email: string; locale: string };
   roles: string[];
   permissions: string[];
-  mfa: { required: "totp" | "email"; complete: boolean; totpEnrolled: boolean };
+  /**
+   * required: "none" = optional (default); "totp" = one of the user's roles
+   * requires an authenticator app. enabled = the user has turned it on.
+   */
+  mfa: { required: "none" | "totp"; complete: boolean; enabled: boolean; totpEnrolled: boolean };
+  emailVerified: boolean;
   householdId: string | null;
 }

@@ -10,6 +10,7 @@ import { db } from "../../db/client.js";
 import {
   auditLogs,
   featureFlags,
+  roles,
   session as sessionTable,
   twoFactor,
   user,
@@ -23,7 +24,7 @@ import { publish } from "../platform/outbox.js";
 
 export const adminRouter = Router();
 
-// Every admin route: signed in, MFA complete, not idle.
+// Every admin route: signed in, authenticator app confirmed if the role requires one, not idle.
 adminRouter.use(requireAuth, requireMfa, adminIdleTimeout);
 
 /* ---------- Audit log ---------- */
@@ -82,6 +83,44 @@ adminRouter.put(
       return r.after;
     });
     res.json({ flag: result });
+  }),
+);
+
+/* ---------- Role security policy ---------- */
+
+adminRouter.get(
+  "/roles",
+  requirePermission("platform.roles.manage"),
+  handler(async (_req, res) => {
+    res.json({ items: await db.select().from(roles).orderBy(roles.key) });
+  }),
+);
+
+/** Require (or stop requiring) an authenticator app for everyone holding a role. */
+adminRouter.put(
+  "/roles/:key/mfa",
+  requirePermission("platform.roles.manage"),
+  handler(async (req, res) => {
+    const { requiresTotp } = z.object({ requiresTotp: z.boolean() }).parse(req.body);
+    const key = String(req.params.key);
+    const actor = req.ctx.auth!.user.id;
+    const updated = await db.transaction(async (tx) => {
+      const [before] = await tx.select().from(roles).where(eq(roles.key, key));
+      if (!before) throw new HttpError(404, "NOT_FOUND", "Unknown role.");
+      const [after] = await tx.update(roles).set({ requiresTotp }).where(eq(roles.key, key)).returning();
+      await writeAudit(tx, {
+        actorUserId: actor,
+        action: "role.mfa_policy",
+        targetType: "role",
+        targetId: key,
+        before,
+        after,
+        requestId: req.ctx.requestId,
+        ipAddress: req.ctx.ip,
+      });
+      return after;
+    });
+    res.json({ role: updated });
   }),
 );
 

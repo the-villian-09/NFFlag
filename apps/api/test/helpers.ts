@@ -21,18 +21,13 @@ export function uniqueEmail(prefix = "user") {
 
 export const PASSWORD = "correct-horse-battery";
 
-/** Signs up and confirms email. Leaves the agent signed in (no MFA yet). */
-export async function signUpVerified(a: Agent, email: string, name = "Test Parent") {
+/** Signs up. No email confirmation step: the agent is signed in immediately. */
+export async function signUp(a: Agent, email: string, name = "Test Parent") {
   const res = await a.post("/api/auth/sign-up/email").send({ email, password: PASSWORD, name });
   if (res.status !== 200) throw new Error(`sign-up failed: ${res.status} ${JSON.stringify(res.body)}`);
-  const msg = mail.last(email, "auth.verify_email");
-  if (!msg) throw new Error("no verification email");
-  const url = new URL(msg.text.match(/https?:\/\/\S+/)![0]);
-  const v = await a.get(url.pathname + url.search);
-  if (v.status >= 400) throw new Error(`verify failed: ${v.status}`);
 }
 
-/** Parent MFA enrollment: emailed code, verified while signed in. */
+/** Opt in to emailed sign-in codes: confirm one code while signed in. */
 export async function enrollEmailMfa(a: Agent, email: string) {
   const send = await a.post("/api/auth/two-factor/send-otp").send({});
   if (send.status !== 200) throw new Error(`send-otp failed: ${send.status} ${JSON.stringify(send.body)}`);
@@ -79,7 +74,7 @@ export function totpFromUri(uri: string, at = Date.now()) {
   return bin.toString().padStart(6, "0");
 }
 
-/** Staff MFA enrollment: authenticator app (TOTP) confirmed with a live code. */
+/** Opt in to an authenticator app (TOTP), confirmed with a live code. */
 export async function enrollTotp(a: Agent) {
   const enable = await a.post("/api/auth/two-factor/enable").send({ password: PASSWORD });
   if (enable.status !== 200) throw new Error(`enable failed: ${enable.status} ${JSON.stringify(enable.body)}`);

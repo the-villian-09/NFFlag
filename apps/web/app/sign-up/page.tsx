@@ -1,36 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ErrorAlert, useAction } from "@/components/form";
 import { authApi } from "@/lib/api";
 
 export default function SignUpPage() {
+  const router = useRouter();
   const { busy, error, run } = useAction();
-  const [sentTo, setSentTo] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    const email = String(f.get("email"));
     const ok = await run(() =>
-      authApi.signUp({ name: String(f.get("name")), email, password: String(f.get("password")) }),
+      authApi.signUp({
+        name: String(f.get("name")),
+        email: String(f.get("email")),
+        password: String(f.get("password")),
+      }),
     );
-    if (ok !== undefined) setSentTo(email);
-  }
-
-  if (sentTo) {
-    return (
-      <div className="auth-wrap">
-        <div className="card">
-          <h1>Check your email</h1>
-          <p>
-            We sent a confirmation link to <strong>{sentTo}</strong>. Open it on this device to finish setting up your
-            account.
-          </p>
-        </div>
-      </div>
-    );
+    // Signed in immediately; no email confirmation step.
+    if (ok !== undefined) router.push("/dashboard");
   }
 
   return (

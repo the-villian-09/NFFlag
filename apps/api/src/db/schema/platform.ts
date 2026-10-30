@@ -21,7 +21,7 @@ export const roles = pgTable("roles", {
   key: text("key").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
-  /** Staff roles must enroll an authenticator app (TOTP). */
+  /** When true, holders must confirm an authenticator app (TOTP). Off for all roles by default. */
   requiresTotp: boolean("requires_totp").notNull().default(false),
 });
 

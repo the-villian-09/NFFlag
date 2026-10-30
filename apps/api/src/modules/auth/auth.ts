@@ -1,6 +1,8 @@
 /**
- * Authentication: email + password, email verification, password reset,
- * sessions, and MFA (authenticator app for staff, emailed code for parents).
+ * Authentication: email + password, password reset, sessions, and optional
+ * two-step sign-in (emailed code or authenticator app, user's choice).
+ * A role can be set to require an authenticator app (roles.requires_totp,
+ * off by default) without a code change.
  *
  * Mounted at /api/auth/* (Vercel proxies the browser's /api/* to Cloud Run,
  * so cookies are first-party on APP_BASE_URL).
@@ -58,7 +60,9 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: true,
+    // Decision (Oct 30): accounts are usable right after sign-up; no email confirmation step.
+    requireEmailVerification: false,
+    autoSignIn: true,
     minPasswordLength: 10,
     maxPasswordLength: 128,
     resetPasswordTokenExpiresIn: 60 * 60,
@@ -68,8 +72,10 @@ export const auth = betterAuth({
     },
   },
 
+  // Not sent at sign-up. Kept configured so a later release can ask a family to
+  // confirm their address (e.g. before checkout) without new plumbing.
   emailVerification: {
-    sendOnSignUp: true,
+    sendOnSignUp: false,
     autoSignInAfterVerification: true,
     expiresIn: ONE_DAY,
     sendVerificationEmail: async ({ user, url }) => {
@@ -114,10 +120,11 @@ export const auth = betterAuth({
         storeOTP: "hashed",
         allowedAttempts: 5,
         async sendOTP({ user, otp }) {
-          // Staff must use their authenticator app; email codes are parents-only.
+          // If one of the user's roles is set to require an authenticator app,
+          // email codes are not accepted for that account.
           const access = await loadAccess(db, user.id);
           if (access.requiresTotp) {
-            logger.warn({ userId: user.id }, "email code refused for staff account");
+            logger.warn({ userId: user.id }, "email code refused: role requires authenticator app");
             return;
           }
           await getEmailSender().send(templates.loginCode(user.email, otp));

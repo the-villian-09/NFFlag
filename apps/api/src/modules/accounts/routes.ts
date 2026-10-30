@@ -13,8 +13,8 @@ import { publish } from "../platform/outbox.js";
 export const accountsRouter = Router();
 
 /**
- * Available before MFA is complete so the front end can route the user to
- * the right enrollment screen.
+ * Available even when a role requires an authenticator app that isn't set up
+ * yet, so the front end can route the user to the setup screen.
  */
 accountsRouter.get(
   "/me",
@@ -32,6 +32,7 @@ accountsRouter.get(
       roles: access.roles,
       permissions: allPermissions(access),
       mfa: { ...mfaStatus(req.ctx), totpEnrolled: access.hasVerifiedTotp },
+      emailVerified: user.emailVerified,
       householdId: membership?.householdId ?? null,
     });
   }),

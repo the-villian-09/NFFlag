@@ -1,0 +1,68 @@
+# Deploys the API to Cloud Run.
+#  - push to main  → staging
+#  - manual run    → choose staging or prod (prod requires approval in the
+#                    GitHub "prod" environment's protection rules)
+#
+# Order: build image → run migrations job → deploy service → update worker job.
+# Setup (one time, per environment): see infra/README.md.
+name: Deploy API
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/api/**", "packages/shared/**", "pnpm-lock.yaml", ".github/workflows/deploy-api.yml"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [staging, prod]
+        default: staging
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    concurrency: deploy-api-${{ github.event.inputs.environment || 'staging' }}
+    env:
+      ENV_NAME: ${{ github.event.inputs.environment || 'staging' }}
+      REGION: ${{ vars.GCP_REGION }}
+      PROJECT: ${{ vars.GCP_PROJECT_ID }}
+      IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/nffl/api:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push image
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker build -f apps/api/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Run migrations and seed
+        run: |
+          gcloud run jobs update "nffl-migrate-$ENV_NAME" --region "$REGION" --image "$IMAGE"
+          gcloud run jobs execute "nffl-migrate-$ENV_NAME" --region "$REGION" --wait
+
+      - name: Deploy service
+        run: |
+          gcloud run deploy "nffl-api-$ENV_NAME" --region "$REGION" --image "$IMAGE" --quiet
+
+      - name: Update outbox worker job
+        run: |
+          gcloud run jobs update "nffl-worker-$ENV_NAME" --region "$REGION" --image "$IMAGE"
+
+      - name: Smoke test
+        run: |
+          URL=$(gcloud run services describe "nffl-api-$ENV_NAME" --region "$REGION" --format 'value(status.url)')
+          curl --fail --silent "$URL/api/v1/ready"

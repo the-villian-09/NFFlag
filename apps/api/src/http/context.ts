@@ -57,24 +57,27 @@ export const loadSession: RequestHandler = async (req, _res, next) => {
 
 export const requireAuth: RequestHandler = (req, _res, next) => {
   if (!req.ctx.auth) return next(new HttpError(401, "UNAUTHENTICATED", "Please sign in."));
-  if (!req.ctx.auth.user.emailVerified) {
-    return next(new HttpError(403, "EMAIL_NOT_VERIFIED", "Please confirm your email address first."));
-  }
   next();
 };
 
-export type MfaRequirement = "totp" | "email";
+/** "none" = optional (the default for every role); "totp" = a role requires an authenticator app. */
+export type MfaRequirement = "none" | "totp";
 
-export function mfaStatus(ctx: RequestContext): { required: MfaRequirement; complete: boolean } {
+export function mfaStatus(ctx: RequestContext): {
+  required: MfaRequirement;
+  complete: boolean;
+  enabled: boolean;
+} {
   const access = ctx.access;
   const enabled = ctx.auth?.user.twoFactorEnabled === true;
-  if (access?.requiresTotp) return { required: "totp", complete: enabled && access.hasVerifiedTotp };
-  return { required: "email", complete: enabled };
+  if (access?.requiresTotp) return { required: "totp", complete: enabled && access.hasVerifiedTotp, enabled };
+  return { required: "none", complete: true, enabled };
 }
 
 /**
- * Every signed-in user must have MFA set up before using the app.
- * Staff roles need a confirmed authenticator app; parents need email codes.
+ * Two-step sign-in is optional by default. It is enforced only for users
+ * holding a role an admin has set to require an authenticator app
+ * (roles.requires_totp); those users must confirm one before continuing.
  */
 export const requireMfa: RequestHandler = (req, _res, next) => {
   const status = mfaStatus(req.ctx);

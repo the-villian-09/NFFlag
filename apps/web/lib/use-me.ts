@@ -6,7 +6,8 @@ import { api, ApiError, type Me } from "./api";
 
 /**
  * Loads the signed-in user and routes them to the right place:
- * not signed in → /sign-in; MFA not set up → /setup-mfa.
+ * not signed in → /sign-in; a role requires an authenticator app that isn't
+ * set up yet → /setup-mfa. Two-step sign-in is otherwise optional.
  */
 export function useMe({ allowIncompleteMfa = false } = {}) {
   const router = useRouter();
@@ -28,7 +29,7 @@ export function useMe({ allowIncompleteMfa = false } = {}) {
       })
       .catch((err) => {
         if (cancelled) return;
-        if (err instanceof ApiError && (err.status === 401 || err.code === "EMAIL_NOT_VERIFIED")) {
+        if (err instanceof ApiError && err.status === 401) {
           router.replace("/sign-in");
           return;
         }
