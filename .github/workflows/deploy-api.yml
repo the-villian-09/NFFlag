@@ -96,13 +96,13 @@ jobs:
         if: steps.setup.outputs.ready == 'true'
         run: |
           L=.github/scripts/run-logged.sh
-          $L "Deploy API service" \
-            gcloud run deploy "nffl-api-$ENV_NAME" --region "$REGION" --image "$IMAGE" --quiet
           # Vercel's proxy calls the API as an ordinary HTTPS client, so the service must be
-          # publicly invokable; every route still enforces its own sign-in and permissions.
-          $L "Allow public access to API" \
-            gcloud run services add-iam-policy-binding "nffl-api-$ENV_NAME" --region "$REGION" \
-              --member=allUsers --role=roles/run.invoker --condition=None --quiet
+          # publicly reachable; every route still enforces its own sign-in and permissions.
+          # --no-invoker-iam-check does that without an allUsers IAM binding, which the
+          # Google Cloud organization's domain-restricted-sharing policy refuses.
+          $L "Deploy API service" \
+            gcloud run deploy "nffl-api-$ENV_NAME" --region "$REGION" --image "$IMAGE" \
+              --no-invoker-iam-check --quiet
 
       - name: Update outbox worker job
         if: steps.setup.outputs.ready == 'true'

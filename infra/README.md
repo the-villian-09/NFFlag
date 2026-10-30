@@ -98,7 +98,7 @@ gcloud run jobs execute nffl-migrate-$ENV_NAME --region=$REGION --wait
 
 # API service
 gcloud run deploy nffl-api-$ENV_NAME --image=$IMAGE "${COMMON[@]}" \
-  --add-cloudsql-instances=$CONN --allow-unauthenticated \
+  --add-cloudsql-instances=$CONN --no-invoker-iam-check \
   --min-instances=0 --max-instances=5 --cpu=1 --memory=512Mi
 
 # Outbox worker, triggered every minute
@@ -113,8 +113,9 @@ gcloud scheduler jobs create http nffl-worker-$ENV_NAME-tick --location=$REGION 
   --http-method=POST --oauth-service-account-email=nffl-scheduler@$PROJECT.iam.gserviceaccount.com
 ```
 
-`--allow-unauthenticated` is required because Vercel's proxy calls the API as an
-ordinary HTTPS client. Every route still enforces its own sign-in and permission checks.
+`--no-invoker-iam-check` makes the API publicly reachable, because Vercel's proxy calls it as an
+ordinary HTTPS client. It's used instead of an `allUsers` IAM binding, which Google Cloud organizations
+with domain-restricted sharing refuse. Every route still enforces its own sign-in and permission checks.
 
 ## 6. GitHub Actions deploys (Workload Identity, no keys)
 

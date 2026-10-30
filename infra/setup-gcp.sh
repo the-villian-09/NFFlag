@@ -175,7 +175,7 @@ if gcloud run services describe "nffl-api-$ENV_NAME" >/dev/null 2>&1; then
 else
   gcloud run deploy "nffl-api-$ENV_NAME" --image="$PLACEHOLDER_IMAGE" --region="$REGION" \
     --service-account="$RUNTIME_SA" --set-secrets="$SECRETS" --set-env-vars="$ENVVARS" \
-    --set-cloudsql-instances="$CONN" --allow-unauthenticated \
+    --set-cloudsql-instances="$CONN" --no-invoker-iam-check \
     --min-instances=0 --max-instances=5 --cpu=1 --memory=512Mi --quiet >/dev/null
   ok "API service created"
 fi
