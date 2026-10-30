@@ -1,7 +1,10 @@
 # Deploys the API to Cloud Run.
-#  - push to main  → staging
-#  - manual run    → choose staging or prod (prod requires approval in the
-#                    GitHub "prod" environment's protection rules)
+#  - push to main        → staging (staging.nfflag.com)
+#  - push to production  → prod (nfflag.com); waits for approval in the GitHub
+#                          "prod" environment's protection rules
+#  - manual run          → choose staging or prod
+#
+# Release to production:  git push origin main:production
 #
 # Order: build image → run migrations job → deploy service → update worker job.
 # Setup (one time, per environment): see infra/README.md.
@@ -9,7 +12,7 @@ name: Deploy API
 
 on:
   push:
-    branches: [main]
+    branches: [main, production]
     paths: ["apps/api/**", "packages/shared/**", "pnpm-lock.yaml", ".github/workflows/deploy-api.yml"]
   workflow_dispatch:
     inputs:
@@ -26,10 +29,10 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'staging' }}
-    concurrency: deploy-api-${{ github.event.inputs.environment || 'staging' }}
+    environment: ${{ github.event.inputs.environment || (github.ref_name == 'production' && 'prod' || 'staging') }}
+    concurrency: deploy-api-${{ github.event.inputs.environment || (github.ref_name == 'production' && 'prod' || 'staging') }}
     env:
-      ENV_NAME: ${{ github.event.inputs.environment || 'staging' }}
+      ENV_NAME: ${{ github.event.inputs.environment || (github.ref_name == 'production' && 'prod' || 'staging') }}
       REGION: ${{ vars.GCP_REGION }}
       PROJECT: ${{ vars.GCP_PROJECT_ID }}
       IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/nffl/api:${{ github.sha }}
