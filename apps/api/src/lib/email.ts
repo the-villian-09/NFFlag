@@ -20,13 +20,26 @@ export interface EmailSender {
   send(message: EmailMessage): Promise<void>;
 }
 
+/**
+ * Used in tests, and wherever no RESEND_API_KEY is configured.
+ *  - dev / staging: the email (with its link or code) is written to the log
+ *    instead of being sent, so accounts can still be confirmed.
+ *  - prod: never logs content (it holds sign-in links); logs an error so a
+ *    missing key is noticed.
+ */
 export class MemoryEmailSender implements EmailSender {
   readonly sent: EmailMessage[] = [];
   async send(message: EmailMessage) {
     this.sent.push(message);
-    if (env.NODE_ENV === "development") {
-      logger.info({ to: message.to, subject: message.subject, text: message.text }, "email (dev, not sent)");
+    if (env.NODE_ENV === "test") return;
+    if (env.APP_ENV === "prod") {
+      logger.error({ to: message.to, template: message.template }, "email NOT sent: RESEND_API_KEY is not configured");
+      return;
     }
+    logger.warn(
+      { to: message.to, subject: message.subject, emailText: message.text, template: message.template },
+      `email not sent (no RESEND_API_KEY) — ${message.subject}`,
+    );
   }
   last(to: string, template?: string) {
     return [...this.sent].reverse().find((m) => m.to === to && (!template || m.template === template));
