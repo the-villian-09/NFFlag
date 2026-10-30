@@ -57,6 +57,8 @@ img { max-width: 100%; }
 .site-nav a { color: var(--ink); text-decoration: none; }
 .site-nav a:hover { color: var(--lime); }
 .site-nav a.nav-signin { color: var(--lime); }
+/* Register button in the nav: dark navy text on lime (the nav link color must not override it) */
+.site-nav a.btn, .site-nav a.btn:hover { color: var(--navy); }
 
 .site-footer { background: #000b14; color: var(--ink-muted); font-size: 15px; }
 .site-footer .container { padding-top: 28px; padding-bottom: 28px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
