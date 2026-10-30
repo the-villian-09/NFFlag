@@ -4,6 +4,10 @@ import type { NextConfig } from "next";
  * The browser only ever talks to this origin. /api/* is proxied to the API on
  * Cloud Run, so auth cookies are first-party and no CORS is needed.
  * API_ORIGIN: e.g. https://nffl-api-xxxxx-ue.a.run.app (set per Vercel environment).
+ *   - main branch       → staging.nfflag.com → staging API
+ *   - production branch → nfflag.com         → production API (branch-specific value)
+ * Vercel skips builds for commits that don't touch apps/web, so a release that only
+ * changes the API won't rebuild the site.
  */
 const apiOrigin = process.env.API_ORIGIN ?? "http://localhost:8080";
 
