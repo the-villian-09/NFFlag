@@ -8,9 +8,9 @@
  * Capacity is enforced by locking the division row while counting, so two
  * families can't take the last spot at the same time.
  */
-import { and, eq, gt, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
-import { db, type DbOrTx } from "../../db/client.js";
+import { db, type DbOrTx, type Tx } from "../../db/client.js";
 import {
   contentPages,
   divisions,
@@ -195,9 +195,59 @@ function isUniqueViolation(err: unknown) {
 
 /* ---------------- pay ---------------- */
 
+/** What was sent to Square, kept until the outcome is known so the worker can re-ask with the same idempotency key. */
+interface PaymentRequest {
+  idempotencyKey: string;
+  sourceId: string;
+  verificationToken?: string;
+  amountCents: number;
+  note: string;
+  buyerEmail?: string;
+}
+
+const COMPLETED = ["COMPLETED", "APPROVED"];
+
+/**
+ * Locks the division, then the registration (same order as startRegistration,
+ * so the two can't deadlock), and checks it can be paid now. A lapsed hold is
+ * re-taken only if registration is still open and there's still room (D-05).
+ */
+async function claimForPayment(tx: Tx, registrationId: string, householdId: string, divisionId: string, holdMinutes: number) {
+  const d = await lockDivision(tx, divisionId);
+  const [r] = await tx
+    .select()
+    .from(registrations)
+    .where(and(eq(registrations.id, registrationId), eq(registrations.householdId, householdId)))
+    .for("update");
+  if (!r) throw new HttpError(404, "NOT_FOUND", "Registration not found.");
+  if (r.status === "processing") throw new HttpError(409, "CONFLICT", "This payment is already being processed.");
+  if (r.status !== "pending_payment" && r.status !== "expired") {
+    throw new HttpError(409, "CONFLICT", "This registration doesn't need a payment.");
+  }
+  let holdExpiresAt = r.holdExpiresAt;
+  if (!holdExpiresAt || holdExpiresAt <= new Date()) {
+    const [season] = await tx.select().from(seasons).where(eq(seasons.id, r.seasonId));
+    const window = registrationWindow(season!);
+    if (!window.open) throw new HttpError(409, "CONFLICT", window.reason!);
+    if (d.status !== "open") throw new HttpError(409, "CONFLICT", "This division isn't taking registrations any more.");
+    if ((await spotsTaken(tx, d.id, r.id)) >= d.capacity) {
+      throw new HttpError(409, "DIVISION_FULL", "Your hold expired and the division has filled up. No payment was taken.");
+    }
+    // Only a lapsed hold is renewed; retrying a declined card doesn't extend a live one.
+    holdExpiresAt = new Date(Date.now() + holdMinutes * 60_000);
+  }
+  return { r, holdExpiresAt };
+}
+
+function uniqueAsConflict(err: unknown): never {
+  if (isUniqueViolation(err)) throw new HttpError(409, "CONFLICT", "This child already has another registration this season.");
+  throw err;
+}
+
 /**
  * Charges the card token from the Square Web Payments SDK. The registration is
- * moved to `processing` first so a double-click can't charge twice.
+ * moved to `processing` first (with the exact request, so the outcome can be
+ * recovered if the connection drops) so a double-click can't charge twice.
  */
 export async function payRegistration(
   actor: Actor & { userId: string },
@@ -206,95 +256,160 @@ export async function payRegistration(
   input: { sourceId: string; verificationToken?: string },
   buyerEmail: string,
 ) {
-  const creds = await getCredentials();
+  const [peek] = await db
+    .select({ divisionId: registrations.divisionId, totalCents: registrations.totalCents, playerId: registrations.playerId })
+    .from(registrations)
+    .where(and(eq(registrations.id, registrationId), eq(registrations.householdId, householdId)));
+  if (!peek) throw new HttpError(404, "NOT_FOUND", "Registration not found.");
+  const settings = await getPaymentSettings();
+
+  // Free divisions: nothing to charge.
+  if (peek.totalCents === 0) {
+    return db
+      .transaction(async (tx) => {
+        const { r } = await claimForPayment(tx, registrationId, householdId, peek.divisionId, settings.holdMinutes);
+        return markPaid(tx, r, null, actor);
+      })
+      .catch(uniqueAsConflict);
+  }
+
+  const creds = await getCredentials().catch(() => null);
   if (!creds) {
     throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
   }
-  const settings = await getPaymentSettings();
+  const [p] = await db.select({ firstName: players.firstName, lastName: players.lastName }).from(players).where(eq(players.id, peek.playerId));
+  const request: PaymentRequest = {
+    idempotencyKey: randomUUID(),
+    sourceId: input.sourceId,
+    verificationToken: input.verificationToken,
+    amountCents: peek.totalCents,
+    note: `NFFL registration: ${p?.firstName ?? ""} ${p?.lastName ?? ""}`.trim(),
+    buyerEmail,
+  };
 
-  const reg = await db
+  await db
     .transaction(async (tx) => {
-    const [r] = await tx
-      .select()
-      .from(registrations)
-      .where(and(eq(registrations.id, registrationId), eq(registrations.householdId, householdId)))
-      .for("update");
-    if (!r) throw new HttpError(404, "NOT_FOUND", "Registration not found.");
-    if (r.status === "processing") throw new HttpError(409, "CONFLICT", "This payment is already being processed.");
-    if (r.status !== "pending_payment" && r.status !== "expired") {
-      throw new HttpError(409, "CONFLICT", "This registration doesn't need a payment.");
-    }
-    // The hold ran out: take the spot again if there's still room (D-05).
-    if (!r.holdExpiresAt || r.holdExpiresAt <= new Date()) {
-      const d = await lockDivision(tx, r.divisionId);
-      if ((await spotsTaken(tx, d.id, r.id)) >= d.capacity) {
-        await tx.update(registrations).set({ status: "expired", updatedAt: new Date() }).where(eq(registrations.id, r.id));
-        throw new HttpError(409, "DIVISION_FULL", "Your hold expired and the division has filled up. No payment was taken.");
-      }
-    }
-    const [updated] = await tx
-      .update(registrations)
-      .set({
-        status: "processing",
-        paymentError: null,
-        holdExpiresAt: new Date(Date.now() + settings.holdMinutes * 60_000),
-        updatedAt: new Date(),
-      })
-      .where(eq(registrations.id, r.id))
-      .returning();
-    return updated!;
-  })
-    .catch((err) => {
-      if (isUniqueViolation(err)) throw new HttpError(409, "CONFLICT", "This child already has another registration this season.");
-      throw err;
-    });
+      const { r, holdExpiresAt } = await claimForPayment(tx, registrationId, householdId, peek.divisionId, settings.holdMinutes);
+      await tx
+        .update(registrations)
+        .set({
+          status: "processing",
+          paymentError: null,
+          holdExpiresAt,
+          paymentRequest: { ...request, amountCents: r.totalCents },
+          processingStartedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(registrations.id, r.id));
+      request.amountCents = r.totalCents;
+    })
+    .catch(uniqueAsConflict);
 
+  return chargeAndSettle(registrationId, request, actor);
+}
+
+/** Sends the payment to Square (or re-sends it with the same key) and settles the registration. */
+async function chargeAndSettle(registrationId: string, request: PaymentRequest, actor: Actor) {
+  const creds = await getCredentials().catch(() => null);
+  if (!creds) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
   let payment: SquarePayment;
   try {
-    const [p] = await db.select({ firstName: players.firstName, lastName: players.lastName }).from(players).where(eq(players.id, reg.playerId));
-    payment = await createPayment(creds, {
-      sourceId: input.sourceId,
-      verificationToken: input.verificationToken,
-      idempotencyKey: randomUUID(),
-      amountCents: reg.totalCents,
-      referenceId: reg.id,
-      note: `NFFL registration: ${p?.firstName ?? ""} ${p?.lastName ?? ""}`.trim(),
-      buyerEmail,
-    });
+    payment = await createPayment(creds, { ...request, referenceId: registrationId });
   } catch (err) {
-    const definite = err instanceof SquareError && err.status >= 400 && err.status < 500;
-    if (definite) {
+    if (err instanceof SquareError && err.status >= 400 && err.status < 500) {
       const message = friendlyPaymentError(err);
-      await db
-        .update(registrations)
-        .set({ status: "pending_payment", paymentError: message, updatedAt: new Date() })
-        .where(eq(registrations.id, reg.id));
-      logger.info({ registrationId: reg.id, code: (err as SquareError).code }, "card payment declined");
+      await revertToPending(registrationId, message);
+      logger.info({ registrationId, code: err.code }, "card payment declined");
       throw new HttpError(402, "PAYMENT_FAILED", message);
     }
-    // Unknown outcome (network/5xx): leave it in `processing`; the Square webhook settles it.
-    logger.error({ registrationId: reg.id, err: err instanceof Error ? err.message : String(err) }, "payment outcome unknown");
-    throw new HttpError(
-      502,
-      "PAYMENT_PENDING",
-      "We couldn't confirm your payment yet. Please don't pay again; check your registrations in a few minutes.",
-    );
+    logger.error({ registrationId, err: err instanceof Error ? err.message : String(err) }, "payment outcome unknown");
+    throw new HttpError(502, "PAYMENT_PENDING", "We couldn't confirm your payment yet. Please don't pay again; check your registrations in a few minutes.");
   }
-
-  if (payment.status !== "COMPLETED" && payment.status !== "APPROVED") {
-    await db
-      .update(registrations)
-      .set({ status: "pending_payment", paymentError: "The payment didn't go through.", updatedAt: new Date() })
-      .where(eq(registrations.id, reg.id));
+  if (COMPLETED.includes(payment.status)) {
+    const reg = await recordCompletedPayment(payment, { environment: creds.environment, merchantId: creds.merchantId }, actor);
+    if (!reg || reg.status !== "paid") {
+      throw new HttpError(409, "DIVISION_FULL", "The division filled up before your payment finished. Your payment is being refunded.");
+    }
+    return reg;
+  }
+  if (payment.status === "FAILED" || payment.status === "CANCELED") {
+    await revertToPending(registrationId, "The payment didn't go through.");
     throw new HttpError(402, "PAYMENT_FAILED", "The payment didn't go through. Please try again.");
   }
-  return recordCompletedPayment(payment, { environment: creds.environment, merchantId: creds.merchantId }, actor);
+  // PENDING: Square hasn't finished; the webhook or the worker settles it.
+  throw new HttpError(502, "PAYMENT_PENDING", "Your payment is still being confirmed. Please don't pay again; check your registrations in a few minutes.");
+}
+
+/** A charge that definitely didn't happen: the family can try again. */
+export async function revertToPending(registrationId: string, message: string) {
+  await db
+    .update(registrations)
+    .set({ status: "pending_payment", paymentError: message, paymentRequest: null, processingStartedAt: null, updatedAt: new Date() })
+    .where(and(eq(registrations.id, registrationId), eq(registrations.status, "processing")));
 }
 
 /**
- * Records a completed Square payment against its registration (from checkout or
- * the webhook; safe to call twice). A payment for a registration that lost its
- * spot is refunded automatically (D-05 default).
+ * Worker: registrations stuck in `processing` (connection dropped, server
+ * restarted) are re-sent to Square with the same idempotency key. Square
+ * returns the original result if it charged, or an error if it never did.
+ */
+export async function reconcileProcessing(olderThanMinutes = 5) {
+  const stuck = await db
+    .select({ id: registrations.id, paymentRequest: registrations.paymentRequest })
+    .from(registrations)
+    .where(
+      and(
+        eq(registrations.status, "processing"),
+        sql`${registrations.processingStartedAt} < now() - make_interval(mins => ${olderThanMinutes})`,
+      ),
+    )
+    .limit(25);
+  let settled = 0;
+  for (const s of stuck) {
+    if (!s.paymentRequest) continue;
+    try {
+      await chargeAndSettle(s.id, s.paymentRequest as PaymentRequest, { userId: null });
+      settled++;
+    } catch (err) {
+      if (err instanceof HttpError && err.code !== "PAYMENT_PENDING" && err.code !== "PAYMENTS_UNAVAILABLE") settled++;
+      else logger.warn({ registrationId: s.id }, "payment still unconfirmed");
+    }
+  }
+  return settled;
+}
+
+async function markPaid(tx: Tx, r: Registration, paymentId: string | null, actor: Actor) {
+  const [after] = await tx
+    .update(registrations)
+    .set({
+      status: "paid",
+      paidAt: new Date(),
+      holdExpiresAt: null,
+      paymentError: null,
+      paymentRequest: null,
+      processingStartedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(registrations.id, r.id))
+    .returning();
+  await writeAudit(tx, {
+    actorUserId: actor.userId,
+    action: "registration.paid",
+    targetType: "registration",
+    targetId: r.id,
+    before: { status: r.status },
+    after: { status: "paid", paymentId, amountCents: r.totalCents },
+    requestId: actor.requestId,
+    ipAddress: actor.ip,
+  });
+  await publish(tx, { name: "registration.paid", aggregateType: "registration", aggregateId: r.id, dedupeKey: `registration.paid:${r.id}` });
+  return after!;
+}
+
+/**
+ * Records a completed Square payment against its registration (from checkout,
+ * the worker or the webhook; safe to repeat). Refunds it automatically when it
+ * can't be kept: the spot was released (D-05) or it duplicates an earlier payment.
  */
 export async function recordCompletedPayment(
   payment: SquarePayment,
@@ -303,8 +418,8 @@ export async function recordCompletedPayment(
 ) {
   const outcome = await db.transaction(async (tx) => {
     const [r] = await tx.select().from(registrations).where(eq(registrations.id, payment.reference_id ?? "")).for("update");
-    if (!r) return { reg: null, refund: false };
-    await tx
+    if (!r) return { reg: null, refundPaymentId: null as string | null, reason: "" };
+    const [row] = await tx
       .insert(payments)
       .values({
         registrationId: r.id,
@@ -318,104 +433,129 @@ export async function recordCompletedPayment(
         cardLast4: payment.card_details?.card?.last_4 ?? null,
         receiptUrl: payment.receipt_url ?? null,
       })
-      .onConflictDoUpdate({ target: payments.providerPaymentId, set: { status: payment.status, updatedAt: new Date() } });
+      .onConflictDoUpdate({ target: payments.providerPaymentId, set: { status: payment.status, updatedAt: new Date() } })
+      .returning();
+    const [anyRefund] = await tx.select({ id: refunds.id }).from(refunds).where(eq(refunds.paymentId, row!.id)).limit(1);
+    const refunding = row!.refundedCents > 0 || !!anyRefund;
+    const keep = { reg: r, refundPaymentId: null as string | null, reason: "" };
 
-    if (r.status === "paid" || r.status === "approved" || r.status === "rejected") return { reg: r, refund: false };
+    if (r.paidAt) {
+      // Already paid: only a different, later payment is a duplicate to give back.
+      const [first] = await tx
+        .select({ id: payments.id })
+        .from(payments)
+        .where(and(eq(payments.registrationId, r.id), inArray(payments.status, COMPLETED)))
+        .orderBy(asc(payments.createdAt), asc(payments.id))
+        .limit(1);
+      if (first && first.id !== row!.id && !refunding) return { ...keep, refundPaymentId: row!.id, reason: "Duplicate payment" };
+      return keep;
+    }
 
-    let lostSpot = r.status === "cancelled";
+    let lostSpot = r.status === "cancelled" || r.status === "rejected";
     if (r.status === "expired") {
       const d = await lockDivision(tx, r.divisionId);
       lostSpot = (await spotsTaken(tx, d.id, r.id)) >= d.capacity;
     }
-    if (lostSpot) return { reg: r, refund: true };
-
-    const [after] = await tx
-      .update(registrations)
-      .set({ status: "paid", paidAt: new Date(), holdExpiresAt: null, paymentError: null, updatedAt: new Date() })
-      .where(eq(registrations.id, r.id))
-      .returning();
-    await writeAudit(tx, {
-      actorUserId: actor.userId,
-      action: "registration.paid",
-      targetType: "registration",
-      targetId: r.id,
-      before: { status: r.status },
-      after: { status: "paid", paymentId: payment.id, amountCents: payment.amount_money?.amount },
-      requestId: actor.requestId,
-      ipAddress: actor.ip,
-    });
-    await publish(tx, {
-      name: "registration.paid",
-      aggregateType: "registration",
-      aggregateId: r.id,
-      dedupeKey: `registration.paid:${r.id}`,
-    });
-    return { reg: after!, refund: false };
+    if (!lostSpot) {
+      try {
+        const after = await tx.transaction((sp) => markPaid(sp, r, payment.id, actor));
+        return { ...keep, reg: after };
+      } catch (err) {
+        if (!isUniqueViolation(err)) throw err;
+        lostSpot = true; // the child got another registration meanwhile
+      }
+    }
+    return refunding ? keep : { ...keep, refundPaymentId: row!.id, reason: "Payment arrived after the spot was released" };
   });
 
-  if (outcome.refund && outcome.reg) {
-    await refundRegistration(outcome.reg.id, { reason: "Payment arrived after the spot was released" }, { userId: null });
+  if (outcome.refundPaymentId && outcome.reg) {
+    try {
+      await refundRegistration(outcome.reg.id, { reason: outcome.reason, paymentId: outcome.refundPaymentId }, { userId: null });
+    } catch (err) {
+      logger.error({ registrationId: outcome.reg.id, err: err instanceof Error ? err.message : String(err) }, "automatic refund failed");
+    }
   }
   return outcome.reg;
 }
 
 /* ---------------- refunds ---------------- */
 
-/** Refunds part or all of what's left on a registration's payment. */
+/**
+ * Refunds part or all of what's left on a payment (the registration's most
+ * recent one with money left, unless `paymentId` is given). The amount is
+ * reserved under a row lock before calling Square, so two clicks can't both
+ * refund the same money.
+ */
 export async function refundRegistration(
   registrationId: string,
-  input: { amountCents?: number; reason: string },
+  input: { amountCents?: number; reason: string; paymentId?: string },
   actor: Actor,
 ) {
-  const creds = await getCredentials();
+  const creds = await getCredentials().catch(() => null);
   if (!creds) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Square isn't connected, so refunds can't be issued right now.");
-  const [p] = await db
-    .select()
-    .from(payments)
-    .where(and(eq(payments.registrationId, registrationId), inArray(payments.status, ["COMPLETED", "APPROVED"])))
-    .orderBy(sql`${payments.createdAt} desc`)
-    .limit(1);
-  if (!p) throw new HttpError(409, "CONFLICT", "There's no completed payment to refund.");
-  const remaining = p.amountCents - p.refundedCents;
-  const amount = input.amountCents ?? remaining;
-  if (amount <= 0 || amount > remaining) {
-    throw new HttpError(400, "VALIDATION_FAILED", `You can refund up to $${(remaining / 100).toFixed(2)}.`);
-  }
-  if (p.providerEnvironment !== creds.environment) {
-    throw new HttpError(409, "CONFLICT", "This payment was taken in a different Square environment.");
-  }
 
-  let refund: { id: string; status: string };
-  try {
-    refund = await refundPayment(creds, {
-      paymentId: p.providerPaymentId,
-      amountCents: amount,
-      idempotencyKey: randomUUID(),
-      reason: input.reason,
-    });
-  } catch (err) {
-    throw new HttpError(502, "PAYMENT_FAILED", `Square refused the refund: ${err instanceof Error ? err.message : "unknown error"}`);
-  }
-
-  await db.transaction(async (tx) => {
-    await tx.insert(refunds).values({
-      paymentId: p.id,
-      providerRefundId: refund.id,
-      status: refund.status,
-      amountCents: amount,
-      reason: input.reason,
-      issuedBy: actor.userId,
-    });
+  const { p, amount } = await db.transaction(async (tx) => {
+    const [p] = await tx
+      .select()
+      .from(payments)
+      .where(
+        and(
+          eq(payments.registrationId, registrationId),
+          inArray(payments.status, COMPLETED),
+          input.paymentId ? eq(payments.id, input.paymentId) : sql`${payments.amountCents} > ${payments.refundedCents}`,
+        ),
+      )
+      .orderBy(desc(payments.createdAt))
+      .limit(1)
+      .for("update");
+    if (!p) throw new HttpError(409, "CONFLICT", "There's no completed payment to refund.");
+    const remaining = p.amountCents - p.refundedCents;
+    const amount = input.amountCents ?? remaining;
+    if (amount <= 0 || amount > remaining) {
+      throw new HttpError(400, "VALIDATION_FAILED", `You can refund up to $${(remaining / 100).toFixed(2)}.`);
+    }
+    if (p.providerEnvironment !== creds.environment) {
+      throw new HttpError(409, "CONFLICT", "This payment was taken in a different Square environment.");
+    }
     await tx
       .update(payments)
       .set({ refundedCents: sql`${payments.refundedCents} + ${amount}`, updatedAt: new Date() })
       .where(eq(payments.id, p.id));
+    return { p, amount };
+  });
+  const release = () =>
+    db
+      .update(payments)
+      .set({ refundedCents: sql`greatest(0, ${payments.refundedCents} - ${amount})`, updatedAt: new Date() })
+      .where(eq(payments.id, p.id));
+
+  let refund: { id: string; status: string };
+  try {
+    refund = await refundPayment(creds, { paymentId: p.providerPaymentId, amountCents: amount, idempotencyKey: randomUUID(), reason: input.reason });
+  } catch (err) {
+    await release();
+    throw new HttpError(502, "PAYMENT_FAILED", `Square refused the refund: ${err instanceof Error ? err.message : "unknown error"}`);
+  }
+
+  await db.transaction(async (tx) => {
+    // The webhook may have recorded (and counted) this refund already; then give back our reservation.
+    const [saved] = await tx
+      .insert(refunds)
+      .values({ paymentId: p.id, providerRefundId: refund.id, status: refund.status, amountCents: amount, reason: input.reason, issuedBy: actor.userId })
+      .onConflictDoUpdate({ target: refunds.providerRefundId, set: { reason: input.reason, issuedBy: actor.userId, updatedAt: new Date() } })
+      .returning({ inserted: sql<boolean>`(xmax = 0)` });
+    if (!saved?.inserted) {
+      await tx
+        .update(payments)
+        .set({ refundedCents: sql`greatest(0, ${payments.refundedCents} - ${amount})`, updatedAt: new Date() })
+        .where(eq(payments.id, p.id));
+    }
     await writeAudit(tx, {
       actorUserId: actor.userId,
       action: "registration.refund",
       targetType: "registration",
       targetId: registrationId,
-      after: { refundId: refund.id, amountCents: amount, status: refund.status },
+      after: { refundId: refund.id, paymentId: p.providerPaymentId, amountCents: amount, status: refund.status },
       reason: input.reason,
       requestId: actor.requestId,
       ipAddress: actor.ip,
@@ -500,7 +640,10 @@ export async function cancelRegistration(
       .for("update");
     if (!r) throw new HttpError(404, "NOT_FOUND", "Registration not found.");
     // Families can only drop an unpaid registration; paid ones go through the league.
-    const allowed = input.householdId ? ["pending_payment", "expired"] : ["pending_payment", "expired", "paid", "approved", "rejected"];
+    // Admins can also cancel one stuck in "processing"; if Square later reports it charged, it's refunded automatically.
+    const allowed = input.householdId
+      ? ["pending_payment", "expired"]
+      : ["pending_payment", "processing", "expired", "paid", "approved", "rejected"];
     if (!allowed.includes(r.status)) {
       throw new HttpError(
         409,
@@ -510,7 +653,7 @@ export async function cancelRegistration(
     }
     const [after] = await tx
       .update(registrations)
-      .set({ status: "cancelled", holdExpiresAt: null, updatedAt: new Date() })
+      .set({ status: "cancelled", holdExpiresAt: null, paymentRequest: null, processingStartedAt: null, updatedAt: new Date() })
       .where(eq(registrations.id, r.id))
       .returning();
     await writeAudit(tx, {
@@ -524,7 +667,7 @@ export async function cancelRegistration(
       requestId: actor.requestId,
       ipAddress: actor.ip,
     });
-    if (r.status !== "pending_payment" && r.status !== "expired") {
+    if (r.paidAt) {
       await publish(tx, { name: "registration.cancelled", aggregateType: "registration", aggregateId: r.id });
     }
     return after!;
@@ -532,10 +675,11 @@ export async function cancelRegistration(
   let refund = null;
   if (input.refund && !input.householdId) {
     const [p] = await db
-      .select()
+      .select({ id: payments.id })
       .from(payments)
-      .where(and(eq(payments.registrationId, reg.id), inArray(payments.status, ["COMPLETED", "APPROVED"])));
-    if (p && p.amountCents > p.refundedCents) refund = await refundRegistration(reg.id, { reason: input.reason }, actor);
+      .where(and(eq(payments.registrationId, reg.id), inArray(payments.status, COMPLETED), sql`${payments.amountCents} > ${payments.refundedCents}`))
+      .limit(1);
+    if (p) refund = await refundRegistration(reg.id, { reason: input.reason }, actor);
   }
   return { registration: reg, refund };
 }

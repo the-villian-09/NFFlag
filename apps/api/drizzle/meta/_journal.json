@@ -29,6 +29,13 @@
       "when": 1793403430723,
       "tag": "0003_r1b_registration",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793404595381,
+      "tag": "0004_r1b_payment_recovery",
+      "breakpoints": true
     }
   ]
 }

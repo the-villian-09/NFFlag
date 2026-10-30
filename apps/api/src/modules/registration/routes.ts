@@ -219,7 +219,7 @@ registrationRouter.get(
         ...quote(d.priceCents, settings),
       })),
     );
-    const creds = await getCredentials();
+    const creds = await getCredentials().catch(() => null);
     const waivers = await currentWaivers();
     res.json({
       enabled,

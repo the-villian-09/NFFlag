@@ -17,7 +17,7 @@ import {
 } from "../src/db/schema/index.js";
 import { clearSubscribers, processOutbox } from "../src/modules/platform/outbox.js";
 import { resetFlagCache } from "../src/modules/platform/flags.js";
-import { expireHolds } from "../src/modules/registration/service.js";
+import { expireHolds, reconcileProcessing } from "../src/modules/registration/service.js";
 import { quote } from "../src/modules/registration/settings.js";
 import { registerSubscribers } from "../src/modules/subscribers.js";
 import { agent, mail, signUp, uniqueEmail, type Agent } from "./helpers.js";
@@ -28,6 +28,10 @@ const square = {
   calls: [] as { path: string; body: Record<string, unknown> }[],
   paymentSeq: 0,
   refundSeq: 0,
+  /** Idempotency key → payment, so a re-sent request returns the original result (like Square). */
+  byKey: new Map<string, unknown>(),
+  /** Keys whose first attempt "timed out" (the charge still happened). */
+  timedOut: new Set<string>(),
 };
 
 const realFetch = globalThis.fetch;
@@ -46,10 +50,11 @@ beforeAll(() => {
         if (body.source_id === "cnon:card-nonce-declined") {
           return json(400, { errors: [{ code: "CARD_DECLINED", category: "PAYMENT_METHOD_ERROR", detail: "Card declined." }] });
         }
-        if (body.source_id === "cnon:network-down") return json(503, { errors: [{ code: "SERVICE_UNAVAILABLE" }] });
+        const key = String(body.idempotency_key);
+        if (square.byKey.has(key)) return json(200, { payment: square.byKey.get(key) });
+        if (body.source_id === "cnon:pending") return json(200, { payment: { id: `pay_${++square.paymentSeq}`, status: "PENDING", reference_id: body.reference_id } });
         const amount = body.amount_money as { amount: number };
-        return json(200, {
-          payment: {
+        const payment = {
             id: `pay_${++square.paymentSeq}`,
             status: "COMPLETED",
             amount_money: { amount: amount.amount, currency: "USD" },
@@ -57,8 +62,11 @@ beforeAll(() => {
             location_id: body.location_id,
             receipt_url: "https://squareupsandbox.com/receipt/preview/x",
             card_details: { card: { card_brand: "VISA", last_4: "1111" } },
-          },
-        });
+        };
+        square.byKey.set(key, payment);
+        // Charged, but the response is lost on the way back.
+        if (body.source_id === "cnon:network-down") return json(503, { errors: [{ code: "SERVICE_UNAVAILABLE" }] });
+        return json(200, { payment });
       }
       case "/v2/refunds":
         return json(200, { refund: { id: `ref_${++square.refundSeq}`, status: "PENDING" } });
@@ -84,6 +92,9 @@ beforeAll(() => {
 });
 
 afterAll(async () => {
+  // Leave no queued events or subscribers behind for other test files.
+  await drainOutbox();
+  clearSubscribers();
   vi.restoreAllMocks();
   // Later test files expect the seeded sample season to be current and one Super Admin.
   await db.update(seasons).set({ isCurrent: null });
@@ -437,7 +448,7 @@ describe("registration and payment", () => {
 
       const [p] = await db.select().from(payments).where(eq(payments.registrationId, paidRegId));
       expect(p!.refundedCents).toBe(10000);
-      expect((await admin.post(`/api/v1/admin/league/registrations/${paidRegId}/refund`).send({ reason: "again" })).status).toBe(400);
+      expect((await admin.post(`/api/v1/admin/league/registrations/${paidRegId}/refund`).send({ reason: "again" })).status).toBe(409);
 
       await drainOutbox();
       expect(mail.last(paidFamilyEmail, "registration.rejected")?.text).toContain("2016 birth date");
@@ -521,3 +532,123 @@ describe("Square connection", () => {
   });
 });
 
+describe("payment recovery and refunds (review fixes)", () => {
+  const send = (body: string) =>
+    agent().post("/api/v1/webhooks/square").set("content-type", "application/json").set("x-square-hmacsha256-signature", signWebhook(body)).send(body);
+
+  async function startGirl(name: string) {
+    const f = await family(name);
+    const pid = await addPlayer(f.a, { firstName: name, gender: "girl", birthDate: "2016-02-02" });
+    const r = await f.a.post("/api/v1/registrations").send({ playerId: pid, divisionId: girlsId, ...accept });
+    expect(r.status).toBe(201);
+    return { ...f, regId: r.body.registration.id as string, pid };
+  }
+
+  beforeAll(async () => {
+    await admin.put("/api/v1/admin/flags/r1b.registration").send({ enabled: true });
+    resetFlagCache();
+  });
+
+  it("the worker settles a payment whose response was lost, using the same idempotency key", async () => {
+    const { a, regId } = await startGirl("Lost");
+    const res = await a.post(`/api/v1/registrations/${regId}/pay`).send({ sourceId: "cnon:network-down" });
+    expect(res.body.error.code).toBe("PAYMENT_PENDING");
+    const firstKey = lastCall("/v2/payments")!.body.idempotency_key;
+    // Still processing; the family can't pay again.
+    expect((await a.post(`/api/v1/registrations/${regId}/pay`).send({ sourceId: "cnon:card-nonce-ok" })).status).toBe(409);
+
+    await db.update(registrations).set({ processingStartedAt: new Date(Date.now() - 10 * 60_000) }).where(eq(registrations.id, regId));
+    expect(await reconcileProcessing()).toBeGreaterThanOrEqual(1);
+    expect(lastCall("/v2/payments")!.body.idempotency_key).toBe(firstKey);
+    const [r] = await db.select().from(registrations).where(eq(registrations.id, regId));
+    expect(r).toMatchObject({ status: "paid", paymentRequest: null });
+    expect(await db.select().from(payments).where(eq(payments.registrationId, regId))).toHaveLength(1);
+  });
+
+  it("a PENDING payment stays processing; a FAILED webhook frees it", async () => {
+    const { a, regId } = await startGirl("Pending");
+    const res = await a.post(`/api/v1/registrations/${regId}/pay`).send({ sourceId: "cnon:pending" });
+    expect(res.body.error.code).toBe("PAYMENT_PENDING");
+    const [r] = await db.select().from(registrations).where(eq(registrations.id, regId));
+    expect(r!.status).toBe("processing");
+    const body = JSON.stringify({ event_id: `evt-fail-${regId}`, type: "payment.updated", data: { object: { payment: { id: "pay_x_failed", status: "FAILED", reference_id: regId } } } });
+    expect((await send(body)).status).toBe(200);
+    const [after] = await db.select().from(registrations).where(eq(registrations.id, regId));
+    expect(after!.status).toBe("pending_payment");
+  });
+
+  it("refunds a duplicate payment once, even when Square repeats the event", async () => {
+    const { a, regId } = await startGirl("Twice");
+    await a.post(`/api/v1/registrations/${regId}/pay`).send({ sourceId: "cnon:card-nonce-ok" });
+    const refundsBefore = square.calls.filter((c) => c.path === "/v2/refunds").length;
+    const dup = { id: `pay_dup_${regId}`, status: "COMPLETED", reference_id: regId, amount_money: { amount: 10000, currency: "USD" } };
+    expect((await send(JSON.stringify({ event_id: `evt-dup1-${regId}`, type: "payment.updated", data: { object: { payment: dup } } }))).status).toBe(200);
+    expect((await send(JSON.stringify({ event_id: `evt-dup2-${regId}`, type: "payment.updated", data: { object: { payment: dup } } }))).status).toBe(200);
+    const refundCalls = square.calls.filter((c) => c.path === "/v2/refunds").slice(refundsBefore);
+    expect(refundCalls).toHaveLength(1);
+    expect(refundCalls[0]!.body.payment_id).toBe(dup.id);
+    const [r] = await db.select().from(registrations).where(eq(registrations.id, regId));
+    expect(r!.status).toBe("paid");
+  });
+
+  it("refunds a payment that lands after the family cancelled, exactly once", async () => {
+    const { regId } = await startGirl("Late");
+    await admin.post(`/api/v1/admin/league/registrations/${regId}/cancel`).send({ reason: "Family asked", refund: false });
+    const before = square.calls.filter((c) => c.path === "/v2/refunds").length;
+    const late = { id: `pay_late_${regId}`, status: "COMPLETED", reference_id: regId, amount_money: { amount: 10000, currency: "USD" } };
+    for (const n of [1, 2]) {
+      const res = await send(JSON.stringify({ event_id: `evt-late${n}-${regId}`, type: "payment.updated", data: { object: { payment: late } } }));
+      expect(res.status).toBe(200);
+    }
+    expect(square.calls.filter((c) => c.path === "/v2/refunds").length - before).toBe(1);
+  });
+
+  it("two refund clicks at once can't refund more than was paid", async () => {
+    const { a, regId } = await startGirl("Clicky");
+    await a.post(`/api/v1/registrations/${regId}/pay`).send({ sourceId: "cnon:card-nonce-ok" });
+    const [r1, r2] = await Promise.all([
+      admin.post(`/api/v1/admin/league/registrations/${regId}/refund`).send({ reason: "double click" }),
+      admin.post(`/api/v1/admin/league/registrations/${regId}/refund`).send({ reason: "double click" }),
+    ]);
+    expect([r1.status, r2.status].sort()).toEqual([200, 409]);
+    const [p] = await db.select().from(payments).where(eq(payments.registrationId, regId));
+    expect(p!.refundedCents).toBe(10000);
+  });
+
+  it("counts a refund made in the Square Dashboard", async () => {
+    const { a, regId } = await startGirl("Dash");
+    await a.post(`/api/v1/registrations/${regId}/pay`).send({ sourceId: "cnon:card-nonce-ok" });
+    const [p] = await db.select().from(payments).where(eq(payments.registrationId, regId));
+    const body = JSON.stringify({
+      event_id: `evt-dash-${regId}`,
+      type: "refund.created",
+      data: { object: { refund: { id: `ref_dash_${regId}`, status: "PENDING", payment_id: p!.providerPaymentId, amount_money: { amount: 2500, currency: "USD" } } } },
+    });
+    expect((await send(body)).status).toBe(200);
+    const [after] = await db.select().from(payments).where(eq(payments.id, p!.id));
+    expect(after!.refundedCents).toBe(2500);
+  });
+
+  it("free divisions don't go to Square", async () => {
+    const d = await admin.post(`/api/v1/admin/league/seasons/${seasonId}/divisions`).send({ name: "Free Clinic", genderPolicy: "coed", capacity: 10, priceCents: 0, status: "open" });
+    const { a } = await family("Freebie");
+    const pid = await addPlayer(a);
+    const r = await a.post("/api/v1/registrations").send({ playerId: pid, divisionId: d.body.division.id, ...accept });
+    const before = square.calls.length;
+    const pay = await a.post(`/api/v1/registrations/${r.body.registration.id}/pay`).send({ sourceId: "none" });
+    expect(pay.status).toBe(200);
+    expect(pay.body.registration.status).toBe("paid");
+    expect(square.calls.length).toBe(before);
+  });
+
+  it("won't re-take a lapsed hold once the division is closed", async () => {
+    const { a, regId } = await startGirl("Closed");
+    await db.update(registrations).set({ holdExpiresAt: new Date(Date.now() - 60_000) }).where(eq(registrations.id, regId));
+    const d = await admin.get("/api/v1/admin/league/seasons");
+    const girls = d.body.items.flatMap((x: { divisions: { id: string }[] }) => x.divisions).find((x: { id: string }) => x.id === girlsId);
+    await admin.put(`/api/v1/admin/league/divisions/${girlsId}`).send({ ...girls, status: "closed", eligibilityNotes: girls.eligibilityNotes ?? "" , birthDateFrom: girls.birthDateFrom ?? "", birthDateTo: girls.birthDateTo ?? "" });
+    const res = await a.post(`/api/v1/registrations/${regId}/pay`).send({ sourceId: "cnon:card-nonce-ok" });
+    expect(res.status).toBe(409);
+    await admin.put(`/api/v1/admin/league/divisions/${girlsId}`).send({ ...girls, status: "open", eligibilityNotes: girls.eligibilityNotes ?? "", birthDateFrom: girls.birthDateFrom ?? "", birthDateTo: girls.birthDateTo ?? "" });
+  });
+});

@@ -53,7 +53,7 @@ describe("outbox", () => {
         failOnce = false;
         throw new Error("provider down");
       }
-      seen.push(e.aggregateId);
+      if (e.aggregateId === "reg-1") seen.push(e.aggregateId);
     });
 
     await publish(db, { name: "registration.paid", aggregateType: "registration", aggregateId: "reg-1", dedupeKey: "sq:evt-1" });

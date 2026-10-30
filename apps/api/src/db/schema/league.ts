@@ -171,6 +171,9 @@ export const registrations = pgTable(
     /** [{ slug, title, version, sha256, signerName, acceptedAt }] */
     waivers: jsonb("waivers").notNull().default([]),
     paymentError: text("payment_error"),
+    /** The request sent to Square while `processing` (same idempotency key is re-sent by the worker to learn the outcome). */
+    paymentRequest: jsonb("payment_request"),
+    processingStartedAt: timestamp("processing_started_at", { withTimezone: true }),
     decision: text("decision"), // approved | rejected
     decisionReason: text("decision_reason"),
     decidedBy: text("decided_by").references(() => user.id, { onDelete: "set null" }),

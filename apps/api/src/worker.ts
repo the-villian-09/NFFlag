@@ -9,7 +9,7 @@ import { pool } from "./db/client.js";
 import { logger } from "./lib/logger.js";
 import { registerSubscribers } from "./modules/subscribers.js";
 import { processOutbox } from "./modules/platform/outbox.js";
-import { expireHolds } from "./modules/registration/service.js";
+import { expireHolds, reconcileProcessing } from "./modules/registration/service.js";
 import { refreshConnection } from "./modules/square/client.js";
 import { db } from "./db/client.js";
 import { squareConnection } from "./db/schema/index.js";
@@ -19,6 +19,8 @@ registerSubscribers();
 
 /** Housekeeping each pass: release unpaid holds, keep the Square token fresh (it lasts 30 days). */
 async function housekeeping() {
+  const settled = await reconcileProcessing();
+  if (settled) logger.info({ settled }, "settled payments that were stuck in processing");
   const expired = await expireHolds();
   if (expired) logger.info({ expired }, "released unpaid registration holds");
   const [conn] = await db

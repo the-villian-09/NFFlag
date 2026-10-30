@@ -30,6 +30,10 @@ export function createApp() {
     pinoHttp({
       logger,
       genReqId: (req) => (req as express.Request).ctx?.requestId ?? "",
+      // Never log one-time secrets in query strings (e.g. the Square OAuth code).
+      serializers: {
+        req: (r: { url?: string }) => ({ ...r, url: r.url?.replace(/([?&](?:code|state|token)=)[^&]*/gi, "$1[redacted]") }),
+      },
       autoLogging: { ignore: (req) => req.url === "/api/v1/health" },
     }),
   );

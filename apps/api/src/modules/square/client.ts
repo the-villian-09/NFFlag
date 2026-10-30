@@ -45,6 +45,8 @@ async function call<T>(method: string, path: string, opts: { token?: string; bod
       ...opts.headers,
     },
     body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+    // Don't hang a request (or Cloud Run's request timeout) on a slow Square.
+    signal: AbortSignal.timeout(20_000),
   });
   const text = await res.text();
   const data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
@@ -74,7 +76,8 @@ export async function getCredentials(): Promise<SquareCredentials | null> {
   const [conn] = await db.select().from(squareConnection).where(eq(squareConnection.id, "default"));
   if (conn && conn.environment === env.SQUARE_ENVIRONMENT && conn.locationId) {
     let accessToken = decryptSecret(conn.accessTokenEnc);
-    if (conn.accessTokenExpiresAt && conn.accessTokenExpiresAt.getTime() - Date.now() < REFRESH_WITHIN_MS) {
+    const recentlyTried = conn.lastRefreshedAt && Date.now() - conn.lastRefreshedAt.getTime() < 3600_000;
+    if (!recentlyTried && conn.accessTokenExpiresAt && conn.accessTokenExpiresAt.getTime() - Date.now() < REFRESH_WITHIN_MS) {
       accessToken = (await refreshConnection()) ?? accessToken;
     }
     return {
