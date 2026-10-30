@@ -95,8 +95,14 @@ jobs:
       - name: Deploy service
         if: steps.setup.outputs.ready == 'true'
         run: |
-          .github/scripts/run-logged.sh "Deploy API service" \
+          L=.github/scripts/run-logged.sh
+          $L "Deploy API service" \
             gcloud run deploy "nffl-api-$ENV_NAME" --region "$REGION" --image "$IMAGE" --quiet
+          # Vercel's proxy calls the API as an ordinary HTTPS client, so the service must be
+          # publicly invokable; every route still enforces its own sign-in and permissions.
+          $L "Allow public access to API" \
+            gcloud run services add-iam-policy-binding "nffl-api-$ENV_NAME" --region "$REGION" \
+              --member=allUsers --role=roles/run.invoker --condition=None --quiet
 
       - name: Update outbox worker job
         if: steps.setup.outputs.ready == 'true'
