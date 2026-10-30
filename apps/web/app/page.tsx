@@ -101,7 +101,7 @@ export default function Home() {
 
       <section id="fees" className="container section" aria-labelledby="fees-title">
         <h2 id="fees-title">Fees</h2>
-        <div className="cols" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+        <div className="cols" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))" }}>
           <div className="fee primary">
             <span className="label">Registration</span>
             <span className="amount">$100</span>

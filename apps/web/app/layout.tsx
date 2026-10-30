@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
+import { SiteNav } from "@/components/site-nav";
 import { LEAGUE_NAME } from "@/lib/brand";
 import "./globals.css";
 
@@ -35,17 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 Flag League
               </span>
             </Link>
-            <nav className="site-nav" aria-label="Main">
-              <Link href="/#divisions">Divisions</Link>
-              <Link href="/#schedule">Schedule</Link>
-              <Link href="/#fees">Fees</Link>
-              <Link href="/dashboard" className="nav-signin">
-                My account
-              </Link>
-              <Link href="/sign-up" className="btn small">
-                Register
-              </Link>
-            </nav>
+            <SiteNav />
           </div>
         </header>
         {children}
