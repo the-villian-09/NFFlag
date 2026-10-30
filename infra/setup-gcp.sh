@@ -41,7 +41,9 @@ if [[ "$ENV_NAME" == "prod" ]]; then DEFAULT_SITE="https://nfflag.com"; else DEF
 APP_BASE_URL="${APP_BASE_URL:-$DEFAULT_SITE}"
 EMAIL_FROM="${EMAIL_FROM:-NFFL <no-reply@nfflag.com>}"
 RESEND_API_KEY="${RESEND_API_KEY:-}"
-if [[ "$ENV_NAME" == "prod" ]]; then DB_TIER="${DB_TIER:-db-g1-small}"; else DB_TIER="${DB_TIER:-db-f1-micro}"; fi
+# Both environments start on the small shared-core tier (decided Oct 30); grow later with:
+#   gcloud sql instances patch nffl-<env> --tier=db-g1-small
+DB_TIER="${DB_TIER:-db-f1-micro}"
 PLACEHOLDER_IMAGE="us-docker.pkg.dev/cloudrun/container/hello"
 
 RUNTIME_SA="nffl-api@$PROJECT.iam.gserviceaccount.com"
