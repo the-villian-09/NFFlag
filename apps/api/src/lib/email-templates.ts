@@ -7,7 +7,7 @@ export const templates = {
       to,
       template: "auth.verify_email",
       subject: "Confirm your NFFL account",
-      text: `Welcome to North Florida Flag Football.\n\nConfirm your email address to finish creating your account:\n${url}\n\nIf you didn't create an account, you can ignore this email.`,
+      text: `Welcome to the North Florida Flag League.\n\nConfirm your email address to finish creating your account:\n${url}\n\nIf you didn't create an account, you can ignore this email.`,
     };
   },
   resetPassword(to: string, url: string): EmailMessage {

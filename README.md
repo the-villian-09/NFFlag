@@ -1,4 +1,4 @@
-# NFFL — North Florida Flag Football
+# NFFL — North Florida Flag League
 
 League platform: public site, family accounts, registration and Square payments, admin portal,
 and later teams, draft, schedules, standings and playoffs.

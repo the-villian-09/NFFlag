@@ -172,7 +172,7 @@ function TotpSetup({ required }: { required: boolean }) {
             <ErrorAlert error={error} />
             <p style={{ margin: 0 }}>Scan this code with your app, then enter the 6-digit code it shows.</p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={setup.qr} alt="QR code for your authenticator app" width={220} height={220} />
+            <img className="qr" src={setup.qr} alt="QR code for your authenticator app" width={220} height={220} />
             <details>
               <summary>Can't scan? Enter the key manually</summary>
               <code style={{ wordBreak: "break-all" }}>{new URL(setup.uri).searchParams.get("secret")}</code>
