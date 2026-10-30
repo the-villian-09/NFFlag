@@ -5,6 +5,7 @@ import { auditLogs, outboxEvents, user } from "../src/db/schema/index.js";
 import {
   agent,
   codeFromEmail,
+  confirmEmail,
   enrollEmailMfa,
   enrollTotp,
   mail,
@@ -14,12 +15,31 @@ import {
   uniqueEmail,
 } from "./helpers.js";
 
-describe("sign-up without email confirmation", () => {
-  it("signs the family in right away, with no confirmation email", async () => {
+describe("sign-up with email confirmation", () => {
+  it("emails a confirmation link and blocks sign-in until it is clicked", async () => {
+    const a = agent();
+    const email = uniqueEmail("unconfirmed");
+    const res = await a.post("/api/auth/sign-up/email").send({ email, password: PASSWORD, name: "New Parent" });
+    expect(res.status).toBe(200);
+    expect(mail.last(email, "auth.verify_email")).toBeDefined();
+    expect((await a.get("/api/v1/me")).status).toBe(401);
+
+    // Signing in before confirming is refused and re-sends the link.
+    const sentBefore = mail.sent.filter((m) => m.to === email).length;
+    const signIn = await agent().post("/api/auth/sign-in/email").send({ email, password: PASSWORD });
+    expect(signIn.status).toBe(403);
+    expect(signIn.body.code).toBe("EMAIL_NOT_VERIFIED"); // the web sign-in page relies on this code
+    expect(mail.sent.filter((m) => m.to === email).length).toBe(sentBefore + 1);
+
+    // Clicking the link confirms and signs in.
+    await confirmEmail(a, email);
+    expect((await a.get("/api/v1/me")).status).toBe(200);
+  });
+
+  it("signs the family in after confirming, with two-step sign-in off by default", async () => {
     const a = agent();
     const email = uniqueEmail("parent");
     await signUp(a, email);
-    expect(mail.last(email, "auth.verify_email")).toBeUndefined();
 
     const me = await a.get("/api/v1/me");
     expect(me.status).toBe(200);

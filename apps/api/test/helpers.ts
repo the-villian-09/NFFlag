@@ -21,10 +21,20 @@ export function uniqueEmail(prefix = "user") {
 
 export const PASSWORD = "correct-horse-battery";
 
-/** Signs up. No email confirmation step: the agent is signed in immediately. */
+/** Follows the most recent confirmation link emailed to `email` (signs the agent in). */
+export async function confirmEmail(a: Agent, email: string) {
+  const msg = mail.last(email, "auth.verify_email");
+  if (!msg) throw new Error("no verification email");
+  const url = new URL(msg.text.match(/https?:\/\/\S+/)![0]);
+  const v = await a.get(url.pathname + url.search);
+  if (v.status >= 400) throw new Error(`verify failed: ${v.status}`);
+}
+
+/** Signs up and confirms the email. Leaves the agent signed in. */
 export async function signUp(a: Agent, email: string, name = "Test Parent") {
   const res = await a.post("/api/auth/sign-up/email").send({ email, password: PASSWORD, name });
   if (res.status !== 200) throw new Error(`sign-up failed: ${res.status} ${JSON.stringify(res.body)}`);
+  await confirmEmail(a, email);
 }
 
 /** Opt in to emailed sign-in codes: confirm one code while signed in. */

@@ -1,26 +1,39 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
 import { authApi } from "@/lib/api";
 
 export default function SignUpPage() {
-  const router = useRouter();
   const { busy, error, run } = useAction();
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
+    const email = String(f.get("email"));
     const ok = await run(() =>
-      authApi.signUp({
-        name: String(f.get("name")),
-        email: String(f.get("email")),
-        password: String(f.get("password")),
-      }),
+      authApi.signUp({ name: String(f.get("name")), email, password: String(f.get("password")) }),
     );
-    // Signed in immediately; no email confirmation step.
-    if (ok !== undefined) router.push("/dashboard");
+    if (ok !== undefined) setSentTo(email);
+  }
+
+  if (sentTo) {
+    return (
+      <div className="auth-wrap">
+        <div className="card">
+          <h1>Check your email</h1>
+          <p>
+            We sent a confirmation link to <strong>{sentTo}</strong>. Click it to finish creating your account. The link
+            works for 24 hours.
+          </p>
+          <p className="muted">
+            Didn't get it? Check spam, or <Link href="/sign-in">sign in</Link> and we'll send a new link.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (

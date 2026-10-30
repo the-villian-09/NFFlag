@@ -1,5 +1,5 @@
 /**
- * Authentication: email + password, password reset, sessions, and optional
+ * Authentication: email + password with email confirmation, password reset, sessions, and optional
  * two-step sign-in (emailed code or authenticator app, user's choice).
  * A role can be set to require an authenticator app (roles.requires_totp,
  * off by default) without a code change.
@@ -60,9 +60,8 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
-    // Decision (Oct 30): accounts are usable right after sign-up; no email confirmation step.
-    requireEmailVerification: false,
-    autoSignIn: true,
+    // Families confirm their email before they can sign in (receipts and resets go there).
+    requireEmailVerification: true,
     minPasswordLength: 10,
     maxPasswordLength: 128,
     resetPasswordTokenExpiresIn: 60 * 60,
@@ -72,10 +71,11 @@ export const auth = betterAuth({
     },
   },
 
-  // Not sent at sign-up. Kept configured so a later release can ask a family to
-  // confirm their address (e.g. before checkout) without new plumbing.
+  // Confirmation link sent at sign-up; signing in before confirming re-sends it.
+  // Clicking the link confirms the address and signs the family in.
   emailVerification: {
-    sendOnSignUp: false,
+    sendOnSignUp: true,
+    sendOnSignIn: true,
     autoSignInAfterVerification: true,
     expiresIn: ONE_DAY,
     sendVerificationEmail: async ({ user, url }) => {

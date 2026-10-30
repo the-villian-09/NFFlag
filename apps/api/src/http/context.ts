@@ -57,6 +57,10 @@ export const loadSession: RequestHandler = async (req, _res, next) => {
 
 export const requireAuth: RequestHandler = (req, _res, next) => {
   if (!req.ctx.auth) return next(new HttpError(401, "UNAUTHENTICATED", "Please sign in."));
+  // Belt and braces: sign-in already refuses unconfirmed emails.
+  if (!req.ctx.auth.user.emailVerified) {
+    return next(new HttpError(403, "EMAIL_NOT_VERIFIED", "Please confirm your email address first."));
+  }
   next();
 };
 

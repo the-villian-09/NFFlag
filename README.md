@@ -14,8 +14,8 @@ Release plan and decisions: the "NFFL Release Plan v1.1" doc. Infrastructure set
 
 ## Status
 
-**R0 Foundation** is in place: email + password accounts that work right after sign-up (no email confirmation
-step) and password reset; optional two-step sign-in, by emailed code or authenticator app, with 30-day trusted
+**R0 Foundation** is in place: email + password accounts with email confirmation (the link is re-sent if
+someone tries to sign in before confirming) and password reset; optional two-step sign-in, by emailed code or authenticator app, with 30-day trusted
 devices, backup codes and admin reset; a per-role switch admins can use to require an authenticator app;
 permission-based access with season/team scopes; append-only audit log; transactional outbox with a worker;
 feature flags for every release; admin idle timeout.
@@ -34,7 +34,7 @@ pnpm db:migrate && pnpm --filter @nffl/api db:seed -- --sample
 pnpm dev                                  # web on :3000, API on :8080
 ```
 
-Emails aren't sent locally: password-reset links and sign-in codes are printed in the API log.
+Emails aren't sent locally: confirmation links, password-reset links and sign-in codes are printed in the API log.
 
 Make yourself an admin after signing up:
 
@@ -48,7 +48,7 @@ pnpm --filter @nffl/api exec tsx src/scripts/grant-role.ts you@example.com super
 TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/nffl_test pnpm --filter @nffl/api test
 ```
 
-The suite runs against a real Postgres and covers sign-up and sign-in, both optional two-step methods,
+The suite runs against a real Postgres and covers sign-up, email confirmation, sign-in, both optional two-step methods,
 trusted devices, turning two-step off, per-role authenticator requirement, permissions, cross-family
 isolation, MFA reset, idle timeout, audit immutability and outbox retries.
 

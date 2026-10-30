@@ -41,7 +41,8 @@ export const api = {
 /** Auth endpoints (Better Auth on the API). */
 export const authApi = {
   signUp: (b: { name: string; email: string; password: string }) =>
-    request<unknown>("POST", "/api/auth/sign-up/email", b),
+    // The confirmation link signs them in and lands on the dashboard.
+    request<unknown>("POST", "/api/auth/sign-up/email", { ...b, callbackURL: "/dashboard" }),
   signIn: (b: { email: string; password: string }) =>
     request<{ twoFactorRedirect?: boolean }>("POST", "/api/auth/sign-in/email", b),
   signOut: () => request<unknown>("POST", "/api/auth/sign-out", {}),

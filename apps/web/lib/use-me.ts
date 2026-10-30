@@ -29,7 +29,7 @@ export function useMe({ allowIncompleteMfa = false } = {}) {
       })
       .catch((err) => {
         if (cancelled) return;
-        if (err instanceof ApiError && err.status === 401) {
+        if (err instanceof ApiError && (err.status === 401 || err.code === "EMAIL_NOT_VERIFIED")) {
           router.replace("/sign-in");
           return;
         }

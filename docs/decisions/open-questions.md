@@ -19,9 +19,8 @@ and leave a pointer to the question. Update this file when a decision is made.
 
 ## R0 implementation decisions
 
-- **Email confirmation (decided Oct 30):** not required at sign-up; accounts work immediately. Email verification
-  remains configured, so a later release can ask a family to confirm their address (for example before checkout).
-  Risk accepted: a mistyped email means receipts and resets go astray until the family corrects it.
+- **Email confirmation (decided Oct 30):** required. A link is emailed at sign-up (valid 24 hours); clicking it
+  confirms the address and signs the family in. Trying to sign in before confirming is refused and re-sends the link.
 - **Two-step sign-in (decided Oct 30):** optional for everyone; users choose emailed codes or an authenticator app,
   and can turn it off with their password. Trusted devices skip the code for 30 days.
   Admins can require an authenticator app for a role (`PUT /api/v1/admin/roles/:key/mfa`, stored in
