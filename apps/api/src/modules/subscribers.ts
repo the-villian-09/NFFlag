@@ -9,11 +9,11 @@ import { db } from "../db/client.js";
 import { divisions, householdMembers, payments, players, registrations, seasons, user, userRoleAssignments, waitlistEntries } from "../db/schema/index.js";
 import { positionOf } from "./registration/waitlist.js";
 import { feeLabel, ROLE_LABELS, type VolunteerRole } from "./staff/service.js";
-import { rosterEntries, teams, teamStaff, volunteerApplications } from "../db/schema/index.js";
+import { announcements, rosterEntries, teams, teamStaff, volunteerApplications } from "../db/schema/index.js";
 import { getEmailSender } from "../lib/email.js";
 import { templates } from "../lib/email-templates.js";
 import { logger } from "../lib/logger.js";
-import { subscribe } from "./platform/outbox.js";
+import { publish, subscribe } from "./platform/outbox.js";
 
 const base = () => env.APP_BASE_URL.replace(/\/$/, "");
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -83,11 +83,63 @@ async function applicationContext(id: string) {
 }
 
 export function registerSubscribers() {
+  // Fan out: one event per guardian, so a failed send retries only that email.
   subscribe("roster.published", async (e) => {
+    const [r] = await db
+      .select({ householdId: players.householdId })
+      .from(rosterEntries)
+      .innerJoin(players, eq(players.id, rosterEntries.playerId))
+      .where(eq(rosterEntries.id, e.aggregateId));
+    if (!r) return; // removed since
+    const guardians = await db.select({ userId: householdMembers.userId }).from(householdMembers).where(eq(householdMembers.householdId, r.householdId));
+    for (const g of guardians) {
+      await publish(db, {
+        name: "roster.notify",
+        aggregateType: "roster_entry",
+        aggregateId: e.aggregateId,
+        payload: { userId: g.userId },
+        dedupeKey: `roster.notify:${e.id}:${g.userId}`,
+      });
+    }
+  });
+
+  subscribe("announcement.sent", async (e) => {
+    const { userId } = e.payload as { userId: string };
+    const [a] = await db
+      .select({
+        subject: announcements.subject,
+        body: announcements.body,
+        audience: announcements.audience,
+        team: teams.name,
+        division: divisions.name,
+        senderName: user.name,
+        senderEmail: user.email,
+      })
+      .from(announcements)
+      .leftJoin(teams, eq(teams.id, announcements.teamId))
+      .leftJoin(divisions, eq(divisions.id, announcements.divisionId))
+      .leftJoin(user, eq(user.id, announcements.sentBy))
+      .where(eq(announcements.id, e.aggregateId));
+    const [to] = await db.select({ email: user.email }).from(user).where(eq(user.id, userId));
+    if (!a || !to) return;
+    const from = a.audience === "team" && a.team ? a.team : a.audience === "division" && a.division ? `NFFL ${a.division}` : "NFFL";
+    await getEmailSender().send(
+      templates.announcement(to.email, {
+        from,
+        subject: a.subject,
+        body: a.body,
+        senderName: a.senderName,
+        replyTo: a.senderEmail,
+        dashboardUrl: `${base()}/dashboard`,
+      }),
+    );
+  });
+
+  subscribe("roster.notify", async (e) => {
+    const { userId } = e.payload as { userId: string };
     const [r] = await db
       .select({
         teamId: rosterEntries.teamId,
-        registrationId: rosterEntries.registrationId,
         team: teams.name,
         division: divisions.name,
         player: players.firstName,
@@ -99,29 +151,28 @@ export function registerSubscribers() {
       .innerJoin(divisions, eq(divisions.id, teams.divisionId))
       .innerJoin(players, eq(players.id, rosterEntries.playerId))
       .where(eq(rosterEntries.id, e.aggregateId));
-    if (!r) return; // removed since
+    if (!r) return;
+    const [g] = await db
+      .select({ email: user.email })
+      .from(householdMembers)
+      .innerJoin(user, eq(user.id, householdMembers.userId))
+      .where(and(eq(householdMembers.householdId, r.householdId), eq(householdMembers.userId, userId)));
+    if (!g) return; // no longer in the household
     const [coach] = await db
       .select({ name: user.name, email: user.email })
       .from(teamStaff)
       .innerJoin(user, eq(user.id, teamStaff.userId))
       .where(and(eq(teamStaff.teamId, r.teamId), eq(teamStaff.roleKey, "head_coach")));
-    const guardians = await db
-      .select({ email: user.email })
-      .from(householdMembers)
-      .innerJoin(user, eq(user.id, householdMembers.userId))
-      .where(eq(householdMembers.householdId, r.householdId));
-    for (const g of guardians) {
-      await getEmailSender().send(
-        templates.rosterPublished(g.email, {
-          player: `${r.player} ${r.playerLast}`,
-          team: r.team,
-          division: r.division,
-          coach: coach?.name ?? null,
-          coachEmail: coach?.email ?? null,
-          dashboardUrl: `${base()}/dashboard`,
-        }),
-      );
-    }
+    await getEmailSender().send(
+      templates.rosterPublished(g.email, {
+        player: `${r.player} ${r.playerLast}`,
+        team: r.team,
+        division: r.division,
+        coach: coach?.name ?? null,
+        coachEmail: coach?.email ?? null,
+        dashboardUrl: `${base()}/dashboard`,
+      }),
+    );
   });
 
   subscribe("staff.application_submitted", async (e) => {

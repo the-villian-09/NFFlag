@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
 import { api, ApiError, authApi } from "@/lib/api";
 import { fmtDate, fmtDateTime, money, StatusBadge } from "@/lib/format";
+import { fmtWhen, GAME_STATUS, resultFor, type Game, type Practice } from "@/lib/schedule";
 import { isAdmin, useMe } from "@/lib/use-me";
 
 interface Household {
@@ -156,6 +157,7 @@ export default function DashboardPage() {
           )}
         </section>
         {household && <PlayersCard />}
+        <ScheduleCard />
         {household && <RegistrationsCard />}
         {household && <WaitlistCard />}
         <StaffCard />
@@ -171,8 +173,89 @@ export default function DashboardPage() {
 const ROLE: Record<string, string> = {
   head_coach: "Head coach",
   assistant_coach: "Assistant coach",
-  team_mom: "Team mom",
+  team_manager: "Team mom",
 };
+
+interface TeamSchedule {
+  team: { id: string; name: string; divisionName: string };
+  players: string[];
+  coaching: boolean;
+  games: Game[];
+  practices: Practice[];
+}
+
+/** Upcoming games and practices (and recent results) for the family's teams. Hidden until rosters are published. */
+function ScheduleCard() {
+  const [items, setItems] = useState<TeamSchedule[] | null>(null);
+  useEffect(() => {
+    api
+      .get<{ items: TeamSchedule[] }>("/my-schedule")
+      .then((r) => setItems(r.items))
+      .catch(() => setItems([]));
+  }, []);
+  if (!items || items.length === 0) return null;
+  const now = Date.now();
+  return (
+    <section className="card">
+      <h2>Schedule</h2>
+      {items.map((t) => {
+        const events = [
+          ...t.games.map((g) => ({ kind: "game" as const, at: new Date(g.startsAt).getTime(), g })),
+          ...t.practices.map((p) => ({ kind: "practice" as const, at: new Date(p.startsAt).getTime(), p })),
+        ].sort((a, b) => a.at - b.at);
+        const next = events.filter((e) => e.at > now - 3 * 3600_000).slice(0, 4);
+        const last = t.games.filter((g) => g.status === "final").at(-1);
+        return (
+          <div key={t.team.id} style={{ marginBottom: 16 }}>
+            <h3 style={{ margin: "8px 0" }}>
+              {t.team.name} <span className="muted" style={{ fontSize: 16 }}>· {t.team.divisionName}{t.players.length ? ` · ${t.players.join(", ")}` : ""}</span>
+            </h3>
+            {last && <p className="muted" style={{ margin: "0 0 8px" }}>Last game: {resultFor(last, t.team.id)} {last.homeTeamId === t.team.id ? "vs" : "at"} {last.homeTeamId === t.team.id ? last.away : last.home}</p>}
+            {next.length === 0 ? (
+              <p className="muted">Nothing scheduled yet. Your coach will add practices here.</p>
+            ) : (
+              <ul className="list">
+                {next.map((e) =>
+                  e.kind === "game" ? (
+                    <li key={`g${e.g.id}`}>
+                      <span>
+                        <span className="who">
+                          Game {e.g.homeTeamId === t.team.id ? "vs" : "at"} {e.g.homeTeamId === t.team.id ? e.g.away : e.g.home}
+                        </span>
+                        <br />
+                        <span className="muted">
+                          {fmtWhen(e.g.startsAt)} · {e.g.location}
+                        </span>
+                      </span>
+                      {e.g.status !== "scheduled" && <span className={`status ${GAME_STATUS[e.g.status].tone}`}>{GAME_STATUS[e.g.status].label}</span>}
+                    </li>
+                  ) : (
+                    <li key={`p${e.p.id}`}>
+                      <span>
+                        <span className="who" style={e.p.status === "cancelled" ? { textDecoration: "line-through" } : undefined}>
+                          Practice
+                        </span>
+                        <br />
+                        <span className="muted">
+                          {fmtWhen(e.p.startsAt)} · {e.p.durationMinutes} min · {e.p.location}
+                          {e.p.notes ? ` · ${e.p.notes}` : ""}
+                        </span>
+                      </span>
+                      {e.p.status === "cancelled" && <span className="status bad">Cancelled</span>}
+                    </li>
+                  ),
+                )}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+      <Link className="btn ghost small" href="/schedule">
+        League schedule & standings
+      </Link>
+    </section>
+  );
+}
 
 const APP_LINE: Record<string, string> = {
   pending_payment: "Fee not paid yet",

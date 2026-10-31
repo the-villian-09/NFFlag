@@ -108,7 +108,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, readonly Permission[]> = 
   ],
   // Head coaches see their own team's medical and emergency details (team-scoped grant; every view is audited).
   head_coach: ["roster.read", "roster.request_change", "practices.manage", "announcements.send", "medical.read"],
-  assistant_coach: ["roster.read", "practices.manage"],
+  assistant_coach: ["roster.read", "practices.manage", "announcements.send"],
   team_manager: ["roster.read", "announcements.send"],
   scorekeeper: ["scores.enter"],
   parent: [],

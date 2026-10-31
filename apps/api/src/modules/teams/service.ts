@@ -118,7 +118,11 @@ export async function draftBoard(divisionId: string, conn: Tx | typeof db = db) 
   const totalPlayers = roster.length + available.length;
   const rounds = fullOrder.length ? Math.max(1, Math.ceil(totalPlayers / fullOrder.length), ...[...coachKids.values()]) + 1 : 0;
   const slots = buildSlots(fullOrder, rounds, coachKids, picks);
-  const current = d.status === "live" && available.length ? (slots.find((s) => s.kind === null) ?? null) : null;
+  // The clock only moves forward: the next open slot after the last pick made. An open slot
+  // behind it (a drafted child cancelled mid-draft) is a "hole", filled after the draft.
+  const lastPick = Math.max(0, ...picks.keys());
+  const current = d.status === "live" && available.length ? (slots.find((s) => s.kind === null && s.pick > lastPick) ?? null) : null;
+  const holes = slots.filter((s) => s.kind === null && s.pick < lastPick).length;
 
   return {
     division: { id: division.id, name: division.name, seasonId: division.seasonId },
@@ -129,6 +133,8 @@ export async function draftBoard(divisionId: string, conn: Tx | typeof db = db) 
     awaitingReview: waiting?.n ?? 0,
     slots,
     current,
+    lastPick,
+    holes,
   };
 }
 
@@ -137,6 +143,7 @@ export async function draftBoard(divisionId: string, conn: Tx | typeof db = db) 
 export async function createTeam(actor: Actor & { userId: string }, divisionId: string, input: { name: string; color?: string }) {
   const [d] = await db.select().from(divisions).where(eq(divisions.id, divisionId));
   if (!d) throw new HttpError(404, "NOT_FOUND", "Division not found.");
+  if ((await draftOf(db, divisionId)).status !== "setup") throw new HttpError(409, "CONFLICT", "Teams can't be added once the draft has started.");
   const [{ n }] = (await db.select({ n: sql<number>`count(*)::int` }).from(teams).where(eq(teams.divisionId, divisionId))) as [{ n: number }];
   try {
     const [t] = await db
@@ -191,19 +198,96 @@ export async function staffPool(seasonId: string) {
   return apps.map((a) => ({ ...a, assignments: assigned.filter((x) => x.userId === a.userId).map((x) => ({ teamId: x.teamId, teamName: x.teamName, roleKey: x.roleKey })) }));
 }
 
-async function revokeTeamRole(tx: Tx, s: { teamId: string; userId: string; roleKey: string }) {
+/** Revokes every team-scoped role this person holds on the team (whatever the role). */
+async function revokeTeamRole(tx: Tx, s: { teamId: string; userId: string }) {
   await tx
     .update(userRoleAssignments)
     .set({ revokedAt: new Date() })
     .where(
       and(
         eq(userRoleAssignments.userId, s.userId),
-        eq(userRoleAssignments.roleKey, s.roleKey),
         eq(userRoleAssignments.scopeType, "team"),
         eq(userRoleAssignments.scopeId, s.teamId),
         isNull(userRoleAssignments.revokedAt),
       ),
     );
+}
+
+/**
+ * Places staff members' own approved children in the division on their team
+ * (before the draft only). Run when staff are assigned and again when the draft
+ * starts, so a child approved later still goes to their parent's team.
+ * Caller holds the division lock.
+ */
+async function placeCoachKids(tx: Tx, divisionId: string, actorId: string, onlyUser?: string) {
+  const staff = await tx
+    .select({ teamId: teamStaff.teamId, userId: teamStaff.userId })
+    .from(teamStaff)
+    .innerJoin(teams, eq(teams.id, teamStaff.teamId))
+    .where(and(eq(teams.divisionId, divisionId), onlyUser ? eq(teamStaff.userId, onlyUser) : undefined));
+  let placed = 0;
+  for (const st of staff) {
+    const kids = await tx
+      .select({ registrationId: registrations.id, playerId: registrations.playerId })
+      .from(registrations)
+      .innerJoin(householdMembers, eq(householdMembers.householdId, registrations.householdId))
+      .where(and(eq(householdMembers.userId, st.userId), eq(registrations.divisionId, divisionId), eq(registrations.status, "approved")));
+    for (const k of kids) {
+      const [row] = await tx
+        .insert(rosterEntries)
+        .values({ teamId: st.teamId, divisionId, registrationId: k.registrationId, playerId: k.playerId, source: "coach_child", createdBy: actorId })
+        .onConflictDoNothing()
+        .returning({ id: rosterEntries.id });
+      if (row) placed++;
+    }
+  }
+  return placed;
+}
+
+/**
+ * Before the draft, takes a removed staff member's children back off the team
+ * (unless another staff member on the team is in the same household).
+ */
+async function unplaceCoachKids(tx: Tx, teamId: string, userId: string) {
+  const [t] = await tx.select().from(teams).where(eq(teams.id, teamId));
+  if (!t) return;
+  const d = await draftOf(tx, t.divisionId);
+  if (d.status !== "setup") return;
+  await lockDivision(tx, t.divisionId);
+  const homes = await tx.select({ householdId: householdMembers.householdId }).from(householdMembers).where(eq(householdMembers.userId, userId));
+  if (!homes.length) return;
+  const others = await tx
+    .select({ householdId: householdMembers.householdId })
+    .from(teamStaff)
+    .innerJoin(householdMembers, eq(householdMembers.userId, teamStaff.userId))
+    .where(and(eq(teamStaff.teamId, teamId), sql`${teamStaff.userId} <> ${userId}`));
+  const keep = new Set(others.map((o) => o.householdId));
+  const drop = homes.map((h) => h.householdId).filter((h) => !keep.has(h));
+  if (!drop.length) return;
+  const entries = await tx
+    .select({ id: rosterEntries.id })
+    .from(rosterEntries)
+    .innerJoin(players, eq(players.id, rosterEntries.playerId))
+    .where(and(eq(rosterEntries.teamId, teamId), eq(rosterEntries.source, "coach_child"), inArray(players.householdId, drop)));
+  if (entries.length) await tx.delete(rosterEntries).where(inArray(rosterEntries.id, entries.map((e) => e.id)));
+}
+
+/**
+ * Removes someone from every team where they serve in a role this season (that approval was withdrawn):
+ * revokes their team roles and, before the draft, takes their children off.
+ */
+export async function removeFromSeasonTeams(tx: Tx, userId: string, seasonId: string, roleKey: string) {
+  const rows = await tx
+    .select({ teamId: teamStaff.teamId, userId: teamStaff.userId })
+    .from(teamStaff)
+    .innerJoin(teams, eq(teams.id, teamStaff.teamId))
+    .where(and(eq(teamStaff.userId, userId), eq(teams.seasonId, seasonId), eq(teamStaff.roleKey, roleKey)));
+  for (const r of rows) {
+    await revokeTeamRole(tx, r);
+    await tx.delete(teamStaff).where(and(eq(teamStaff.teamId, r.teamId), eq(teamStaff.userId, userId)));
+    await unplaceCoachKids(tx, r.teamId, userId);
+  }
+  return rows.length;
 }
 
 /**
@@ -213,7 +297,7 @@ async function revokeTeamRole(tx: Tx, s: { teamId: string; userId: string; roleK
  */
 export async function assignStaff(actor: Actor & { userId: string }, teamId: string, input: { userId: string; roleKey: (typeof STAFF_ROLES)[number] }) {
   return db.transaction(async (tx) => {
-    const [t] = await tx.select().from(teams).where(eq(teams.id, teamId));
+    const [t] = await tx.select().from(teams).where(eq(teams.id, teamId)).for("update");
     if (!t) throw new HttpError(404, "NOT_FOUND", "Team not found.");
     const [app] = await tx
       .select({ id: volunteerApplications.id })
@@ -234,45 +318,39 @@ export async function assignStaff(actor: Actor & { userId: string }, teamId: str
         .where(and(eq(teamStaff.teamId, teamId), eq(teamStaff.roleKey, "head_coach")));
       if (other && other.userId !== input.userId) throw new HttpError(409, "CONFLICT", "This team already has a head coach.");
     }
+    // A role change replaces their old grant on this team.
+    await revokeTeamRole(tx, { teamId, userId: input.userId });
     const [ura] = await tx
       .insert(userRoleAssignments)
       .values({ userId: input.userId, roleKey: input.roleKey, scopeType: "team", scopeId: teamId, grantedBy: actor.userId })
-      .onConflictDoNothing()
       .returning({ id: userRoleAssignments.id });
-    await tx
-      .insert(teamStaff)
-      .values({ teamId, userId: input.userId, roleKey: input.roleKey, roleAssignmentId: ura?.id ?? null })
-      .onConflictDoUpdate({ target: [teamStaff.teamId, teamStaff.userId], set: { roleKey: input.roleKey } });
+    try {
+      await tx
+        .insert(teamStaff)
+        .values({ teamId, userId: input.userId, roleKey: input.roleKey, roleAssignmentId: ura!.id })
+        .onConflictDoUpdate({ target: [teamStaff.teamId, teamStaff.userId], set: { roleKey: input.roleKey, roleAssignmentId: ura!.id } });
+    } catch (err) {
+      if ((err as { cause?: { code?: string } }).cause?.code === "23505") throw new HttpError(409, "CONFLICT", "This team already has a head coach.");
+      throw err;
+    }
 
     // Their own children go on this team before the draft.
     const d = await draftOf(tx, t.divisionId);
-    const placed: string[] = [];
+    let placed = 0;
     if (d.status === "setup") {
       await lockDivision(tx, t.divisionId);
-      const kids = await tx
-        .select({ registrationId: registrations.id, playerId: registrations.playerId })
-        .from(registrations)
-        .innerJoin(householdMembers, eq(householdMembers.householdId, registrations.householdId))
-        .where(and(eq(householdMembers.userId, input.userId), eq(registrations.divisionId, t.divisionId), eq(registrations.status, "approved")));
-      for (const k of kids) {
-        const [row] = await tx
-          .insert(rosterEntries)
-          .values({ teamId, divisionId: t.divisionId, registrationId: k.registrationId, playerId: k.playerId, source: "coach_child", createdBy: actor.userId })
-          .onConflictDoNothing()
-          .returning({ id: rosterEntries.id });
-        if (row) placed.push(k.playerId);
-      }
+      placed = await placeCoachKids(tx, t.divisionId, actor.userId, input.userId);
     }
     await writeAudit(tx, {
       actorUserId: actor.userId,
       action: "team.staff.assign",
       targetType: "team",
       targetId: teamId,
-      after: { userId: input.userId, roleKey: input.roleKey, childrenPlaced: placed.length },
+      after: { userId: input.userId, roleKey: input.roleKey, childrenPlaced: placed },
       requestId: actor.requestId,
       ipAddress: actor.ip,
     });
-    return { childrenPlaced: placed.length };
+    return { childrenPlaced: placed };
   });
 }
 
@@ -282,6 +360,7 @@ export async function removeStaff(actor: Actor & { userId: string }, teamId: str
     if (!s) throw new HttpError(404, "NOT_FOUND", "Not on this team.");
     await revokeTeamRole(tx, s);
     await tx.delete(teamStaff).where(and(eq(teamStaff.teamId, teamId), eq(teamStaff.userId, userId)));
+    await unplaceCoachKids(tx, teamId, userId);
     await writeAudit(tx, { actorUserId: actor.userId, action: "team.staff.remove", targetType: "team", targetId: teamId, before: s, requestId: actor.requestId, ipAddress: actor.ip });
   });
 }
@@ -316,6 +395,7 @@ export async function startDraft(actor: Actor & { userId: string }, divisionId: 
     if (d.status !== "setup") throw new HttpError(409, "CONFLICT", "The draft has already started.");
     const ts = await tx.select({ id: teams.id }).from(teams).where(eq(teams.divisionId, divisionId));
     if (ts.length < 2) throw new HttpError(409, "CONFLICT", "Add at least two teams first.");
+    await placeCoachKids(tx, divisionId, actor.userId);
     const order = (d.order as string[]).filter((id) => ts.some((t) => t.id === id));
     const full = [...order, ...ts.map((t) => t.id).filter((id) => !order.includes(id))];
     await tx
@@ -337,6 +417,9 @@ export async function makePick(actor: Actor & { userId: string }, divisionId: st
     if (input.expectedPick && input.expectedPick !== slot.pick) throw new HttpError(409, "CONFLICT", "The board changed. Refresh and try again.");
     const p = board.available.find((a) => a.registrationId === input.registrationId);
     if (!p) throw new HttpError(409, "CONFLICT", "That player isn't available.");
+    // Same lock a cancellation takes, so a cancel can't slip in between the check and the pick.
+    const [reg] = await tx.select({ status: registrations.status }).from(registrations).where(eq(registrations.id, p.registrationId)).for("update");
+    if (reg?.status !== "approved") throw new HttpError(409, "CONFLICT", "That player isn't available.");
     const [row] = await tx
       .insert(rosterEntries)
       .values({ teamId: slot.teamId, divisionId, registrationId: p.registrationId, playerId: p.playerId, source: "draft", pickNumber: slot.pick, createdBy: actor.userId })
@@ -354,7 +437,7 @@ export async function makePick(actor: Actor & { userId: string }, divisionId: st
   });
 }
 
-export async function undoPick(actor: Actor & { userId: string }, divisionId: string) {
+export async function undoPick(actor: Actor & { userId: string }, divisionId: string, expectedPick?: number) {
   return db.transaction(async (tx) => {
     const d = await lockDraft(tx, divisionId);
     if (d.status !== "live") throw new HttpError(409, "CONFLICT", "The draft isn't live.");
@@ -365,6 +448,7 @@ export async function undoPick(actor: Actor & { userId: string }, divisionId: st
       .orderBy(sql`${rosterEntries.pickNumber} desc`)
       .limit(1);
     if (!last) throw new HttpError(409, "CONFLICT", "No picks to undo.");
+    if (expectedPick && last.pickNumber !== expectedPick) throw new HttpError(409, "CONFLICT", "The board changed. Check the latest pick and try again.");
     await tx.delete(rosterEntries).where(eq(rosterEntries.id, last.id));
     await writeAudit(tx, { actorUserId: actor.userId, action: "draft.undo", targetType: "division", targetId: divisionId, before: { pick: last.pickNumber, playerId: last.playerId, teamId: last.teamId }, requestId: actor.requestId, ipAddress: actor.ip });
     return { undone: last.pickNumber };
@@ -403,7 +487,8 @@ export async function addToTeam(actor: Actor & { userId: string }, teamId: strin
     const [t] = await tx.select().from(teams).where(eq(teams.id, teamId));
     if (!t) throw new HttpError(404, "NOT_FOUND", "Team not found.");
     await lockDivision(tx, t.divisionId);
-    const [r] = await tx.select().from(registrations).where(eq(registrations.id, registrationId));
+    if ((await draftOf(tx, t.divisionId)).status !== "complete") throw new HttpError(409, "CONFLICT", "Add players after the draft is finished.");
+    const [r] = await tx.select().from(registrations).where(eq(registrations.id, registrationId)).for("update");
     if (!r || r.divisionId !== t.divisionId || r.status !== "approved") throw new HttpError(409, "CONFLICT", "Only approved players in this division can be added.");
     try {
       const [row] = await tx
@@ -428,10 +513,10 @@ export async function moveRosterEntry(actor: Actor & { userId: string }, entryId
     const [t] = await tx.select().from(teams).where(eq(teams.id, teamId));
     if (!t || t.divisionId !== e.divisionId) throw new HttpError(400, "VALIDATION_FAILED", "Choose a team in the same division.");
     const d = await draftOf(tx, e.divisionId);
-    if (d.status === "live") throw new HttpError(409, "CONFLICT", "Use undo during the draft; move players after it's finished.");
+    if (d.status !== "complete") throw new HttpError(409, "CONFLICT", "Move players after the draft is finished.");
     const [after] = await tx.update(rosterEntries).set({ teamId, source: "admin" }).where(eq(rosterEntries.id, entryId)).returning();
     await writeAudit(tx, { actorUserId: actor.userId, action: "roster.move", targetType: "roster_entry", targetId: entryId, before: { teamId: e.teamId }, after: { teamId }, requestId: actor.requestId, ipAddress: actor.ip });
-    if (d.publishedAt) await publish(tx, { name: "roster.published", aggregateType: "roster_entry", aggregateId: entryId, dedupeKey: `roster.moved:${entryId}:${teamId}` });
+    if (d.publishedAt) await publish(tx, { name: "roster.published", aggregateType: "roster_entry", aggregateId: entryId, dedupeKey: `roster.moved:${entryId}:${Date.now()}` });
     return after!;
   });
 }
@@ -441,7 +526,7 @@ export async function removeRosterEntry(actor: Actor & { userId: string }, entry
     const [e] = await tx.select().from(rosterEntries).where(eq(rosterEntries.id, entryId)).for("update");
     if (!e) throw new HttpError(404, "NOT_FOUND", "Roster entry not found.");
     const d = await draftOf(tx, e.divisionId);
-    if (d.status === "live" && e.source === "draft") throw new HttpError(409, "CONFLICT", "Use undo during the draft.");
+    if (d.status === "live") throw new HttpError(409, "CONFLICT", "Use undo during the draft; remove players after it's finished.");
     await tx.delete(rosterEntries).where(eq(rosterEntries.id, entryId));
     await writeAudit(tx, { actorUserId: actor.userId, action: "roster.remove", targetType: "roster_entry", targetId: entryId, before: e, requestId: actor.requestId, ipAddress: actor.ip });
   });

@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 import { ErrorAlert } from "@/components/form";
 import { api, ApiError } from "@/lib/api";
 import { fmtDate } from "@/lib/format";
-import { useMe } from "@/lib/use-me";
+import { isAdmin, useMe } from "@/lib/use-me";
+import { TeamTools } from "@/components/team-tools";
 
 interface Medical {
   allergies: string | null;
@@ -42,7 +43,7 @@ interface TeamView {
 const ROLE: Record<string, string> = {
   head_coach: "Head coach",
   assistant_coach: "Assistant coach",
-  team_mom: "Team mom",
+  team_manager: "Team mom",
 };
 
 /** A coach's or team mom's view of their team: players, parent contacts and (head coach) medical/emergency details. */
@@ -90,6 +91,9 @@ export default function MyTeamPage() {
       </main>
     );
 
+  const myRole = v.staff.find((s) => s.userId === me.user.id)?.roleKey;
+  const canPractice = myRole === "head_coach" || myRole === "assistant_coach" || isAdmin(me);
+  const canAnnounce = !!myRole || isAdmin(me);
   const emails = [
     ...new Set(v.roster.flatMap((r) => r.guardians.map((g) => g.email))),
   ];
@@ -131,17 +135,25 @@ export default function MyTeamPage() {
         <section className="card">
           <h2>Email the families</h2>
           <p className="muted">
-            Opens your email app with every parent and guardian on the team in
-            BCC.
+            {canAnnounce ? "Send an announcement below; it's saved here and replies come to you. Or use your own email app." : "Open your email app with every parent and guardian on the team in BCC."}
           </p>
-          <a
-            className="btn small"
-            href={`mailto:?bcc=${encodeURIComponent(emails.join(","))}&subject=${encodeURIComponent(v.team.name)}`}
-          >
-            Email all families
-          </a>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            {canAnnounce && (
+              <a className="btn small" href="#announce">
+                Send an announcement
+              </a>
+            )}
+            <a
+              className={canAnnounce ? "btn ghost small" : "btn small"}
+              href={`mailto:?bcc=${encodeURIComponent(emails.join(","))}&subject=${encodeURIComponent(v.team.name)}`}
+            >
+              Use my email app
+            </a>
+          </div>
         </section>
       </div>
+
+      <TeamTools teamId={v.team.id} teamName={v.team.name} canPractice={canPractice} canAnnounce={canAnnounce} />
 
       <section className="card" style={{ marginTop: 24 }}>
         <h2>Roster</h2>

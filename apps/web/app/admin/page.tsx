@@ -118,6 +118,24 @@ export default function AdminPage() {
             </Link>
           </div>
         )}
+        {me.permissions.includes("games.manage") && (
+          <div className="card">
+            <h2>Schedule & scores</h2>
+            <p className="muted">Add games or import a spreadsheet, reschedule or cancel, and enter final scores for the standings.</p>
+            <Link className="btn small" href="/admin/schedule">
+              Schedule
+            </Link>
+          </div>
+        )}
+        {me.permissions.includes("announcements.send") && (
+          <div className="card">
+            <h2>Announcements</h2>
+            <p className="muted">Email every family this season, one division, or one team.</p>
+            <Link className="btn small" href="/admin/announcements">
+              Send an announcement
+            </Link>
+          </div>
+        )}
         {me.permissions.includes("seasons.read") && (
           <div className="card">
             <h2>Seasons and divisions</h2>

@@ -17,6 +17,7 @@ export type ErrorCode =
   | "PAYMENT_FAILED"
   | "PAYMENT_PENDING"
   | "PAYMENTS_UNAVAILABLE"
+  | "RATE_LIMITED"
   | "INTERNAL";
 
 export class HttpError extends Error {

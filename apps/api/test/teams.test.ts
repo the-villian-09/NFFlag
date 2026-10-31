@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../src/db/client.js";
 import {
@@ -205,5 +205,88 @@ describe("teams and the draft", () => {
     await db.update(registrations).set({ status: "paid" }).where(eq(registrations.id, families[1]!.registrationId));
     await admin.post(`/api/v1/admin/league/registrations/${families[1]!.registrationId}/decision`).send({ decision: "rejected", reason: "Wrong age", refund: false });
     expect(await db.select().from(rosterEntries).where(eq(rosterEntries.registrationId, families[1]!.registrationId))).toHaveLength(0);
+  });
+});
+
+describe("draft-night safeguards and staff access (review fixes)", () => {
+  let div2: string;
+  let t1: string;
+  let t2: string;
+  const fams: Awaited<ReturnType<typeof family>>[] = [];
+  const draftUrl = () => `/api/v1/admin/teams/divisions/${div2}/draft`;
+  const activeTeamGrants = (userId: string, teamId: string) =>
+    db
+      .select({ roleKey: userRoleAssignments.roleKey })
+      .from(userRoleAssignments)
+      .where(and(eq(userRoleAssignments.userId, userId), eq(userRoleAssignments.scopeId, teamId), isNull(userRoleAssignments.revokedAt)));
+
+  it("places a coach's child approved after the coach was assigned, when the draft starts", async () => {
+    const [d] = await db.insert(divisions).values({ seasonId, name: "Fix 10U", capacity: 40, priceCents: 10000, status: "open" }).returning();
+    div2 = d!.id;
+    const prev = divisionId;
+    divisionId = div2; // family() registers into divisionId
+    t1 = (await admin.post(`/api/v1/admin/teams/divisions/${div2}/teams`).send({ name: "Comets" })).body.team.id;
+    t2 = (await admin.post(`/api/v1/admin/teams/divisions/${div2}/teams`).send({ name: "Rockets" })).body.team.id;
+    const coach = await approvedStaff("latecoach", "head_coach");
+    expect((await admin.post(`/api/v1/admin/teams/teams/${t1}/staff`).send({ userId: coach.userId, roleKey: "head_coach" })).body.childrenPlaced).toBe(0);
+    await family("Latekid", coach.userId); // approved after assignment
+    for (const n of ["Fa", "Fb", "Fc", "Fd"]) fams.push(await family(n));
+    divisionId = prev;
+
+    await admin.put(`${draftUrl()}/order`).send({ order: [t1, t2] });
+    const board = (await admin.post(`${draftUrl()}/start`)).body;
+    expect(board.roster.find((r: { firstName: string }) => r.firstName === "Latekid")).toMatchObject({ teamId: t1, source: "coach_child" });
+    expect(board.current).toMatchObject({ pick: 2, teamId: t2 });
+  });
+
+  it("locks teams and roster adds during the draft", async () => {
+    expect((await admin.post(`/api/v1/admin/teams/divisions/${div2}/teams`).send({ name: "Late Team" })).status).toBe(409);
+    expect((await admin.post(`/api/v1/admin/teams/teams/${t1}/roster`).send({ registrationId: fams[0]!.registrationId })).status).toBe(409);
+  });
+
+  it("keeps the clock moving forward when a drafted child is cancelled, and undo is guarded", async () => {
+    let board = (await admin.get(draftUrl())).body;
+    for (const f of fams.slice(0, 3)) {
+      board = (await admin.post(`${draftUrl()}/pick`).send({ registrationId: f.registrationId, expectedPick: board.current.pick })).body;
+    }
+    expect(board.current.pick).toBe(5);
+    // Pick 2's registration is cancelled mid-draft (what cancelRegistration does to the roster).
+    await db.update(registrations).set({ status: "cancelled" }).where(eq(registrations.id, fams[0]!.registrationId));
+    await db.delete(rosterEntries).where(eq(rosterEntries.registrationId, fams[0]!.registrationId));
+    board = (await admin.get(draftUrl())).body;
+    expect(board.current.pick).toBe(5);
+    expect(board.holes).toBe(1);
+    expect((await admin.post(`${draftUrl()}/undo`).send({ expectedPick: 3 })).status).toBe(409);
+    board = (await admin.post(`${draftUrl()}/undo`).send({ expectedPick: 4 })).body;
+    expect(board.current.pick).toBe(4);
+    expect(board.available.map((a: { firstName: string }) => a.firstName).sort()).toEqual(["Fc", "Fd"]);
+  });
+
+  it("swaps a re-assigned coach's team role and removes it entirely when they leave", async () => {
+    const p = await approvedStaff("swapper", "head_coach");
+    await db.insert(volunteerApplications).values({ seasonId, userId: p.userId, roleKey: "assistant_coach", phone: "904-555-0112", status: "approved", screeningStatus: "cleared" });
+    await admin.post(`/api/v1/admin/teams/teams/${t2}/staff`).send({ userId: p.userId, roleKey: "head_coach" });
+    await admin.post(`/api/v1/admin/teams/teams/${t2}/staff`).send({ userId: p.userId, roleKey: "assistant_coach" });
+    expect((await activeTeamGrants(p.userId, t2)).map((g) => g.roleKey)).toEqual(["assistant_coach"]);
+    await admin.delete(`/api/v1/admin/teams/teams/${t2}/staff/${p.userId}`);
+    expect(await activeTeamGrants(p.userId, t2)).toHaveLength(0);
+  });
+
+  it("allows only one head coach per team, even with simultaneous requests", async () => {
+    const a = await approvedStaff("racea", "head_coach");
+    const b = await approvedStaff("raceb", "head_coach");
+    const rs = await Promise.all([a, b].map((x) => admin.post(`/api/v1/admin/teams/teams/${t2}/staff`).send({ userId: x.userId, roleKey: "head_coach" })));
+    expect(rs.map((r) => r.status).sort()).toEqual([200, 409]);
+  });
+
+  it("removing a coach's approval takes them off their team", async () => {
+    const p = await approvedStaff("revokee", "assistant_coach");
+    await admin.post(`/api/v1/admin/teams/teams/${t1}/staff`).send({ userId: p.userId, roleKey: "assistant_coach" });
+    const [app] = await db.select().from(volunteerApplications).where(eq(volunteerApplications.userId, p.userId));
+    expect((await admin.post(`/api/v1/admin/staff/applications/${app!.id}/revoke`).send({ reason: "Screening came back" })).status).toBe(200);
+    expect(await activeTeamGrants(p.userId, t1)).toHaveLength(0);
+    const overview = (await admin.get(`/api/v1/admin/teams/seasons/${seasonId}`)).body;
+    const comets = overview.items.flatMap((d: { teams: { id: string; staff: { userId: string }[] }[] }) => d.teams).find((t: { id: string }) => t.id === t1);
+    expect(comets.staff.some((s: { userId: string }) => s.userId === p.userId)).toBe(false);
   });
 });

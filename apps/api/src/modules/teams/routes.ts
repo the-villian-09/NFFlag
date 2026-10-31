@@ -175,7 +175,6 @@ adminTeamsRouter.put(
 
 for (const [path, fn] of [
   ["start", startDraft],
-  ["undo", undoPick],
   ["complete", completeDraft],
   ["publish", publishRosters],
 ] as const) {
@@ -188,6 +187,17 @@ for (const [path, fn] of [
     }),
   );
 }
+
+/** Undo the latest pick. expectedPick (the pick the screen shows as latest) stops two screens undoing twice. */
+adminTeamsRouter.post(
+  "/divisions/:divisionId/draft/undo",
+  requirePermission("draft.run"),
+  handler(async (req, res) => {
+    const { expectedPick } = z.object({ expectedPick: z.number().int().min(1).optional() }).parse(req.body ?? {});
+    await undoPick(actorOf(req), String(req.params.divisionId), expectedPick);
+    res.json(await draftBoard(String(req.params.divisionId)));
+  }),
+);
 
 adminTeamsRouter.post(
   "/divisions/:divisionId/draft/pick",

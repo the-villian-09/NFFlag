@@ -229,4 +229,26 @@ export const templates = {
       button: { label: "View my account", url: d.dashboardUrl },
     });
   },
+
+  /** A coach's or the league's message. Replies go to the sender. */
+  announcement(
+    to: string,
+    d: { from: string; subject: string; body: string; senderName: string | null; replyTo: string | null; dashboardUrl: string },
+  ): EmailMessage {
+    return message(
+      to,
+      "announcement",
+      `${d.from}: ${d.subject}`,
+      {
+        preheader: d.body.slice(0, 120),
+        heading: d.subject,
+        paragraphs: d.body.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean),
+        button: { label: "Schedule and team", url: d.dashboardUrl },
+        footnote: d.senderName
+          ? `Sent by ${d.senderName} through the North Florida Flag League site. Reply to this email to reach them.`
+          : "Sent through the North Florida Flag League site.",
+      },
+      d.replyTo ? { replyTo: d.replyTo } : {},
+    );
+  },
 };

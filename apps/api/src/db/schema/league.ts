@@ -416,7 +416,12 @@ export const teamStaff = pgTable(
     roleAssignmentId: uuid("role_assignment_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.teamId, t.userId] }), index("team_staff_user_idx").on(t.userId)],
+  (t) => [
+    primaryKey({ columns: [t.teamId, t.userId] }),
+    index("team_staff_user_idx").on(t.userId),
+    // One head coach per team.
+    uniqueIndex("team_one_head_coach").on(t.teamId).where(sql`${t.roleKey} = 'head_coach'`),
+  ],
 );
 
 /**
@@ -466,3 +471,100 @@ export const drafts = pgTable("drafts", {
   publishedAt: timestamp("published_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/* ---------------------------------------------------------------- R4 ---- */
+
+/**
+ * A game between two teams in the same division. Times are stored in UTC and
+ * entered/shown in league time (America/New_York). Final games count toward
+ * the public standings.
+ */
+export const games = pgTable(
+  "games",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seasonId: uuid("season_id")
+      .notNull()
+      .references(() => seasons.id),
+    divisionId: uuid("division_id")
+      .notNull()
+      .references(() => divisions.id),
+    homeTeamId: uuid("home_team_id")
+      .notNull()
+      .references(() => teams.id),
+    awayTeamId: uuid("away_team_id")
+      .notNull()
+      .references(() => teams.id),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    location: text("location").notNull(),
+    /** scheduled | final | cancelled | postponed */
+    status: text("status").notNull().default("scheduled"),
+    homeScore: integer("home_score"),
+    awayScore: integer("away_score"),
+    notes: text("notes"),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("games_division_time_idx").on(t.divisionId, t.startsAt),
+    index("games_home_idx").on(t.homeTeamId),
+    index("games_away_idx").on(t.awayTeamId),
+    check("games_two_teams", sql`${t.homeTeamId} <> ${t.awayTeamId}`),
+    check("games_status", sql`${t.status} in ('scheduled','final','cancelled','postponed')`),
+    check("games_final_has_score", sql`${t.status} <> 'final' or (${t.homeScore} is not null and ${t.awayScore} is not null)`),
+    check("games_scores_nonneg", sql`coalesce(${t.homeScore}, 0) >= 0 and coalesce(${t.awayScore}, 0) >= 0`),
+  ],
+);
+
+/** A team practice, set by the team's coaches. Visible to the team's families. */
+export const practices = pgTable(
+  "practices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    durationMinutes: integer("duration_minutes").notNull().default(60),
+    location: text("location").notNull(),
+    notes: text("notes"),
+    /** scheduled | cancelled */
+    status: text("status").notNull().default("scheduled"),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("practices_team_time_idx").on(t.teamId, t.startsAt),
+    check("practices_status", sql`${t.status} in ('scheduled','cancelled')`),
+    check("practices_duration", sql`${t.durationMinutes} between 15 and 300`),
+  ],
+);
+
+/**
+ * An email announcement. audience: team (one team's families and staff),
+ * division, or league (every family registered this season and all team staff).
+ */
+export const announcements = pgTable(
+  "announcements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seasonId: uuid("season_id")
+      .notNull()
+      .references(() => seasons.id),
+    audience: text("audience").notNull(),
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    divisionId: uuid("division_id").references(() => divisions.id),
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    sentBy: text("sent_by").references(() => user.id, { onDelete: "set null" }),
+    recipientCount: integer("recipient_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("announcements_team_idx").on(t.teamId, t.createdAt),
+    index("announcements_season_idx").on(t.seasonId, t.createdAt),
+    check("announcements_audience", sql`${t.audience} in ('team','division','league')`),
+  ],
+);

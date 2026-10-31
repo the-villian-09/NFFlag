@@ -57,6 +57,13 @@
       "when": 1793415746752,
       "tag": "0007_r3_teams_draft",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793473928152,
+      "tag": "0008_r4_schedule",
+      "breakpoints": true
     }
   ]
 }

@@ -19,6 +19,7 @@ import { writeAudit } from "../platform/audit.js";
 import { isEnabled } from "../platform/flags.js";
 import { publish } from "../platform/outbox.js";
 import { COMPLETED, isUniqueViolation, issueRefund, refundAll, type Actor, type PaymentRequest } from "../registration/service.js";
+import { removeFromSeasonTeams } from "../teams/service.js";
 import { getPaymentSettings, quote } from "../registration/settings.js";
 import { createPayment, friendlyPaymentError, getCredentials, parseReference, SquareError, type SquarePayment } from "../square/client.js";
 
@@ -475,6 +476,8 @@ export async function revokeApproval(actor: Actor & { userId: string }, applicat
           sql`${userRoleAssignments.revokedAt} is null`,
         ),
       );
+    // Off every team where they serve in this role this season.
+    const teamsLeft = await removeFromSeasonTeams(tx, a.userId, a.seasonId, a.roleKey);
     const [after] = await tx
       .update(volunteerApplications)
       .set({ status: "revoked", decisionReason: reason, decidedBy: actor.userId, decidedAt: new Date(), updatedAt: new Date() })
@@ -486,7 +489,7 @@ export async function revokeApproval(actor: Actor & { userId: string }, applicat
       targetType: "volunteer_application",
       targetId: a.id,
       before: { status: "approved", roleKey: a.roleKey },
-      after: { status: "revoked" },
+      after: { status: "revoked", teamsLeft },
       reason,
       requestId: actor.requestId,
       ipAddress: actor.ip,

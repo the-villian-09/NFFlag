@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorAlert } from "@/components/form";
 import { api, ApiError } from "@/lib/api";
 import { fmtDate, fmtDateTime } from "@/lib/format";
@@ -43,6 +43,8 @@ interface Board {
   available: Available[];
   awaitingReview: number;
   current: Slot | null;
+  lastPick: number;
+  holes: number;
 }
 
 const age = (birth: string) => {
@@ -62,16 +64,26 @@ export default function DraftPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Only the newest response is applied, so a slow poll can't put an old board back.
+  const seq = useRef(0);
+  const apply = useCallback((board: Board, n: number) => {
+    if (n >= applied.current) {
+      applied.current = n;
+      setB(board);
+    }
+  }, []);
+  const applied = useRef(0);
   const load = useCallback(() => {
+    const n = ++seq.current;
     api
       .get<Board>(`/admin/teams/divisions/${divisionId}/draft`)
-      .then(setB)
+      .then((board) => apply(board, n))
       .catch((err) => {
         if (err instanceof ApiError && (err.code === "SESSION_IDLE" || err.status === 401)) router.replace("/sign-in");
         else if (err instanceof ApiError && err.status === 403) router.replace("/admin");
         else setError(err instanceof Error ? err.message : "Couldn't load the draft.");
       });
-  }, [divisionId, router]);
+  }, [divisionId, router, apply]);
 
   useEffect(() => {
     if (me) load();
@@ -88,8 +100,9 @@ export default function DraftPage() {
     setBusy(true);
     setError(null);
     try {
+      const n = ++seq.current;
       const r = await fn();
-      if (r && typeof r === "object" && "draft" in (r as object)) setB(r as unknown as Board);
+      if (r && typeof r === "object" && "draft" in (r as object)) apply(r as unknown as Board, n);
       else load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong.");
@@ -116,6 +129,12 @@ export default function DraftPage() {
         </div>
       )}
 
+      {b.draft.status === "live" && b.holes > 0 && (
+        <div className="alert error" style={{ marginBottom: 16 }}>
+          {b.holes} earlier pick{b.holes === 1 ? " was" : "s were"} removed (registration cancelled or rejected). The draft keeps going; add
+          players to short teams after it's finished.
+        </div>
+      )}
       {b.draft.status === "setup" && <Setup b={b} busy={busy} act={act} divisionId={divisionId} />}
       {b.draft.status === "live" && <Live b={b} busy={busy} act={act} divisionId={divisionId} teamName={teamName} />}
       {b.draft.status !== "setup" && <Rosters b={b} busy={busy} act={act} divisionId={divisionId} />}
@@ -209,7 +228,9 @@ function Setup({ b, busy, act, divisionId }: { b: Board; busy: boolean; act: Act
 function Live({ b, busy, act, divisionId, teamName }: { b: Board; busy: boolean; act: Act; divisionId: string; teamName: (id: string) => string }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<"name" | "age">("name");
-  const [selected, setSelected] = useState<Available | null>(null);
+  // A selection belongs to one pick and team; if the clock moves, it's dropped.
+  const [sel, setSel] = useState<{ p: Available; pick: number; teamId: string } | null>(null);
+  const selected = sel && b.current && sel.pick === b.current.pick ? sel.p : null;
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
     const rows = b.available.filter((p) => !s || `${p.firstName} ${p.lastName} ${p.preferredName ?? ""}`.toLowerCase().includes(s));
@@ -218,10 +239,9 @@ function Live({ b, busy, act, divisionId, teamName }: { b: Board; busy: boolean;
   const recent = [...b.roster].filter((r) => r.source === "draft").sort((x, y) => (y.pickNumber ?? 0) - (x.pickNumber ?? 0)).slice(0, 6);
   const cur = b.current;
 
-  // A different pick on another screen clears our selection.
   useEffect(() => {
-    if (selected && !b.available.some((a) => a.registrationId === selected.registrationId)) setSelected(null);
-  }, [b.available, selected]);
+    if (sel && (!b.current || sel.pick !== b.current.pick || !b.available.some((a) => a.registrationId === sel.p.registrationId))) setSel(null);
+  }, [b.current, b.available, sel]);
 
   return (
     <>
@@ -238,25 +258,25 @@ function Live({ b, busy, act, divisionId, teamName }: { b: Board; busy: boolean;
         ) : (
           <p style={{ margin: 0, fontSize: 24 }}>All players have been drafted.</p>
         )}
-        {selected && cur && (
+        {selected && cur && sel && (
           <div style={{ marginTop: 16, display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", alignItems: "center" }}>
             <span style={{ fontSize: 20 }}>
-              Draft <strong>{selected.firstName} {selected.lastName}</strong> to <strong>{teamName(cur.teamId)}</strong>?
+              Draft <strong>{selected.firstName} {selected.lastName}</strong> to <strong>{teamName(sel.teamId)}</strong>?
             </span>
             <button
               className="btn"
               disabled={busy}
               onClick={() =>
                 act(async () => {
-                  const r = await api.post(`/admin/teams/divisions/${divisionId}/draft/pick`, { registrationId: selected.registrationId, expectedPick: cur.pick });
-                  setSelected(null);
+                  const r = await api.post(`/admin/teams/divisions/${divisionId}/draft/pick`, { registrationId: sel.p.registrationId, expectedPick: sel.pick });
+                  setSel(null);
                   return r;
                 })
               }
             >
               Confirm pick
             </button>
-            <button className="btn ghost" onClick={() => setSelected(null)}>
+            <button className="btn ghost" onClick={() => setSel(null)}>
               Cancel
             </button>
           </div>
@@ -293,7 +313,7 @@ function Live({ b, busy, act, divisionId, teamName }: { b: Board; busy: boolean;
                     {p.school ? ` · ${p.school}` : ""}
                   </span>
                 </span>
-                <button className="btn small" disabled={!cur || busy} onClick={() => setSelected(p)}>
+                <button className="btn small" disabled={!cur || busy} onClick={() => cur && setSel({ p, pick: cur.pick, teamId: cur.teamId })}>
                   Select
                 </button>
               </li>
@@ -326,7 +346,7 @@ function Live({ b, busy, act, divisionId, teamName }: { b: Board; busy: boolean;
               className="btn ghost"
               disabled={busy || recent.length === 0}
               onClick={() => {
-                if (window.confirm(`Undo pick #${recent[0]?.pickNumber} (${recent[0]?.firstName} ${recent[0]?.lastName})?`)) void act(() => api.post(`/admin/teams/divisions/${divisionId}/draft/undo`));
+                if (window.confirm(`Undo pick #${recent[0]?.pickNumber} (${recent[0]?.firstName} ${recent[0]?.lastName})?`)) void act(() => api.post(`/admin/teams/divisions/${divisionId}/draft/undo`, { expectedPick: recent[0]?.pickNumber }));
               }}
             >
               Undo last pick
