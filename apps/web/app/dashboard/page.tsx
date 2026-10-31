@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
 import { api, ApiError, authApi } from "@/lib/api";
-import { fmtDate, money, StatusBadge } from "@/lib/format";
+import { fmtDate, fmtDateTime, money, StatusBadge } from "@/lib/format";
 import { isAdmin, useMe } from "@/lib/use-me";
 
 interface Household {
@@ -120,6 +120,7 @@ export default function DashboardPage() {
         </section>
         {household && <PlayersCard />}
         {household && <RegistrationsCard />}
+        {household && <WaitlistCard />}
         <SecurityCard enabled={me.mfa.enabled} required={me.mfa.required === "totp"} />
       </div>
     </main>
@@ -307,6 +308,71 @@ function RegistrationsCard() {
           </Link>
         </p>
       )}
+    </section>
+  );
+}
+
+interface WaitlistItem {
+  id: string;
+  status: "waiting" | "offered" | "expired";
+  playerName: string;
+  playerLastName: string;
+  divisionName: string;
+  offerExpiresAt: string | null;
+  position: number | null;
+}
+
+/** Shown only when the family is on a waitlist (or had an offer expire). */
+function WaitlistCard() {
+  const [items, setItems] = useState<WaitlistItem[] | null>(null);
+  const load = () =>
+    api
+      .get<{ items: WaitlistItem[] }>("/waitlist")
+      .then((r) => setItems(r.items))
+      .catch(() => setItems([]));
+  useEffect(() => {
+    void load();
+  }, []);
+  async function leave(id: string) {
+    if (!window.confirm("Leave the waitlist? You'll lose your place in line.")) return;
+    await api.post(`/waitlist/${id}/leave`).catch(() => undefined);
+    void load();
+  }
+  if (!items || items.length === 0) return null;
+  return (
+    <section className="card">
+      <h2>Waitlist</h2>
+      <ul className="list">
+        {items.map((w) => (
+          <li key={w.id}>
+            <span>
+              <span className="who">
+                {w.playerName} {w.playerLastName}
+              </span>
+              <br />
+              <span className="muted">
+                {w.divisionName}
+                {w.status === "waiting" && ` · #${w.position} in line`}
+                {w.status === "offered" && w.offerExpiresAt && ` · claim by ${fmtDateTime(w.offerExpiresAt)}`}
+                {w.status === "expired" && " · offer expired"}
+              </span>
+            </span>
+            <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              {w.status === "offered" && (
+                <Link className="btn small" href={`/register?offer=${w.id}`}>
+                  Claim the spot
+                </Link>
+              )}
+              {w.status === "waiting" && <span className="status info">Waiting</span>}
+              {w.status !== "expired" && (
+                <button className="link-btn" onClick={() => leave(w.id)}>
+                  {w.status === "offered" ? "Decline" : "Leave"}
+                </button>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

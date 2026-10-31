@@ -36,6 +36,13 @@
       "when": 1793404595381,
       "tag": "0004_r1b_payment_recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793411671987,
+      "tag": "0005_r2_waitlist",
+      "breakpoints": true
     }
   ]
 }

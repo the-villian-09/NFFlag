@@ -17,6 +17,8 @@ export const paymentSettingsSchema = z.object({
   feeFixedCents: z.number().int().min(0).max(500),
   /** Minutes a spot is held while a family pays (D-04). */
   holdMinutes: z.number().int().min(5).max(120),
+  /** Hours a waitlisted family has to claim an offered spot (R2). */
+  offerHours: z.number().int().min(1).max(168).default(48),
 });
 export type PaymentSettings = z.infer<typeof paymentSettingsSchema>;
 
@@ -25,6 +27,7 @@ export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   feePercentBps: 290,
   feeFixedCents: 30,
   holdMinutes: 15,
+  offerHours: 48,
 };
 
 export async function getPaymentSettings(conn: DbOrTx = db): Promise<PaymentSettings> {

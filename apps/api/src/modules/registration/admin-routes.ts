@@ -18,6 +18,7 @@ import {
   seasons,
   siteSettings,
   user,
+  waitlistEntries,
 } from "../../db/schema/index.js";
 import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission } from "../../http/context.js";
 import { HttpError } from "../../http/errors.js";
@@ -25,6 +26,7 @@ import { can } from "../platform/access.js";
 import { writeAudit } from "../platform/audit.js";
 import { cancelRegistration, decideRegistration, refundRegistration, spotsTaken } from "./service.js";
 import { getPaymentSettings, paymentSettingsSchema } from "./settings.js";
+import { positionOf, removeFromWaitlist } from "./waitlist.js";
 
 export const adminLeagueRouter = Router();
 adminLeagueRouter.use(requireAuth, requireMfa, adminIdleTimeout);
@@ -428,5 +430,53 @@ adminLeagueRouter.put(
       });
     });
     res.json({ settings: input });
+  }),
+);
+
+/* ---------------- waitlist (R2) ---------------- */
+
+adminLeagueRouter.get(
+  "/waitlist",
+  requirePermission("registrations.read"),
+  handler(async (req, res) => {
+    const q = z.object({ seasonId: z.uuid().optional(), all: z.string().optional() }).parse(req.query);
+    const rows = await db
+      .select({
+        id: waitlistEntries.id,
+        status: waitlistEntries.status,
+        divisionId: waitlistEntries.divisionId,
+        divisionName: divisions.name,
+        playerFirstName: players.firstName,
+        playerLastName: players.lastName,
+        birthDate: players.birthDate,
+        householdName: households.displayName,
+        householdPhone: households.phone,
+        offeredAt: waitlistEntries.offeredAt,
+        offerExpiresAt: waitlistEntries.offerExpiresAt,
+        registrationId: waitlistEntries.registrationId,
+        createdAt: waitlistEntries.createdAt,
+      })
+      .from(waitlistEntries)
+      .innerJoin(players, eq(players.id, waitlistEntries.playerId))
+      .innerJoin(divisions, eq(divisions.id, waitlistEntries.divisionId))
+      .innerJoin(households, eq(households.id, waitlistEntries.householdId))
+      .where(
+        and(
+          q.seasonId ? eq(waitlistEntries.seasonId, q.seasonId) : undefined,
+          q.all ? undefined : inArray(waitlistEntries.status, ["waiting", "offered"]),
+        ),
+      )
+      .orderBy(asc(divisions.sortOrder), asc(divisions.name), asc(waitlistEntries.createdAt), asc(waitlistEntries.id));
+    const items = await Promise.all(rows.map(async (r) => ({ ...r, position: r.status === "waiting" ? (await positionOf(r)) + 1 : null })));
+    res.json({ items });
+  }),
+);
+
+adminLeagueRouter.post(
+  "/waitlist/:id/remove",
+  requirePermission("registrations.manage"),
+  handler(async (req, res) => {
+    const { reason } = z.object({ reason: z.string().trim().min(3).max(190) }).parse(req.body);
+    res.json({ entry: await removeFromWaitlist(actorOf(req), String(req.params.id), reason) });
   }),
 );

@@ -19,6 +19,7 @@ import {
   refunds,
   registrations,
   seasons,
+  waitlistEntries,
 } from "../../db/schema/index.js";
 import { HttpError } from "../../http/errors.js";
 import { logger } from "../../lib/logger.js";
@@ -68,8 +69,29 @@ export function ineligibleReason(player: Pick<Player, "birthDate" | "gender">, d
   return null;
 }
 
-/** Spots taken: paid/approved/processing, plus unexpired holds. Pass `excludeId` to ignore one registration. */
+/**
+ * Spots taken: paid/approved/processing registrations, unexpired holds, and
+ * unexpired waitlist offers (a spot is held for the family it's offered to).
+ * Pass `excludeId` to ignore one registration.
+ */
 export async function spotsTaken(conn: DbOrTx, divisionId: string, excludeId?: string) {
+  const [offers] = await conn
+    .select({ n: sql<number>`count(*)::int` })
+    .from(waitlistEntries)
+    .where(and(eq(waitlistEntries.divisionId, divisionId), eq(waitlistEntries.status, "offered"), gt(waitlistEntries.offerExpiresAt, sql`now()`)));
+  return (offers?.n ?? 0) + (await registrationsTaken(conn, divisionId, excludeId));
+}
+
+/** Families waiting (not yet offered) for a division. */
+export async function waitingCount(conn: DbOrTx, divisionId: string) {
+  const [row] = await conn
+    .select({ n: sql<number>`count(*)::int` })
+    .from(waitlistEntries)
+    .where(and(eq(waitlistEntries.divisionId, divisionId), eq(waitlistEntries.status, "waiting")));
+  return row?.n ?? 0;
+}
+
+async function registrationsTaken(conn: DbOrTx, divisionId: string, excludeId?: string) {
   const [row] = await conn
     .select({ n: sql<number>`count(*)::int` })
     .from(registrations)
@@ -86,7 +108,7 @@ export async function spotsTaken(conn: DbOrTx, divisionId: string, excludeId?: s
   return row?.n ?? 0;
 }
 
-async function lockDivision(tx: DbOrTx, divisionId: string) {
+export async function lockDivision(tx: DbOrTx, divisionId: string) {
   const [d] = await tx.select().from(divisions).where(eq(divisions.id, divisionId)).for("update");
   if (!d) throw new HttpError(404, "NOT_FOUND", "Division not found.");
   return d;
@@ -105,6 +127,8 @@ export async function startRegistration(
   actor: Actor & { userId: string },
   householdId: string,
   input: { playerId: string; divisionId: string; signerName: string; acceptedWaivers: string[] },
+  /** Claiming a waitlist offer: the spot is already held, so the open/full checks are skipped. */
+  offer?: { entryId: string },
 ) {
   const settings = await getPaymentSettings();
   const waivers = await currentWaivers();
@@ -122,10 +146,31 @@ export async function startRegistration(
       if (!player) throw new HttpError(404, "NOT_FOUND", "Player not found.");
 
       const d = await lockDivision(tx, input.divisionId);
-      const [season] = await tx.select().from(seasons).where(eq(seasons.id, d.seasonId));
-      const window = registrationWindow(season!);
-      if (!window.open) throw new HttpError(409, "CONFLICT", window.reason!);
-      if (d.status !== "open") throw new HttpError(409, "CONFLICT", "This division isn't taking registrations.");
+      let holdExpiresAt = new Date(Date.now() + settings.holdMinutes * 60_000);
+      if (offer) {
+        const [entry] = await tx
+          .select()
+          .from(waitlistEntries)
+          .where(and(eq(waitlistEntries.id, offer.entryId), eq(waitlistEntries.householdId, householdId)))
+          .for("update");
+        if (!entry || entry.playerId !== player.id || entry.divisionId !== d.id) throw new HttpError(404, "NOT_FOUND", "Offer not found.");
+        if (entry.status !== "offered" || !entry.offerExpiresAt || entry.offerExpiresAt <= new Date()) {
+          throw new HttpError(409, "CONFLICT", "This offer has expired.");
+        }
+        // The family keeps the rest of their offer window to pay (at least the normal hold).
+        if (entry.offerExpiresAt > holdExpiresAt) holdExpiresAt = entry.offerExpiresAt;
+        // Release the offer's hold; the registration below takes the spot.
+        await tx.update(waitlistEntries).set({ status: "accepted", updatedAt: new Date() }).where(eq(waitlistEntries.id, entry.id));
+      } else {
+        const [season] = await tx.select().from(seasons).where(eq(seasons.id, d.seasonId));
+        const window = registrationWindow(season!);
+        if (!window.open) throw new HttpError(409, "CONFLICT", window.reason!);
+        if (d.status !== "open") throw new HttpError(409, "CONFLICT", "This division isn't taking registrations.");
+        // Fair play: while families are waiting, new registrations join the waitlist instead.
+        if ((await waitingCount(tx, d.id)) > 0) {
+          throw new HttpError(409, "DIVISION_FULL", "This division is full. You can join the waitlist.");
+        }
+      }
       const why = ineligibleReason(player, d);
       if (why) throw new HttpError(409, "CONFLICT", why);
 
@@ -156,7 +201,7 @@ export async function startRegistration(
           householdId,
           submittedBy: actor.userId,
           status: "pending_payment",
-          holdExpiresAt: new Date(Date.now() + settings.holdMinutes * 60_000),
+          holdExpiresAt,
           ...q,
           waivers: waivers.map((w) => ({
             slug: w.slug,
@@ -168,9 +213,12 @@ export async function startRegistration(
           })),
         })
         .returning();
+      if (offer) {
+        await tx.update(waitlistEntries).set({ registrationId: reg!.id }).where(eq(waitlistEntries.id, offer.entryId));
+      }
       await writeAudit(tx, {
         actorUserId: actor.userId,
-        action: "registration.start",
+        action: offer ? "waitlist.accept" : "registration.start",
         targetType: "registration",
         targetId: reg!.id,
         after: reg,
@@ -188,7 +236,7 @@ export async function startRegistration(
   }
 }
 
-function isUniqueViolation(err: unknown) {
+export function isUniqueViolation(err: unknown) {
   const e = err as { code?: string; cause?: { code?: string } };
   return e?.code === "23505" || e?.cause?.code === "23505";
 }

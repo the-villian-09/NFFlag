@@ -76,6 +76,13 @@ export const startRegistrationInput = z.object({
 });
 export type StartRegistrationInput = z.infer<typeof startRegistrationInput>;
 
+export const joinWaitlistInput = z.object({ playerId: z.uuid(), divisionId: z.uuid() });
+
+export const acceptOfferInput = z.object({
+  signerName: z.string().trim().min(3).max(120),
+  acceptedWaivers: z.array(z.string()).max(10),
+});
+
 export const payRegistrationInput = z.object({
   /** Card token (nonce) from the Square Web Payments SDK. */
   sourceId: z.string().min(1).max(500),
@@ -103,6 +110,9 @@ export const DOMAIN_EVENTS = [
   "registration.refunded",
   "eligibility.decided",
   "square.connected",
+  "waitlist.joined",
+  "waitlist.offered",
+  "waitlist.offer_expired",
   "square.disconnected",
 ] as const;
 export type DomainEventName = (typeof DOMAIN_EVENTS)[number];

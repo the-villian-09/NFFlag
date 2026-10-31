@@ -7,7 +7,7 @@ import { ErrorAlert } from "@/components/form";
 import { Markdown } from "@/components/markdown";
 import { SquareCard, type SquareCardHandle } from "@/components/square-card";
 import { api, ApiError } from "@/lib/api";
-import { fmtDate, GENDER_POLICY, money } from "@/lib/format";
+import { fmtDate, fmtDateTime, GENDER_POLICY, money } from "@/lib/format";
 import { useMe } from "@/lib/use-me";
 
 interface Division {
@@ -28,6 +28,8 @@ interface Options {
   window: { open: boolean; reason: string | null };
   feeMode?: "league" | "parent";
   holdMinutes?: number;
+  waitlist?: boolean;
+  offerHours?: number;
   divisions: Division[];
   waivers: { slug: string; title: string; body: string; isPlaceholder: boolean }[];
   square: { applicationId: string; locationId: string; environment: "sandbox" | "production" } | null;
@@ -51,7 +53,17 @@ interface Registration {
   paymentError?: string | null;
 }
 
-type Step = "player" | "division" | "waivers" | "pay" | "done";
+interface WaitlistItem {
+  id: string;
+  status: "waiting" | "offered" | "expired";
+  playerId: string;
+  divisionId: string;
+  divisionName: string;
+  offerExpiresAt: string | null;
+  position: number | null;
+}
+
+type Step = "player" | "division" | "waivers" | "pay" | "done" | "waitlist";
 const STEPS: { key: Step; label: string }[] = [
   { key: "player", label: "1 Player" },
   { key: "division", label: "2 Division" },
@@ -74,12 +86,20 @@ function Register() {
   const [division, setDivision] = useState<Division | null>(null);
   const [eligibility, setEligibility] = useState<Record<string, string | null>>({});
   const [reg, setReg] = useState<Registration | null>(null);
+  const [waitlist, setWaitlist] = useState<WaitlistItem[]>([]);
+  /** Claiming a waitlist offer (from the offer email link). */
+  const [offerId, setOfferId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [o, r] = await Promise.all([api.get<Options>("/registration/options"), api.get<{ items: Registration[] }>("/registrations")]);
+      const [o, r, w] = await Promise.all([
+        api.get<Options>("/registration/options"),
+        api.get<{ items: Registration[] }>("/registrations"),
+        api.get<{ items: WaitlistItem[] }>("/waitlist").catch(() => ({ items: [] as WaitlistItem[] })),
+      ]);
       setOptions(o);
       setRegs(r.items);
+      setWaitlist(w.items);
       try {
         setPlayers((await api.get<{ items: Player[] }>("/players")).items);
       } catch (err) {
@@ -95,9 +115,16 @@ function Register() {
     if (me) void load();
   }, [me, load]);
 
-  // Deep links: ?player=<id> preselects a child; ?registration=<id> resumes a payment.
+  // Deep links: ?player=<id> preselects a child; ?registration=<id> resumes a payment; ?offer=<id> claims a waitlist offer.
   useEffect(() => {
     if (!players || !options) return;
+    const offer = params.get("offer");
+    if (offer) {
+      const w = waitlist.find((x) => x.id === offer);
+      if (w?.status === "offered") startOffer(w);
+      else setLoadError(w?.status === "expired" ? "This offer has expired, and the spot went to the next family." : "This offer is no longer available.");
+      return;
+    }
     const resume = params.get("registration");
     if (resume) {
       const r = regs.find((x) => x.id === resume && (x.status === "pending_payment" || x.status === "expired"));
@@ -113,6 +140,19 @@ function Register() {
     if (p) void choosePlayer(p);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [players, options]);
+
+  function startOffer(w: WaitlistItem) {
+    const p = players?.find((x) => x.id === w.playerId) ?? null;
+    const d = options?.divisions.find((x) => x.id === w.divisionId) ?? null;
+    if (!p || !d) {
+      setLoadError("This offer is no longer available.");
+      return;
+    }
+    setOfferId(w.id);
+    setPlayer(p);
+    setDivision(d);
+    setStep("waivers");
+  }
 
   async function choosePlayer(p: Player) {
     setPlayer(p);
@@ -134,7 +174,9 @@ function Register() {
 
   if (loading || !me) return <main className="page muted">Loading…</main>;
 
-  const closed = options && (!options.enabled || !options.window.open);
+  // A waitlist offer can be claimed even after general registration closes.
+  const closed = options && (!options.enabled || !options.window.open) && !offerId;
+  const waitlistFor = (playerId: string) => waitlist.find((w) => w.playerId === playerId && (w.status === "waiting" || w.status === "offered"));
 
   return (
     <main className="page" style={{ maxWidth: 1000 }}>
@@ -184,12 +226,19 @@ function Register() {
                 {players.map((p) => {
                   const r = activeFor.get(p.id);
                   const busy = r && r.status !== "pending_payment";
+                  const w = waitlistFor(p.id);
                   return (
                     <button
                       key={p.id}
                       className={`choice ${p.gender === "girl" ? "girls" : ""}`}
-                      disabled={!!busy}
-                      onClick={() => (r?.status === "pending_payment" ? (setReg(r), setPlayer(p), setStep("pay")) : choosePlayer(p))}
+                      disabled={!!busy || w?.status === "waiting"}
+                      onClick={() =>
+                        w?.status === "offered"
+                          ? startOffer(w)
+                          : r?.status === "pending_payment"
+                            ? (setReg(r), setPlayer(p), setStep("pay"))
+                            : choosePlayer(p)
+                      }
                     >
                       <strong>
                         {p.firstName} {p.lastName}
@@ -197,6 +246,12 @@ function Register() {
                       <span className="muted">Born {fmtDate(p.birthDate)}</span>
                       {busy && <span className="muted">Already registered this season</span>}
                       {r?.status === "pending_payment" && <span className="countdown">Payment not finished — continue</span>}
+                      {w?.status === "waiting" && (
+                        <span className="muted">
+                          #{w.position} on the {w.divisionName} waitlist
+                        </span>
+                      )}
+                      {w?.status === "offered" && <span className="countdown">A spot opened in {w.divisionName} — claim it</span>}
                     </button>
                   );
                 })}
@@ -214,7 +269,8 @@ function Register() {
               <div className="choice-grid">
                 {options.divisions.map((d) => {
                   const reason = eligibility[d.id] ?? null;
-                  const disabled = d.full || !!reason;
+                  const canWait = d.full && !reason && !!options.waitlist;
+                  const disabled = (d.full && !canWait) || !!reason;
                   return (
                     <button
                       key={d.id}
@@ -223,7 +279,7 @@ function Register() {
                       aria-pressed={division?.id === d.id}
                       onClick={() => {
                         setDivision(d);
-                        setStep("waivers");
+                        setStep(d.full ? "waitlist" : "waivers");
                       }}
                     >
                       <strong>{d.name}</strong>
@@ -235,7 +291,14 @@ function Register() {
                       </span>
                       {d.eligibilityNotes && <span className="muted">{d.eligibilityNotes}</span>}
                       <span className="price">{money(d.priceCents)}</span>
-                      {d.full ? <span className="status bad">Full</span> : reason ? <span className="hint">{reason}</span> : null}
+                      {reason ? (
+                        <span className="hint">{reason}</span>
+                      ) : d.full ? (
+                        <span>
+                          <span className="status bad">Full</span>
+                          {canWait && <span className="countdown"> Join the waitlist</span>}
+                        </span>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -248,8 +311,18 @@ function Register() {
             </section>
           )}
 
+          {step === "waitlist" && player && division && (
+            <JoinWaitlist
+              player={player}
+              division={division}
+              offerHours={options.offerHours ?? 48}
+              onBack={() => setStep("division")}
+            />
+          )}
+
           {step === "waivers" && player && division && (
             <Waivers
+              offerId={offerId}
               options={options}
               player={player}
               division={division}
@@ -312,7 +385,61 @@ function Register() {
   );
 }
 
+function JoinWaitlist({ player, division, offerHours, onBack }: { player: Player; division: Division; offerHours: number; onBack: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [position, setPosition] = useState<number | null>(null);
+  async function join() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.post<{ position: number }>("/waitlist", { playerId: player.id, divisionId: division.id });
+      setPosition(r.position);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (position) {
+    return (
+      <div className="card">
+        <h2>You're on the waitlist</h2>
+        <p>
+          {player.firstName} is <strong>#{position}</strong> on the {division.name} waitlist. We've emailed you a confirmation.
+        </p>
+        <p className="muted">
+          If a spot opens, we'll email you an offer. You'll have {offerHours} hours to claim it and pay before it goes to the next family. Nothing is
+          charged until you claim a spot.
+        </p>
+        <Link className="btn" href="/dashboard">
+          Back to my account
+        </Link>
+      </div>
+    );
+  }
+  return (
+    <div className="card">
+      <h2>{division.name} is full</h2>
+      <p>
+        Join the waitlist for {player.firstName}. Families are offered spots in the order they joined, and nothing is charged unless you claim one.
+      </p>
+      <p className="muted">When a spot opens, you'll get an email and have {offerHours} hours to claim it.</p>
+      <ErrorAlert error={error} />
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <button className="btn" onClick={join} disabled={busy}>
+          {busy ? "Joining…" : "Join the waitlist"}
+        </button>
+        <button type="button" className="link-btn" onClick={onBack}>
+          ← Back
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Waivers({
+  offerId,
   options,
   player,
   division,
@@ -320,6 +447,7 @@ function Waivers({
   onBack,
   onStarted,
 }: {
+  offerId: string | null;
   options: Options;
   player: Player;
   division: Division;
@@ -338,12 +466,15 @@ function Waivers({
     setBusy(true);
     setError(null);
     try {
-      const r = await api.post<{ registration: Registration }>("/registrations", {
-        playerId: player.id,
-        divisionId: division.id,
-        signerName: signer,
-        acceptedWaivers: options.waivers.filter((w) => accepted[w.slug]).map((w) => w.slug),
-      });
+      const acceptedWaivers = options.waivers.filter((w) => accepted[w.slug]).map((w) => w.slug);
+      const r = offerId
+        ? await api.post<{ registration: Registration }>(`/waitlist/${offerId}/accept`, { signerName: signer, acceptedWaivers })
+        : await api.post<{ registration: Registration }>("/registrations", {
+            playerId: player.id,
+            divisionId: division.id,
+            signerName: signer,
+            acceptedWaivers,
+          });
       onStarted({ ...r.registration, divisionName: division.name });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
@@ -381,7 +512,11 @@ function Waivers({
           ← Back
         </button>
       </div>
-      <span className="hint">Continuing holds {player.firstName}'s spot for {options.holdMinutes ?? 15} minutes while you pay.</span>
+      <span className="hint">
+        {offerId
+          ? `${player.firstName}'s spot stays held until your offer deadline.`
+          : `Continuing holds ${player.firstName}'s spot for ${options.holdMinutes ?? 15} minutes while you pay.`}
+      </span>
     </form>
   );
 }
@@ -397,6 +532,8 @@ function useCountdown(until: string | null) {
   if (ms <= 0) return "0:00";
   const m = Math.floor(ms / 60000);
   const s = Math.floor((ms % 60000) / 1000);
+  // Long holds (waitlist offers) read better as a deadline than a countdown.
+  if (m >= 90) return `until ${fmtDateTime(until)}`;
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
@@ -477,7 +614,11 @@ function Pay({
         </div>
         {left && (
           <p className="countdown" style={{ marginTop: 12 }}>
-            {left === "0:00" ? "Your hold has expired. You can still pay if there's room." : `Spot held for ${left}`}
+            {left === "0:00"
+              ? "Your hold has expired. You can still pay if there's room."
+              : left.startsWith("until")
+                ? `Spot held ${left}`
+                : `Spot held for ${left}`}
           </p>
         )}
         <button type="button" className="link-btn" onClick={onCancel} disabled={busy}>

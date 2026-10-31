@@ -273,3 +273,43 @@ export const squareWebhookEvents = pgTable("square_webhook_events", {
   eventType: text("event_type").notNull(),
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/* ---------------------------------------------------------------- R2 ---- */
+
+/**
+ * Waitlist for a full division (R2). First come, first served by created_at.
+ * waiting → offered (spot held until offer_expires_at) → accepted (became a
+ * registration) | expired | declined | removed.
+ */
+export const waitlistEntries = pgTable(
+  "waitlist_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seasonId: uuid("season_id")
+      .notNull()
+      .references(() => seasons.id),
+    divisionId: uuid("division_id")
+      .notNull()
+      .references(() => divisions.id),
+    playerId: uuid("player_id")
+      .notNull()
+      .references(() => players.id),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    status: text("status").notNull().default("waiting"),
+    offeredAt: timestamp("offered_at", { withTimezone: true }),
+    offerExpiresAt: timestamp("offer_expires_at", { withTimezone: true }),
+    registrationId: uuid("registration_id").references(() => registrations.id),
+    removedReason: text("removed_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("waitlist_division_status_idx").on(t.divisionId, t.status, t.createdAt),
+    index("waitlist_household_idx").on(t.householdId),
+    // One live waitlist place per child per season.
+    uniqueIndex("waitlist_one_active_per_player").on(t.seasonId, t.playerId).where(sql`${t.status} in ('waiting','offered')`),
+  ],
+);

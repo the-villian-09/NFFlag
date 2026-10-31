@@ -60,6 +60,15 @@ export default function AdminPage() {
             </Link>
           </div>
         )}
+        {me.permissions.includes("registrations.read") && (
+          <div className="card">
+            <h2>Waitlist</h2>
+            <p className="muted">Families waiting for a spot in full divisions, and open offers.</p>
+            <Link className="btn small" href="/admin/waitlist">
+              Open waitlist
+            </Link>
+          </div>
+        )}
         {me.permissions.includes("seasons.read") && (
           <div className="card">
             <h2>Seasons and divisions</h2>

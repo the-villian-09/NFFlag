@@ -43,3 +43,12 @@ and leave a pointer to the question. Update this file when a decision is made.
 - **Unknown payment outcome** (network error / Square 5xx): the registration stays in "processing" and the Square webhook settles it;
   the family is told not to pay again.
 - **Medical details** live in `player_medical`, readable only with `medical.read`; every admin view is audited; never exported to CSV.
+
+## R2 waitlist (Oct 30)
+
+- Full division → families join a waitlist (first come, first served). While anyone is waiting, new families can't
+  register directly; they join the line.
+- A freed spot (hold lapses, cancellation, rejection, capacity raised) is offered to the next family by email within a
+  minute (worker). The offer holds the spot for `offerHours` (default 48, Admin → Payments); claiming it means accepting
+  the waivers and paying, with the spot held until the offer deadline. Unclaimed offers expire and pass on.
+- Behind the `r2.waitlist_offers` release switch. Admins see the list (Admin → Waitlist) and can remove a family.

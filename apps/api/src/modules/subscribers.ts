@@ -6,7 +6,8 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { env } from "../config.js";
 import { db } from "../db/client.js";
-import { divisions, householdMembers, payments, players, registrations, seasons, user, userRoleAssignments } from "../db/schema/index.js";
+import { divisions, householdMembers, payments, players, registrations, seasons, user, userRoleAssignments, waitlistEntries } from "../db/schema/index.js";
+import { positionOf } from "./registration/waitlist.js";
 import { getEmailSender } from "../lib/email.js";
 import { templates } from "../lib/email-templates.js";
 import { logger } from "../lib/logger.js";
@@ -40,7 +41,68 @@ async function registrationContext(registrationId: string) {
   return { ...r, playerName: `${r.player} ${r.playerLast}`, emails: guardians.map((g) => g.email) };
 }
 
+async function waitlistContext(entryId: string) {
+  const [e] = await db
+    .select({
+      id: waitlistEntries.id,
+      householdId: waitlistEntries.householdId,
+      divisionId: waitlistEntries.divisionId,
+      createdAt: waitlistEntries.createdAt,
+      status: waitlistEntries.status,
+      offerExpiresAt: waitlistEntries.offerExpiresAt,
+      player: players.firstName,
+      playerLast: players.lastName,
+      division: divisions.name,
+    })
+    .from(waitlistEntries)
+    .innerJoin(players, eq(players.id, waitlistEntries.playerId))
+    .innerJoin(divisions, eq(divisions.id, waitlistEntries.divisionId))
+    .where(eq(waitlistEntries.id, entryId));
+  if (!e) return null;
+  const guardians = await db
+    .select({ email: user.email })
+    .from(householdMembers)
+    .innerJoin(user, eq(user.id, householdMembers.userId))
+    .where(eq(householdMembers.householdId, e.householdId));
+  return { ...e, playerName: `${e.player} ${e.playerLast}`, emails: guardians.map((g) => g.email) };
+}
+
+const fmtDeadline = (d: Date) =>
+  d.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York", timeZoneName: "short" });
+
 export function registerSubscribers() {
+  subscribe("waitlist.joined", async (e) => {
+    const c = await waitlistContext(e.aggregateId);
+    if (!c || c.status !== "waiting") return;
+    const position = (await positionOf(c)) + 1;
+    for (const to of c.emails) {
+      await getEmailSender().send(templates.waitlistJoined(to, { player: c.playerName, division: c.division, position, dashboardUrl: `${base()}/dashboard` }));
+    }
+  });
+
+  subscribe("waitlist.offered", async (e) => {
+    const c = await waitlistContext(e.aggregateId);
+    if (!c || c.status !== "offered" || !c.offerExpiresAt) return;
+    for (const to of c.emails) {
+      await getEmailSender().send(
+        templates.waitlistOffered(to, {
+          player: c.playerName,
+          division: c.division,
+          deadline: fmtDeadline(c.offerExpiresAt),
+          claimUrl: `${base()}/register?offer=${c.id}`,
+        }),
+      );
+    }
+  });
+
+  subscribe("waitlist.offer_expired", async (e) => {
+    const c = await waitlistContext(e.aggregateId);
+    if (!c || c.status !== "expired") return;
+    for (const to of c.emails) {
+      await getEmailSender().send(templates.waitlistExpired(to, { player: c.playerName, division: c.division, dashboardUrl: `${base()}/dashboard` }));
+    }
+  });
+
   subscribe("user.mfa_reset", async (e) => {
     logger.info({ userId: e.aggregateId }, "mfa reset recorded");
   });

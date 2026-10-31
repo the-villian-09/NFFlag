@@ -10,6 +10,7 @@ import { logger } from "./lib/logger.js";
 import { registerSubscribers } from "./modules/subscribers.js";
 import { processOutbox } from "./modules/platform/outbox.js";
 import { expireHolds, reconcileProcessing } from "./modules/registration/service.js";
+import { processWaitlist } from "./modules/registration/waitlist.js";
 import { refreshConnection } from "./modules/square/client.js";
 import { db } from "./db/client.js";
 import { squareConnection } from "./db/schema/index.js";
@@ -23,6 +24,8 @@ async function housekeeping() {
   if (settled) logger.info({ settled }, "settled payments that were stuck in processing");
   const expired = await expireHolds();
   if (expired) logger.info({ expired }, "released unpaid registration holds");
+  const wl = await processWaitlist();
+  if (wl.offered || wl.expired) logger.info(wl, "waitlist offers sent / expired");
   const [conn] = await db
     .select({ expiresAt: squareConnection.accessTokenExpiresAt, lastRefreshedAt: squareConnection.lastRefreshedAt })
     .from(squareConnection)

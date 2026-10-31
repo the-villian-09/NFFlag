@@ -207,7 +207,7 @@ beforeAll(async () => {
 
 describe("fee quote", () => {
   it("adds nothing when the league absorbs the fee and grosses up when the parent pays", () => {
-    const s = { feeMode: "league" as const, feePercentBps: 290, feeFixedCents: 30, holdMinutes: 15 };
+    const s = { feeMode: "league" as const, feePercentBps: 290, feeFixedCents: 30, holdMinutes: 15, offerHours: 48 };
     expect(quote(10000, s)).toEqual({ priceCents: 10000, feeCents: 0, totalCents: 10000 });
     const p = quote(10000, { ...s, feeMode: "parent" });
     expect(p).toEqual({ priceCents: 10000, feeCents: 330, totalCents: 10330 });

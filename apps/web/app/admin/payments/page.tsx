@@ -13,6 +13,7 @@ interface Settings {
   feePercentBps: number;
   feeFixedCents: number;
   holdMinutes: number;
+  offerHours: number;
 }
 interface Status {
   settings: Settings;
@@ -241,7 +242,7 @@ function FeeCard({ initial, canManage }: { initial: Settings; canManage: boolean
 
   return (
     <section className="card">
-      <h2>Card processing fee</h2>
+      <h2>Checkout settings</h2>
       <form className="stack" onSubmit={save}>
         <ErrorAlert error={error} />
         {saved && <div className="alert ok">Saved. New registrations use this right away.</div>}
@@ -283,6 +284,10 @@ function FeeCard({ initial, canManage }: { initial: Settings; canManage: boolean
           <label>
             Plus per payment (¢)
             <input type="number" min={0} max={500} value={v.feeFixedCents} disabled={!canManage} onChange={(e) => setV({ ...v, feeFixedCents: Number(e.target.value) })} />
+          </label>
+          <label>
+            Waitlist offer lasts (hours)
+            <input type="number" min={1} max={168} value={v.offerHours ?? 48} disabled={!canManage} onChange={(e) => setV({ ...v, offerHours: Number(e.target.value) })} />
           </label>
           <label>
             Hold a spot for (minutes)

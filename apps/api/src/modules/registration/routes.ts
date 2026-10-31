@@ -4,7 +4,7 @@
  * Registration itself is behind the `r1b.registration` release switch;
  * managing children is always available.
  */
-import { payRegistrationInput, playerInput, startRegistrationInput } from "@nffl/shared";
+import { acceptOfferInput, joinWaitlistInput, payRegistrationInput, playerInput, startRegistrationInput } from "@nffl/shared";
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import { Router, type RequestHandler } from "express";
 import { rateLimit } from "express-rate-limit";
@@ -32,7 +32,9 @@ import {
   registrationWindow,
   spotsTaken,
   startRegistration,
+  waitingCount,
 } from "./service.js";
+import { acceptOffer, joinWaitlist, leaveWaitlist, listMyWaitlist, WAITLIST_FLAG } from "./waitlist.js";
 import { getPaymentSettings, quote } from "./settings.js";
 
 export const registrationRouter = Router();
@@ -215,7 +217,7 @@ registrationRouter.get(
         birthDateTo: d.birthDateTo,
         eligibilityNotes: d.eligibilityNotes,
         status: d.status,
-        full: d.status === "full" || (await spotsTaken(db, d.id)) >= d.capacity,
+        full: d.status === "full" || (await spotsTaken(db, d.id)) >= d.capacity || (await waitingCount(db, d.id)) > 0,
         ...quote(d.priceCents, settings),
       })),
     );
@@ -227,6 +229,8 @@ registrationRouter.get(
       window: registrationWindow(season),
       feeMode: settings.feeMode,
       holdMinutes: settings.holdMinutes,
+      waitlist: await isEnabled(WAITLIST_FLAG),
+      offerHours: settings.offerHours,
       divisions: withSpots,
       waivers: waivers.map((w) => ({ slug: w.slug, title: w.title, body: w.body, isPlaceholder: w.isPlaceholder })),
       // Public values for the Square card form. null = payments unavailable right now.
@@ -369,5 +373,49 @@ registrationRouter.post(
       actorOf(req),
     );
     res.json({ registration });
+  }),
+);
+
+/* ---------------- waitlist (R2) ---------------- */
+
+registrationRouter.get(
+  "/waitlist",
+  requireAuth,
+  requireMfa,
+  handler(async (req, res) => {
+    const householdId = await householdOf(req.ctx.auth!.user.id).catch(() => null);
+    res.json({ items: householdId ? await listMyWaitlist(householdId) : [] });
+  }),
+);
+
+registrationRouter.post(
+  "/waitlist",
+  requireAuth,
+  requireMfa,
+  handler(async (req, res) => {
+    const input = joinWaitlistInput.parse(req.body);
+    const householdId = await householdOf(req.ctx.auth!.user.id);
+    res.status(201).json(await joinWaitlist(actorOf(req), householdId, input));
+  }),
+);
+
+registrationRouter.post(
+  "/waitlist/:id/leave",
+  requireAuth,
+  requireMfa,
+  handler(async (req, res) => {
+    const householdId = await householdOf(req.ctx.auth!.user.id);
+    res.json({ entry: await leaveWaitlist(actorOf(req), householdId, String(req.params.id)) });
+  }),
+);
+
+registrationRouter.post(
+  "/waitlist/:id/accept",
+  requireAuth,
+  requireMfa,
+  handler(async (req, res) => {
+    const input = acceptOfferInput.parse(req.body);
+    const householdId = await householdOf(req.ctx.auth!.user.id);
+    res.status(201).json({ registration: await acceptOffer(actorOf(req), householdId, String(req.params.id), input) });
   }),
 );

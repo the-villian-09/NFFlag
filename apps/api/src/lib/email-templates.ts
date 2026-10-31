@@ -131,4 +131,42 @@ export const templates = {
       { replyTo: d.email },
     );
   },
+
+  waitlistJoined(to: string, d: { player: string; division: string; position: number; dashboardUrl: string }): EmailMessage {
+    return message(to, "waitlist.joined", `${d.player} is on the ${d.division} waitlist`, {
+      preheader: `Number ${d.position} in line.`,
+      heading: "You're on the waitlist",
+      paragraphs: [
+        `${d.player} is on the waitlist for ${d.division}.`,
+        "If a spot opens, we'll email you an offer. You'll have a limited time to claim it and pay, so keep an eye on your inbox.",
+      ],
+      details: [["Place in line", `#${d.position}`]],
+      button: { label: "View my account", url: d.dashboardUrl },
+    });
+  },
+
+  waitlistOffered(to: string, d: { player: string; division: string; deadline: string; claimUrl: string }): EmailMessage {
+    return message(to, "waitlist.offered", `A spot opened up for ${d.player} in ${d.division}`, {
+      preheader: `Claim it by ${d.deadline}.`,
+      heading: "A spot opened up!",
+      paragraphs: [
+        `Good news: a spot opened up in ${d.division}, and it's being held for ${d.player}.`,
+        `Claim it by ${d.deadline}. After that, it goes to the next family on the waitlist.`,
+      ],
+      details: [["Claim by", d.deadline]],
+      button: { label: "Claim the spot", url: d.claimUrl },
+    });
+  },
+
+  waitlistExpired(to: string, d: { player: string; division: string; dashboardUrl: string }): EmailMessage {
+    return message(to, "waitlist.offer_expired", `Waitlist offer expired: ${d.player}`, {
+      preheader: "The held spot was passed to the next family.",
+      heading: "Your offer expired",
+      paragraphs: [
+        `The spot we held for ${d.player} in ${d.division} wasn't claimed in time, so it has gone to the next family on the waitlist.`,
+        "If you still want to play, contact the league.",
+      ],
+      button: { label: "View my account", url: d.dashboardUrl },
+    });
+  },
 };
