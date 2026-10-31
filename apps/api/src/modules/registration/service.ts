@@ -244,7 +244,7 @@ export function isUniqueViolation(err: unknown) {
 /* ---------------- pay ---------------- */
 
 /** What was sent to Square, kept until the outcome is known so the worker can re-ask with the same idempotency key. */
-interface PaymentRequest {
+export interface PaymentRequest {
   idempotencyKey: string;
   sourceId: string;
   verificationToken?: string;
@@ -253,7 +253,7 @@ interface PaymentRequest {
   buyerEmail?: string;
 }
 
-const COMPLETED = ["COMPLETED", "APPROVED"];
+export const COMPLETED = ["COMPLETED", "APPROVED"];
 
 /**
  * Locks the division, then the registration (same order as startRegistration,
@@ -545,19 +545,28 @@ export async function recordCompletedPayment(
 
 /* ---------------- refunds ---------------- */
 
+/** Who a payment belongs to. */
+export type PaymentOwner = { registrationId: string } | { applicationId: string };
+
+const ownerFilter = (o: PaymentOwner) =>
+  "registrationId" in o ? eq(payments.registrationId, o.registrationId) : eq(payments.applicationId, o.applicationId);
+
+/** Refunds part or all of what's left on a registration's payment (see issueRefund). */
+export function refundRegistration(registrationId: string, input: { amountCents?: number; reason: string; paymentId?: string }, actor: Actor) {
+  return issueRefund({ registrationId }, input, actor);
+}
+
 /**
- * Refunds part or all of what's left on a payment (the registration's most
- * recent one with money left, unless `paymentId` is given). The amount is
- * reserved under a row lock before calling Square, so two clicks can't both
- * refund the same money.
+ * Refunds part or all of what's left on a payment (the owner's most recent one
+ * with money left, unless `paymentId` is given). The amount is reserved under a
+ * row lock before calling Square, so two clicks can't both refund the same money.
  */
-export async function refundRegistration(
-  registrationId: string,
-  input: { amountCents?: number; reason: string; paymentId?: string },
-  actor: Actor,
-) {
+export async function issueRefund(owner: PaymentOwner, input: { amountCents?: number; reason: string; paymentId?: string }, actor: Actor) {
   const creds = await getCredentials().catch(() => null);
   if (!creds) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Square isn't connected, so refunds can't be issued right now.");
+  const target = "registrationId" in owner
+    ? { type: "registration", id: owner.registrationId, event: "registration.refunded" as const }
+    : { type: "volunteer_application", id: owner.applicationId, event: "staff.application_refunded" as const };
 
   const { p, amount } = await db.transaction(async (tx) => {
     const [p] = await tx
@@ -565,7 +574,7 @@ export async function refundRegistration(
       .from(payments)
       .where(
         and(
-          eq(payments.registrationId, registrationId),
+          ownerFilter(owner),
           inArray(payments.status, COMPLETED),
           input.paymentId ? eq(payments.id, input.paymentId) : sql`${payments.amountCents} > ${payments.refundedCents}`,
         ),
@@ -617,20 +626,20 @@ export async function refundRegistration(
     }
     await writeAudit(tx, {
       actorUserId: actor.userId,
-      action: "registration.refund",
-      targetType: "registration",
-      targetId: registrationId,
+      action: `${target.type}.refund`,
+      targetType: target.type,
+      targetId: target.id,
       after: { refundId: refund.id, paymentId: p.providerPaymentId, amountCents: amount, status: refund.status },
       reason: input.reason,
       requestId: actor.requestId,
       ipAddress: actor.ip,
     });
     await publish(tx, {
-      name: "registration.refunded",
-      aggregateType: "registration",
-      aggregateId: registrationId,
+      name: target.event,
+      aggregateType: target.type,
+      aggregateId: target.id,
       payload: { amountCents: amount },
-      dedupeKey: `registration.refunded:${refund.id}`,
+      dedupeKey: `${target.event}:${refund.id}`,
     });
   });
   return { refundId: refund.id, amountCents: amount, status: refund.status };

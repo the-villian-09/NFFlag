@@ -89,6 +89,7 @@ describe("admin content editing", () => {
       "waiver-liability",
       "waiver-medical",
       "waiver-media",
+      "volunteer-agreement",
     ]);
 
     const res = await admin.put("/api/v1/admin/content/pages/faq").send({ title: "FAQ", body: "## Updated\n\nNew answer." });

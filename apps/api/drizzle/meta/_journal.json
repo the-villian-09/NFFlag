@@ -43,6 +43,13 @@
       "when": 1793411671987,
       "tag": "0005_r2_waitlist",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793412681520,
+      "tag": "0006_r2_volunteer_applications",
+      "breakpoints": true
     }
   ]
 }

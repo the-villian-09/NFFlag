@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ContactForm } from "@/components/contact-form";
@@ -37,6 +38,16 @@ export default async function ContentPageView({ params }: { params: Promise<{ sl
         <p className="placeholder-note">Placeholder text: the league is finalizing this page.</p>
       )}
       {page ? <Markdown source={page.body} /> : <p className="muted">This page is temporarily unavailable. Please try again shortly.</p>}
+
+      {slug === "coaches" && (
+        <section className="card" style={{ marginTop: 32 }}>
+          <h2>Apply to volunteer</h2>
+          <p className="muted">Coaches and team managers apply online. Sign in (or create a free account), fill out a short application and pay the volunteer fee. It's refunded if you're not approved.</p>
+          <Link className="btn" href="/volunteer">
+            Apply now
+          </Link>
+        </section>
+      )}
 
       {slug === "contact" && (
         <div className="contact-grid">

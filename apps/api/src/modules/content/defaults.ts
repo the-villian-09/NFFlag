@@ -23,6 +23,7 @@ export const PAGE_SLUGS = [
   "waiver-liability",
   "waiver-medical",
   "waiver-media",
+  "volunteer-agreement",
 ] as const;
 
 /** Waivers a parent must accept to register (shown in the registration flow, edited like any page). */
@@ -283,6 +284,18 @@ I confirm that the medical and emergency-contact information I have provided is 
 To opt out at any time, contact [LEAGUE EMAIL].`,
   },
 );
+
+DEFAULT_PAGES.push({
+  slug: "volunteer-agreement",
+  title: "Volunteer code of conduct and screening consent",
+  body:
+    DRAFT_NOTICE +
+    `As a [LEAGUE NAME] coach or team manager, I agree to put players' safety and enjoyment first, follow the league's rules and code of conduct, and treat players, families, officials and other volunteers with respect.
+
+I consent to the background screening the league requires for volunteers who work with children under Florida law, and I understand I can't be approved until it is complete and cleared.
+
+I understand the volunteer fee is refunded if my application isn't approved.`,
+});
 
 export interface Announcement {
   enabled: boolean;

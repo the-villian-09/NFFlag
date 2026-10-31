@@ -83,6 +83,18 @@ export const acceptOfferInput = z.object({
   acceptedWaivers: z.array(z.string()).max(10),
 });
 
+export const volunteerApplicationInput = z.object({
+  roleKey: z.enum(["head_coach", "assistant_coach", "team_manager"]),
+  preferredDivisionId: z.uuid().optional(),
+  playerId: z.uuid().optional(),
+  phone: z.string().trim().min(7).max(32),
+  experience: optionalText(2000),
+  notes: optionalText(1000),
+  shirtSize: optionalText(20),
+  signerName: z.string().trim().min(3).max(120),
+  acceptAgreement: z.boolean(),
+});
+
 export const payRegistrationInput = z.object({
   /** Card token (nonce) from the Square Web Payments SDK. */
   sourceId: z.string().min(1).max(500),
@@ -113,6 +125,9 @@ export const DOMAIN_EVENTS = [
   "waitlist.joined",
   "waitlist.offered",
   "waitlist.offer_expired",
+  "staff.application_submitted",
+  "staff.application_decided",
+  "staff.application_refunded",
   "square.disconnected",
 ] as const;
 export type DomainEventName = (typeof DOMAIN_EVENTS)[number];

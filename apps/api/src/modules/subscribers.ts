@@ -8,6 +8,8 @@ import { env } from "../config.js";
 import { db } from "../db/client.js";
 import { divisions, householdMembers, payments, players, registrations, seasons, user, userRoleAssignments, waitlistEntries } from "../db/schema/index.js";
 import { positionOf } from "./registration/waitlist.js";
+import { ROLE_LABELS, type VolunteerRole } from "./staff/service.js";
+import { volunteerApplications } from "../db/schema/index.js";
 import { getEmailSender } from "../lib/email.js";
 import { templates } from "../lib/email-templates.js";
 import { logger } from "../lib/logger.js";
@@ -70,7 +72,40 @@ async function waitlistContext(entryId: string) {
 const fmtDeadline = (d: Date) =>
   d.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York", timeZoneName: "short" });
 
+async function applicationContext(id: string) {
+  const [a] = await db
+    .select({ roleKey: volunteerApplications.roleKey, totalCents: volunteerApplications.totalCents, paidAt: volunteerApplications.paidAt, email: user.email, season: seasons.name })
+    .from(volunteerApplications)
+    .innerJoin(user, eq(user.id, volunteerApplications.userId))
+    .innerJoin(seasons, eq(seasons.id, volunteerApplications.seasonId))
+    .where(eq(volunteerApplications.id, id));
+  return a ? { ...a, role: ROLE_LABELS[a.roleKey as VolunteerRole] } : null;
+}
+
 export function registerSubscribers() {
+  subscribe("staff.application_submitted", async (e) => {
+    const a = await applicationContext(e.aggregateId);
+    if (!a) return;
+    await getEmailSender().send(
+      templates.volunteerSubmitted(a.email, { role: a.role, season: a.season, amount: a.paidAt ? money(a.totalCents) : null, accountUrl: `${base()}/volunteer` }),
+    );
+  });
+
+  subscribe("staff.application_decided", async (e) => {
+    const a = await applicationContext(e.aggregateId);
+    if (!a) return;
+    const p = e.payload as { decision?: string; reason?: string | null };
+    await getEmailSender().send(
+      templates.volunteerDecision(a.email, { role: a.role, season: a.season, approved: p.decision === "approved", reason: p.reason ?? null, accountUrl: `${base()}/volunteer` }),
+    );
+  });
+
+  subscribe("staff.application_refunded", async (e) => {
+    const a = await applicationContext(e.aggregateId);
+    if (!a) return;
+    await getEmailSender().send(templates.volunteerRefunded(a.email, { amount: money((e.payload as { amountCents?: number }).amountCents ?? 0) }));
+  });
+
   subscribe("waitlist.joined", async (e) => {
     const c = await waitlistContext(e.aggregateId);
     if (!c || c.status !== "waiting") return;

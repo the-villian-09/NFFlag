@@ -169,4 +169,47 @@ export const templates = {
       button: { label: "View my account", url: d.dashboardUrl },
     });
   },
+
+  volunteerSubmitted(to: string, d: { role: string; season: string; amount: string | null; accountUrl: string }): EmailMessage {
+    return message(to, "staff.application_submitted", `Application received: ${d.role}`, {
+      preheader: "Next: your background check.",
+      heading: "Thanks for volunteering!",
+      paragraphs: [
+        `We received your application to serve as ${d.role.toLowerCase()} for ${d.season}.`,
+        "Next, the league will contact you about the background check required for volunteers who work with children. You'll be approved once it's cleared.",
+        ...(d.amount ? [`Your volunteer fee of ${d.amount} was paid. It's refunded if your application isn't approved.`] : []),
+      ],
+      button: { label: "View my application", url: d.accountUrl },
+    });
+  },
+
+  volunteerDecision(to: string, d: { role: string; season: string; approved: boolean; reason: string | null; accountUrl: string }): EmailMessage {
+    if (d.approved) {
+      return message(to, "staff.application_approved", `You're approved: ${d.role}`, {
+        preheader: `Welcome to the ${d.season} coaching staff.`,
+        heading: "You're approved!",
+        paragraphs: [`You're approved as ${d.role.toLowerCase()} for ${d.season}. Thank you for volunteering.`, "We'll be in touch about team assignments and the draft."],
+        button: { label: "Open my account", url: d.accountUrl },
+      });
+    }
+    return message(to, "staff.application_rejected", `Update on your ${d.role.toLowerCase()} application`, {
+      preheader: "An update on your volunteer application.",
+      heading: "Application not approved",
+      paragraphs: [
+        `We weren't able to approve your application to serve as ${d.role.toLowerCase()} this season.`,
+        ...(d.reason ? [`Reason: ${d.reason}`] : []),
+        "Any volunteer fee you paid is refunded to your card (usually 5–10 business days). Reply to this email with any questions.",
+      ],
+      button: { label: "Open my account", url: d.accountUrl },
+    });
+  },
+
+  volunteerRefunded(to: string, d: { amount: string }): EmailMessage {
+    return message(to, "staff.application_refunded", "Volunteer fee refunded", {
+      preheader: `${d.amount} refunded to your card.`,
+      heading: "Refund issued",
+      paragraphs: [`A refund of ${d.amount} for your volunteer fee has been issued to the card you used. It usually appears within 5–10 business days.`],
+      details: [["Refund", d.amount]],
+    });
+  },
 };

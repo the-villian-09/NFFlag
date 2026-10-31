@@ -14,7 +14,7 @@ and leave a pointer to the question. Update this file when a decision is made.
 | D-07 | Age cutoff date and division rules for 2027 (stored per season/division) | Nov 20 | Mechanism built (per-division birth-date range + gender, admin-editable); 2027 values still needed. |
 | D-08 | Waiver, medical authorization and photo/video release text, reviewed by counsel | Nov 26 | Open. Placeholder text is live and editable in Admin → Site content (waiver-* pages); each acceptance stores the version and a hash. |
 | D-09 | Registration close date before the Jan 4 draft | Dec 1 | Open |
-| D-10 | Coach background screening requirement under Florida law | Dec 1 | Open |
+| D-10 | Coach background screening requirement under Florida law | Dec 1 | Partly decided Oct 30: the app records each check (provider, dates, cleared / not cleared) and approval requires a current “cleared” check. Which screening the league uses is still open. |
 | D-11 | Start Twilio A2P 10DLC registration | Start by Nov 6 | Open |
 
 ## R0 implementation decisions
@@ -52,3 +52,15 @@ and leave a pointer to the question. Update this file when a decision is made.
   minute (worker). The offer holds the spot for `offerHours` (default 48, Admin → Payments); claiming it means accepting
   the waivers and paying, with the spot held until the offer deadline. Unclaimed offers expire and pass on.
 - Behind the `r2.waitlist_offers` release switch. Admins see the list (Admin → Waitlist) and can remove a family.
+
+## R2 volunteer applications (Oct 30)
+
+- Coaches, assistant coaches and team managers apply at /volunteer, accept the volunteer agreement (editable page
+  `volunteer-agreement`, placeholder until counsel reviews), and **pay the volunteer fee when applying** (default $25 each,
+  Admin → Payments; refunded automatically if not approved or withdrawn).
+- **Background check required to approve:** admins record provider, completed date, valid-until date and status; approval is
+  blocked unless the check is "cleared" and not expired. The check itself happens outside the app.
+- Approving grants the role scoped to that season (`user_role_assignments`, scope_type = season).
+- Payments table now belongs to a registration *or* an application (check constraint); Square reference_id `app:<id>`
+  routes webhooks; stuck fee payments are re-sent by the worker with the same idempotency key.
+- Behind the `r2.staff_applications` release switch.

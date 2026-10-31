@@ -4,7 +4,7 @@
  * Square connection.
  */
 import { sql } from "drizzle-orm";
-import { check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { user } from "./auth.js";
 
 export const households = pgTable("households", {
@@ -196,9 +196,9 @@ export const payments = pgTable(
   "payments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    registrationId: uuid("registration_id")
-      .notNull()
-      .references(() => registrations.id),
+    /** What the payment is for: a player registration, or a volunteer application (R2). Exactly one is set. */
+    registrationId: uuid("registration_id").references(() => registrations.id),
+    applicationId: uuid("application_id").references((): AnyPgColumn => volunteerApplications.id),
     provider: text("provider").notNull().default("square"),
     /** sandbox | production */
     providerEnvironment: text("provider_environment").notNull(),
@@ -215,7 +215,12 @@ export const payments = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("payments_provider_id").on(t.providerPaymentId), index("payments_reg_idx").on(t.registrationId)],
+  (t) => [
+    uniqueIndex("payments_provider_id").on(t.providerPaymentId),
+    index("payments_reg_idx").on(t.registrationId),
+    index("payments_app_idx").on(t.applicationId),
+    check("payments_one_owner", sql`(${t.registrationId} is null) <> (${t.applicationId} is null)`),
+  ],
 );
 
 export const refunds = pgTable(
@@ -311,5 +316,66 @@ export const waitlistEntries = pgTable(
     index("waitlist_household_idx").on(t.householdId),
     // One live waitlist place per child per season.
     uniqueIndex("waitlist_one_active_per_player").on(t.seasonId, t.playerId).where(sql`${t.status} in ('waiting','offered')`),
+  ],
+);
+
+/**
+ * Coach / team manager applications (R2). The volunteer fee is paid when
+ * applying (refunded if not approved). A cleared background check is required
+ * before approval; approving grants the role for that season.
+ *
+ * pending_payment → processing → submitted → approved | rejected; withdrawn.
+ */
+export const volunteerApplications = pgTable(
+  "volunteer_applications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seasonId: uuid("season_id")
+      .notNull()
+      .references(() => seasons.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** head_coach | assistant_coach | team_manager */
+    roleKey: text("role_key").notNull(),
+    preferredDivisionId: uuid("preferred_division_id").references(() => divisions.id),
+    /** The applicant's own child, if they'd like to be on that child's team. */
+    playerId: uuid("player_id").references(() => players.id),
+    phone: text("phone").notNull(),
+    experience: text("experience"),
+    notes: text("notes"),
+    shirtSize: text("shirt_size"),
+    /** [{ slug, title, version, sha256, signerName, acceptedAt }] */
+    agreements: jsonb("agreements").notNull().default([]),
+    status: text("status").notNull().default("pending_payment"),
+    feeCents: integer("fee_cents").notNull().default(0),
+    processingFeeCents: integer("processing_fee_cents").notNull().default(0),
+    totalCents: integer("total_cents").notNull().default(0),
+    paymentRequest: jsonb("payment_request"),
+    processingStartedAt: timestamp("processing_started_at", { withTimezone: true }),
+    paymentError: text("payment_error"),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    /** not_started | pending | cleared | not_cleared */
+    screeningStatus: text("screening_status").notNull().default("not_started"),
+    screeningProvider: text("screening_provider"),
+    screeningCompletedOn: date("screening_completed_on"),
+    screeningExpiresOn: date("screening_expires_on"),
+    screeningNotes: text("screening_notes"),
+    screeningUpdatedBy: text("screening_updated_by").references(() => user.id, { onDelete: "set null" }),
+    screeningUpdatedAt: timestamp("screening_updated_at", { withTimezone: true }),
+    decisionReason: text("decision_reason"),
+    decidedBy: text("decided_by").references(() => user.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    roleAssignmentId: uuid("role_assignment_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("va_season_status_idx").on(t.seasonId, t.status),
+    index("va_user_idx").on(t.userId),
+    uniqueIndex("va_one_active_per_role")
+      .on(t.seasonId, t.userId, t.roleKey)
+      .where(sql`${t.status} in ('pending_payment','processing','submitted','approved')`),
+    check("va_role", sql`${t.roleKey} in ('head_coach','assistant_coach','team_manager')`),
   ],
 );

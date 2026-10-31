@@ -19,6 +19,14 @@ export const paymentSettingsSchema = z.object({
   holdMinutes: z.number().int().min(5).max(120),
   /** Hours a waitlisted family has to claim an offered spot (R2). */
   offerHours: z.number().int().min(1).max(168).default(48),
+  /** Volunteer fees in cents, paid when applying (R2). The flyer: coaching badge $25, team mom $25. */
+  volunteerFees: z
+    .object({
+      head_coach: z.number().int().min(0).max(100_000),
+      assistant_coach: z.number().int().min(0).max(100_000),
+      team_manager: z.number().int().min(0).max(100_000),
+    })
+    .default({ head_coach: 2500, assistant_coach: 2500, team_manager: 2500 }),
 });
 export type PaymentSettings = z.infer<typeof paymentSettingsSchema>;
 
@@ -28,6 +36,7 @@ export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   feeFixedCents: 30,
   holdMinutes: 15,
   offerHours: 48,
+  volunteerFees: { head_coach: 2500, assistant_coach: 2500, team_manager: 2500 },
 };
 
 export async function getPaymentSettings(conn: DbOrTx = db): Promise<PaymentSettings> {
@@ -45,7 +54,7 @@ export async function seedPaymentSettings(conn: DbOrTx = db) {
  * grossed up so that after Square's percentage + fixed fee the league still
  * receives the full division price.
  */
-export function quote(priceCents: number, s: PaymentSettings) {
+export function quote(priceCents: number, s: Pick<PaymentSettings, "feeMode" | "feePercentBps" | "feeFixedCents">) {
   if (s.feeMode === "league" || priceCents === 0) return { priceCents, feeCents: 0, totalCents: priceCents };
   const rate = s.feePercentBps / 10_000;
   const totalCents = Math.ceil((priceCents + s.feeFixedCents) / (1 - rate));

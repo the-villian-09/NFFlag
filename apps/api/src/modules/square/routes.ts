@@ -21,6 +21,7 @@ import { can } from "../platform/access.js";
 import { writeAudit } from "../platform/audit.js";
 import { publish } from "../platform/outbox.js";
 import { recordCompletedPayment, revertToPending } from "../registration/service.js";
+import { failApplicationPayment, recordApplicationPayment } from "../staff/service.js";
 import { getPaymentSettings } from "../registration/settings.js";
 import {
   authorizeUrl,
@@ -265,12 +266,18 @@ async function handleEvent(event: WebhookEvent) {
   if (event.type === "payment.created" || event.type === "payment.updated") {
     const p = event.data?.object?.payment;
     if (!p?.reference_id) return;
+    const isApplication = p.reference_id.startsWith("app:");
+    const source = { environment: env.SQUARE_ENVIRONMENT, merchantId: event.merchant_id ?? null };
     if (p.status === "COMPLETED" || p.status === "APPROVED") {
-      await recordCompletedPayment(p, { environment: env.SQUARE_ENVIRONMENT, merchantId: event.merchant_id ?? null }, { userId: null });
+      if (isApplication) await recordApplicationPayment(p, source, { userId: null });
+      else await recordCompletedPayment(p, source, { userId: null });
     } else {
       await db.update(payments).set({ status: p.status, updatedAt: new Date() }).where(eq(payments.providerPaymentId, p.id));
-      // A charge that definitely failed frees a registration waiting on it.
-      if (p.status === "FAILED" || p.status === "CANCELED") await revertToPending(p.reference_id, "The payment didn't go through.");
+      // A charge that definitely failed frees the registration / application waiting on it.
+      if (p.status === "FAILED" || p.status === "CANCELED") {
+        if (isApplication) await failApplicationPayment(p.reference_id);
+        else await revertToPending(p.reference_id, "The payment didn't go through.");
+      }
     }
     return;
   }
