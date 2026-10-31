@@ -71,10 +71,10 @@ export default function AdminPage() {
         )}
         {me.permissions.includes("staff.applications.review") && (
           <div className="card">
-            <h2>Volunteers</h2>
-            <p className="muted">Coach and team manager applications, background checks and approvals.</p>
-            <Link className="btn small" href="/admin/volunteers">
-              Review volunteers
+            <h2>Coaches & staff</h2>
+            <p className="muted">Head coach, assistant coach and team mom applications, background checks and approvals.</p>
+            <Link className="btn small" href="/admin/staff">
+              Review applications
             </Link>
           </div>
         )}

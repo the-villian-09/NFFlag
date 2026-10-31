@@ -55,7 +55,7 @@ export function ContactForm() {
           <select name="topic" defaultValue="general">
             <option value="general">General question</option>
             <option value="registration">Registration</option>
-            <option value="volunteering">Coaching / volunteering</option>
+            <option value="volunteering">Coaching / team staff</option>
           </select>
         </label>
       </div>

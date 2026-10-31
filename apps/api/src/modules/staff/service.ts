@@ -1,7 +1,7 @@
 /**
- * Coach and team manager applications (R2).
+ * Coach and team staff applications (R2): Head Coach, Assistant Coach, Team Mom.
  *
- * Apply (with the volunteer agreement) → pay the volunteer fee by card →
+ * Apply (with the code of conduct) → pay the coaching badge / team mom fee →
  * submitted → admin records the background check → approved (role granted for
  * the season) or rejected (fee refunded). Payments reuse the registration
  * safeguards: a `processing` state with the exact Square request stored, so
@@ -26,10 +26,12 @@ export const STAFF_FLAG = "r2.staff_applications";
 export const VOLUNTEER_ROLES = ["head_coach", "assistant_coach", "team_manager"] as const;
 export type VolunteerRole = (typeof VOLUNTEER_ROLES)[number];
 export const ROLE_LABELS: Record<VolunteerRole, string> = {
-  head_coach: "Head coach",
-  assistant_coach: "Assistant coach",
-  team_manager: "Team manager (team mom)",
+  head_coach: "Head Coach",
+  assistant_coach: "Assistant Coach",
+  team_manager: "Team Mom",
 };
+/** What the fee is called (the flyer's wording). */
+export const feeLabel = (role: string) => (role === "team_manager" ? "Team mom fee" : "Coaching badge fee");
 const AGREEMENT_SLUG = "volunteer-agreement";
 /** Square reference_id for an application payment (max 40 chars). */
 export const appReference = (id: string) => `app:${id}`;
@@ -79,7 +81,7 @@ export async function applyToVolunteer(
     acceptAgreement: boolean;
   },
 ) {
-  if (!(await isEnabled(STAFF_FLAG))) throw new HttpError(403, "FEATURE_DISABLED", "Volunteer applications aren't open yet.");
+  if (!(await isEnabled(STAFF_FLAG))) throw new HttpError(403, "FEATURE_DISABLED", "Coach and team staff applications aren't open yet.");
   const season = await currentSeason();
   if (!season) throw new HttpError(409, "CONFLICT", "There's no current season.");
   const [agreement] = await db.select().from(contentPages).where(eq(contentPages.slug, AGREEMENT_SLUG));
@@ -170,7 +172,7 @@ export async function payApplication(actor: Actor & { userId: string }, applicat
       sourceId: input.sourceId,
       verificationToken: input.verificationToken,
       amountCents: a.totalCents,
-      note: `NFFL volunteer fee: ${ROLE_LABELS[a.roleKey as VolunteerRole]}`,
+      note: `NFFL ${feeLabel(a.roleKey).toLowerCase()}: ${ROLE_LABELS[a.roleKey as VolunteerRole]}`,
       buyerEmail,
     };
     await tx
@@ -372,7 +374,7 @@ export async function updateScreening(
   const [before] = await db.select().from(volunteerApplications).where(eq(volunteerApplications.id, applicationId));
   if (!before) throw new HttpError(404, "NOT_FOUND", "Application not found.");
   if (before.status === "approved" && input.status !== "cleared") {
-    throw new HttpError(409, "CONFLICT", "This volunteer is approved. Remove their approval first, then update the check.");
+    throw new HttpError(409, "CONFLICT", "This person is approved. Remove their approval first, then update the check.");
   }
   const [after] = await db
     .update(volunteerApplications)
@@ -460,7 +462,7 @@ export async function revokeApproval(actor: Actor & { userId: string }, applicat
   return db.transaction(async (tx) => {
     const [a] = await tx.select().from(volunteerApplications).where(eq(volunteerApplications.id, applicationId)).for("update");
     if (!a) throw new HttpError(404, "NOT_FOUND", "Application not found.");
-    if (a.status !== "approved") throw new HttpError(409, "CONFLICT", "Only approved volunteers can be removed.");
+    if (a.status !== "approved") throw new HttpError(409, "CONFLICT", "Only approved applications can have their approval removed.");
     await tx
       .update(userRoleAssignments)
       .set({ revokedAt: new Date() })

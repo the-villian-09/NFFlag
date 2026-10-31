@@ -41,10 +41,10 @@ export default async function ContentPageView({ params }: { params: Promise<{ sl
 
       {slug === "coaches" && (
         <section className="card" style={{ marginTop: 32 }}>
-          <h2>Apply to volunteer</h2>
-          <p className="muted">Coaches and team managers apply online. Sign in (or create a free account), fill out a short application and pay the volunteer fee. It's refunded if you're not approved.</p>
-          <Link className="btn" href="/volunteer">
-            Apply now
+          <h2>Coaches & team staff</h2>
+          <p className="muted">Head coaches, assistant coaches and team moms apply online. Sign in (or create a free account), fill out a short application and pay the coaching badge or team mom fee. It's refunded if you're not approved.</p>
+          <Link className="btn" href="/coaches-staff">
+            Apply
           </Link>
         </section>
       )}

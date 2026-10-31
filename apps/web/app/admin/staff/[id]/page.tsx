@@ -40,7 +40,7 @@ interface Detail {
   refunds: { id: string; amountCents: number; status: string; reason: string; createdAt: string }[];
 }
 
-export default function AdminVolunteerPage() {
+export default function AdminStaffApplicationPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { me, loading } = useMe();
@@ -70,7 +70,7 @@ export default function AdminVolunteerPage() {
   return (
     <main className="page">
       <p>
-        <Link href="/admin/volunteers">← Volunteers</Link>
+        <Link href="/admin/staff">← Coaches & staff</Link>
       </p>
       <ErrorAlert error={error} />
       {notice && (
@@ -270,14 +270,14 @@ function Decision({ detail, can, onDone }: { detail: Detail; can: (p: string) =>
   }
   const cleared = a.screeningStatus === "cleared" && (!a.screeningExpiresOn || a.screeningExpiresOn >= new Date().toISOString().slice(0, 10));
   async function approve() {
-    if ((await run(() => api.post(`/admin/staff/applications/${a.id}/decision`, { decision: "approved" }))) !== undefined) onDone("Approved. The volunteer has their role for this season and has been emailed.");
+    if ((await run(() => api.post(`/admin/staff/applications/${a.id}/decision`, { decision: "approved" }))) !== undefined) onDone("Approved. They have their role for this season and have been emailed.");
   }
   async function reject(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const refund = f.get("refund") === "on";
     const r = await run(() => api.post(`/admin/staff/applications/${a.id}/decision`, { decision: "rejected", reason: String(f.get("reason")), refund }));
-    if (r !== undefined) onDone(refund ? "Not approved; the fee was refunded and the volunteer emailed." : "Not approved; the volunteer was emailed.");
+    if (r !== undefined) onDone(refund ? "Not approved; the fee was refunded and they've been emailed." : "Not approved; they've been emailed.");
   }
   return (
     <section className="card" style={{ marginTop: 24 }}>
@@ -298,7 +298,7 @@ function Decision({ detail, can, onDone }: { detail: Detail; can: (p: string) =>
       ) : (
         <form className="stack" onSubmit={reject}>
           <label>
-            Reason (emailed to the volunteer)
+            Reason (emailed to the applicant)
             <input type="text" name="reason" required minLength={3} maxLength={500} />
           </label>
           {refundable > 0 && can("refunds.issue") && (
@@ -331,7 +331,7 @@ function AfterDecision({ detail, refundable, canRefund, onDone }: { detail: Deta
     if ((await run(() => api.post(`/admin/staff/applications/${a.id}/revoke`, { reason }))) !== undefined) onDone("Approval removed; their role for this season is gone.");
   }
   async function refundRest() {
-    const r = await run(() => api.post(`/admin/staff/applications/${a.id}/refund`, { reason: "Refund of volunteer fee" }));
+    const r = await run(() => api.post(`/admin/staff/applications/${a.id}/refund`, { reason: "Refund of coaching badge / team mom fee" }));
     if (r !== undefined) onDone("Refund issued.");
   }
   return (
@@ -367,7 +367,7 @@ function AfterDecision({ detail, refundable, canRefund, onDone }: { detail: Deta
         ))}
       {a.status !== "approved" && refundable > 0 && canRefund && (
         <>
-          <p className="hint">{money(refundable)} of this volunteer's fee hasn't been refunded yet.</p>
+          <p className="hint">{money(refundable)} of this applicant's fee hasn't been refunded yet.</p>
           <button className="btn" onClick={refundRest} disabled={busy}>
             Refund {money(refundable)}
           </button>

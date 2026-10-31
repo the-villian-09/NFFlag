@@ -287,15 +287,15 @@ function FeeCard({ initial, canManage }: { initial: Settings; canManage: boolean
             <input type="number" min={0} max={500} value={v.feeFixedCents} disabled={!canManage} onChange={(e) => setV({ ...v, feeFixedCents: Number(e.target.value) })} />
           </label>
           <label>
-            Head coach fee ($)
+            Coaching badge fee: Head Coach ($)
             <input type="number" min={0} step="0.01" value={(v.volunteerFees?.head_coach ?? 2500) / 100} disabled={!canManage} onChange={(e) => setV({ ...v, volunteerFees: { ...v.volunteerFees, head_coach: Math.round(Number(e.target.value) * 100) } })} />
           </label>
           <label>
-            Assistant coach fee ($)
+            Coaching badge fee: Assistant Coach ($)
             <input type="number" min={0} step="0.01" value={(v.volunteerFees?.assistant_coach ?? 2500) / 100} disabled={!canManage} onChange={(e) => setV({ ...v, volunteerFees: { ...v.volunteerFees, assistant_coach: Math.round(Number(e.target.value) * 100) } })} />
           </label>
           <label>
-            Team manager fee ($)
+            Team mom fee ($)
             <input type="number" min={0} step="0.01" value={(v.volunteerFees?.team_manager ?? 2500) / 100} disabled={!canManage} onChange={(e) => setV({ ...v, volunteerFees: { ...v.volunteerFees, team_manager: Math.round(Number(e.target.value) * 100) } })} />
           </label>
           <label>

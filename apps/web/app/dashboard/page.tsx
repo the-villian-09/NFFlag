@@ -122,10 +122,10 @@ export default function DashboardPage() {
         {household && <RegistrationsCard />}
         {household && <WaitlistCard />}
         <section className="card">
-          <h2>Volunteer</h2>
-          <p className="muted">Coach a team or be a team manager (team mom) this season.</p>
-          <Link className="btn ghost small" href="/volunteer">
-            Volunteer options
+          <h2>Coaches & team staff</h2>
+          <p className="muted">Coach a team or be a team mom this season.</p>
+          <Link className="btn ghost small" href="/coaches-staff">
+            Apply
           </Link>
         </section>
         <SecurityCard enabled={me.mfa.enabled} required={me.mfa.required === "totp"} />

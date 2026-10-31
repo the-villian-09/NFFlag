@@ -122,7 +122,7 @@ describe("volunteer applications", () => {
 
     // Admin review
     const list = await admin.get(`/api/v1/admin/staff/applications?seasonId=${seasonId}`);
-    expect(list.body.items.find((i: { id: string }) => i.id === app.id)).toMatchObject({ roleLabel: "Head coach", screeningStatus: "not_started" });
+    expect(list.body.items.find((i: { id: string }) => i.id === app.id)).toMatchObject({ roleLabel: "Head Coach", screeningStatus: "not_started" });
     expect((await v.a.get("/api/v1/admin/staff/applications")).status).toBe(403);
 
     const early = await admin.post(`/api/v1/admin/staff/applications/${app.id}/decision`).send({ decision: "approved" });

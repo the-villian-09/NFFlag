@@ -98,14 +98,14 @@ Families choose at registration whether the league may use photos or video of th
   },
   {
     slug: "coaches",
-    title: "Coaches and volunteers",
-    body: `The league runs on volunteers. Coaches and team moms make the season happen.
+    title: "Coaches and team staff",
+    body: `Coaches and team moms make the season happen.
 
 ## Roles
 
-- **Head coach:** runs practices and games for one team.
-- **Assistant coach:** supports the head coach.
-- **Team mom / manager:** handles team communication and logistics.
+- **Head Coach:** runs practices and games for one team.
+- **Assistant Coach:** supports the head coach.
+- **Team Mom:** handles team communication and logistics.
 
 ## Fees
 
@@ -120,7 +120,7 @@ Families choose at registration whether the league may use photos or video of th
 
 ## How to apply
 
-Online applications open with registration on December 1. Until then, [CONTACT INSTRUCTIONS] or use the [contact form](/contact).`,
+Apply online at [Coaches & Team Staff](/coaches-staff). The coaching badge or team mom fee is paid when you apply and refunded if you're not approved. Questions? Use the [contact form](/contact).`,
   },
   {
     slug: "faq",
@@ -230,7 +230,7 @@ Refunds follow the policy in [Rules and policies](/rules).
 
 ## Conduct
 
-Families, players, coaches and volunteers agree to the league's code of conduct. The league may suspend accounts or participation for violations.
+Families, players, coaches and team staff agree to the league's code of conduct. The league may suspend accounts or participation for violations.
 
 ## Waivers
 
@@ -287,14 +287,14 @@ To opt out at any time, contact [LEAGUE EMAIL].`,
 
 DEFAULT_PAGES.push({
   slug: "volunteer-agreement",
-  title: "Volunteer code of conduct and screening consent",
+  title: "Coach & staff code of conduct and screening consent",
   body:
     DRAFT_NOTICE +
-    `As a [LEAGUE NAME] coach or team manager, I agree to put players' safety and enjoyment first, follow the league's rules and code of conduct, and treat players, families, officials and other volunteers with respect.
+    `As a [LEAGUE NAME] coach or team mom, I agree to put players' safety and enjoyment first, follow the league's rules and code of conduct, and treat players, families, officials and other volunteers with respect.
 
-I consent to the background screening the league requires for volunteers who work with children under Florida law, and I understand I can't be approved until it is complete and cleared.
+I consent to the background screening the league requires for coaches and team staff who work with children under Florida law, and I understand I can't be approved until it is complete and cleared.
 
-I understand the volunteer fee is refunded if my application isn't approved.`,
+I understand my coaching badge or team mom fee is refunded if my application isn't approved.`,
 });
 
 export interface Announcement {

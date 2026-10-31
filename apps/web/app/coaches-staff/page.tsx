@@ -39,17 +39,17 @@ interface Application {
 }
 
 const STATUS: Record<string, { label: string; tone: string; help: string }> = {
-  pending_payment: { label: "Awaiting fee", tone: "warn", help: "Pay the volunteer fee to submit your application." },
+  pending_payment: { label: "Awaiting fee", tone: "warn", help: "Pay your fee to submit your application." },
   processing: { label: "Confirming payment", tone: "info", help: "We're confirming your payment. Please don't pay again." },
   submitted: { label: "Submitted", tone: "info", help: "The league will contact you about your background check." },
-  approved: { label: "Approved", tone: "ok", help: "You're on the coaching staff this season. Thank you!" },
+  approved: { label: "Approved", tone: "ok", help: "You're on the team staff this season. Thank you!" },
   rejected: { label: "Not approved", tone: "bad", help: "Any fee you paid has been refunded." },
   withdrawn: { label: "Withdrawn", tone: "muted", help: "Any fee you paid is refunded to your card." },
   revoked: { label: "Approval removed", tone: "bad", help: "Contact the league with any questions." },
 };
 
-/** Apply to coach or be a team manager; pay the volunteer fee; see status. */
-export default function VolunteerPage() {
+/** Apply to be a Head Coach, Assistant Coach or Team Mom; pay the fee; see status. */
+export default function CoachesStaffPage() {
   const { me, loading } = useMe();
   const [opts, setOpts] = useState<Options | null>(null);
   const [apps, setApps] = useState<Application[] | null>(null);
@@ -83,8 +83,8 @@ export default function VolunteerPage() {
       <p>
         <Link href="/dashboard">← My account</Link>
       </p>
-      <h1>Volunteer</h1>
-      <p className="muted">Coach or be a team manager (team mom). Every volunteer who works with players completes a background check before being approved.</p>
+      <h1>Coaches & Team Staff</h1>
+      <p className="muted">Apply to be a Head Coach, Assistant Coach or Team Mom. Everyone who works with players completes a background check before being approved.</p>
       <ErrorAlert error={error} />
       {!opts || !apps ? (
         !error && <p className="muted">Loading…</p>
@@ -179,13 +179,13 @@ export default function VolunteerPage() {
               <ul>
                 {opts.roles.map((r) => (
                   <li key={r.key}>
-                    {r.label}: {r.totalCents ? `${money(r.totalCents)} volunteer fee` : "no fee"}
+                    {r.label}: {r.totalCents ? `${money(r.totalCents)} ${r.key === "team_manager" ? "team mom fee" : "coaching badge fee"}` : "no fee"}
                   </li>
                 ))}
               </ul>
               <p className="muted">The fee is paid when you apply and refunded if you're not approved.</p>
               <button className="btn" onClick={() => setApplying(true)}>
-                Start an application
+                Apply
               </button>
             </section>
           )}
@@ -241,7 +241,7 @@ function ApplyForm({
 
   return (
     <section className="card" style={{ marginTop: 16 }}>
-      <h2>Volunteer application</h2>
+      <h2>Application</h2>
       <form className="stack" onSubmit={submit}>
         <div className="toggle-row" role="radiogroup" aria-label="Role">
           {opts.roles.map((r) => (
@@ -293,7 +293,7 @@ function ApplyForm({
           </label>
         </div>
         <label>
-          Coaching or volunteer experience
+          Coaching or team experience
           <textarea name="experience" rows={3} maxLength={2000} placeholder="Teams, sports, ages, years" />
         </label>
         <label>
@@ -375,7 +375,7 @@ function PayFee({
   return (
     <section className="grid" style={{ alignItems: "start", marginTop: 16 }}>
       <div className="card">
-        <h2>Volunteer fee</h2>
+        <h2>{app.roleKey === "team_manager" ? "Team mom fee" : "Coaching badge fee"}</h2>
         <div className="summary">
           <div>
             <span>{app.roleLabel}</span>

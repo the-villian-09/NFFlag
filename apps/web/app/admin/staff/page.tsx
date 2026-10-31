@@ -36,8 +36,8 @@ const FILTERS = [
   { value: "rejected,withdrawn,revoked", label: "Not approved / withdrawn / removed" },
 ];
 
-/** Admin: coach and team manager applications. */
-export default function AdminVolunteersPage() {
+/** Admin: coach and team staff applications. */
+export default function AdminStaffPage() {
   const router = useRouter();
   const { me, loading } = useMe();
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -78,10 +78,10 @@ export default function AdminVolunteersPage() {
       <p>
         <Link href="/admin">← Admin portal</Link>
       </p>
-      <h1>Volunteers</h1>
+      <h1>Coaches & staff</h1>
       <p className="muted">
-        Coach and team manager applications. Record each background check, then approve; approving gives the volunteer their role for the
-        season. Rejecting refunds the fee.
+        Head coach, assistant coach and team mom applications. Record each background check, then approve; approving gives the person
+        their role for the season. Not approving refunds their fee.
       </p>
       <ErrorAlert error={error} />
       <div className="filters">
@@ -118,7 +118,7 @@ export default function AdminVolunteersPage() {
             <table className="simple stack">
               <thead>
                 <tr>
-                  <th>Volunteer</th>
+                  <th>Applicant</th>
                   <th>Role</th>
                   <th>Division</th>
                   <th>Background check</th>
@@ -133,7 +133,7 @@ export default function AdminVolunteersPage() {
                   return (
                     <tr key={r.id}>
                       <td data-label="">
-                        <Link href={`/admin/volunteers/${r.id}`}>{r.name}</Link>
+                        <Link href={`/admin/staff/${r.id}`}>{r.name}</Link>
                         <br />
                         <span className="muted" style={{ fontSize: 15, fontWeight: 500 }}>
                           {r.email}

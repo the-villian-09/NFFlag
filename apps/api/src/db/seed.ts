@@ -30,7 +30,7 @@ export const FEATURE_FLAGS: { key: string; description: string }[] = [
   { key: "r2.waitlist_offers", description: "R2: automatic timed waitlist offers" },
   { key: "r2.refunds", description: "R2: in-app refunds" },
   { key: "r2.promo_codes", description: "R2: promo codes" },
-  { key: "r2.staff_applications", description: "R2: coach / team manager applications and fees" },
+  { key: "r2.staff_applications", description: "R2: coach and team staff applications (Head Coach, Assistant Coach, Team Mom) and fees" },
   { key: "r3.teams_draft", description: "R3: teams, offline draft, rosters" },
   { key: "r3.practices", description: "R3: venues, fields and practices" },
   { key: "r4.games", description: "R4: game schedule, results and standings" },

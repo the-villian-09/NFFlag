@@ -30,7 +30,7 @@ export interface ContentPage {
 export const PAGES: { slug: string; label: string }[] = [
   { slug: "about", label: "About" },
   { slug: "rules", label: "Rules and policies" },
-  { slug: "coaches", label: "Coaches and volunteers" },
+  { slug: "coaches", label: "Coaches and team staff" },
   { slug: "faq", label: "FAQ" },
   { slug: "contact", label: "Contact" },
   { slug: "privacy", label: "Privacy" },

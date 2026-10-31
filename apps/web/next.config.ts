@@ -18,6 +18,14 @@ const config: NextConfig = {
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${apiOrigin}/api/:path*` }];
   },
+  async redirects() {
+    return [
+      // Earlier name of the coaches & team staff pages (links in already-sent emails).
+      { source: "/volunteer", destination: "/coaches-staff", permanent: true },
+      { source: "/admin/volunteers", destination: "/admin/staff", permanent: true },
+      { source: "/admin/volunteers/:id", destination: "/admin/staff/:id", permanent: true },
+    ];
+  },
   async headers() {
     return [
       {

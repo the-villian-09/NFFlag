@@ -1,4 +1,4 @@
-/** Volunteer (coach / team manager) applications: applicant routes and admin review. */
+/** Coach and team staff applications (Head Coach, Assistant Coach, Team Mom): applicant routes and admin review. */
 import { payRegistrationInput, volunteerApplicationInput } from "@nffl/shared";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { Router, type Request } from "express";

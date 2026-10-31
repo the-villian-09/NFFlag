@@ -157,3 +157,18 @@ describe("homepage facts", () => {
     expect((await parent.put("/api/v1/admin/content/settings/homepage").send(next)).status).toBe(403);
   });
 });
+
+describe("placeholder pages pick up new default wording", () => {
+  it("refreshes untouched pages but never overwrites edited ones", async () => {
+    const { seedContent } = await import("../src/modules/content/routes.js");
+    const { contentPages } = await import("../src/db/schema/index.js");
+    await db.update(contentPages).set({ title: "Old title" }).where(eq(contentPages.slug, "coaches"));
+    await db.update(contentPages).set({ title: "Edited by league", isPlaceholder: false }).where(eq(contentPages.slug, "rules"));
+    await seedContent();
+    const [coaches] = await db.select().from(contentPages).where(eq(contentPages.slug, "coaches"));
+    const [rules] = await db.select().from(contentPages).where(eq(contentPages.slug, "rules"));
+    expect(coaches!.title).toBe("Coaches and team staff");
+    expect(coaches!.body).toContain("/coaches-staff");
+    expect(rules!.title).toBe("Edited by league");
+  });
+});

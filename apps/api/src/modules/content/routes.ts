@@ -3,7 +3,7 @@
  * contact form. Admins edit everything here from the portal; every change is
  * audited.
  */
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import { DEFAULT_HOMEPAGE, homepageSchema } from "@nffl/shared";
@@ -65,7 +65,12 @@ export async function seedContent(conn: DbOrTx = db) {
   await conn
     .insert(contentPages)
     .values(DEFAULT_PAGES.map((p) => ({ ...p, isPlaceholder: true })))
-    .onConflictDoNothing();
+    // Pages nobody has edited yet pick up improved default wording; edited pages are never touched.
+    .onConflictDoUpdate({
+      target: contentPages.slug,
+      set: { title: sql`excluded.title`, body: sql`excluded.body` },
+      setWhere: sql`${contentPages.isPlaceholder} = true`,
+    });
   await conn
     .insert(siteSettings)
     .values(Object.entries(DEFAULT_SETTINGS).map(([key, value]) => ({ key, value })))
