@@ -12,6 +12,10 @@ interface Household {
   id: string;
   displayName: string;
   phone: string | null;
+  addressLine1: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
 }
 
 interface Player {
@@ -37,7 +41,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const { me, loading } = useMe();
   const [household, setHousehold] = useState<Household | null | undefined>(undefined);
-  const { busy, error, run } = useAction();
+  const [editingFamily, setEditingFamily] = useState(false);
 
   useEffect(() => {
     if (!me) return;
@@ -46,18 +50,6 @@ export default function DashboardPage() {
       .then((r) => setHousehold(r.household))
       .catch((err) => setHousehold(err instanceof ApiError && err.status === 404 ? null : undefined));
   }, [me]);
-
-  async function createHousehold(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const res = await run(() =>
-      api.post<{ household: Household }>("/households", {
-        displayName: String(f.get("displayName")),
-        phone: String(f.get("phone") || "") || undefined,
-      }),
-    );
-    if (res) setHousehold(res.household);
-  }
 
   async function signOut() {
     await authApi.signOut();
@@ -87,26 +79,43 @@ export default function DashboardPage() {
           <h2>Your family</h2>
           {household === undefined && <p className="muted">Loading…</p>}
           {household === null && (
-            <form className="stack" onSubmit={createHousehold}>
-              <ErrorAlert error={error} />
-              <label>
-                Family name (as you'd like it shown)
-                <input type="text" name="displayName" required maxLength={120} placeholder="The Smith Family" />
-              </label>
-              <label>
-                Mobile phone
-                <input type="text" name="phone" autoComplete="tel" maxLength={32} />
-              </label>
-              <button className="btn" disabled={busy}>
-                Save
-              </button>
-            </form>
+            <FamilyForm submitLabel="Save" onSaved={setHousehold} create />
           )}
-          {household && (
-            <p>
-              <strong>{household.displayName}</strong>
-              {household.phone ? <><br />{household.phone}</> : null}
-            </p>
+          {household && !editingFamily && (
+            <>
+              <dl className="kv">
+                <dt>Family</dt>
+                <dd>{household.displayName}</dd>
+                <dt>Phone</dt>
+                <dd>{household.phone ?? "—"}</dd>
+                <dt>Address</dt>
+                <dd>
+                  {household.addressLine1 ? (
+                    <>
+                      {household.addressLine1}
+                      <br />
+                      {[household.city, household.state].filter(Boolean).join(", ")} {household.postalCode ?? ""}
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </dd>
+              </dl>
+              <button className="btn ghost small" style={{ marginTop: 16 }} onClick={() => setEditingFamily(true)}>
+                Edit
+              </button>
+            </>
+          )}
+          {household && editingFamily && (
+            <FamilyForm
+              initial={household}
+              submitLabel="Save changes"
+              onSaved={(h) => {
+                setHousehold(h);
+                setEditingFamily(false);
+              }}
+              onCancel={() => setEditingFamily(false)}
+            />
           )}
         </section>
         {household && <PlayersCard />}
@@ -114,6 +123,81 @@ export default function DashboardPage() {
         <SecurityCard enabled={me.mfa.enabled} required={me.mfa.required === "totp"} />
       </div>
     </main>
+  );
+}
+
+/** Create or edit the family's details. Empty optional fields are cleared. */
+function FamilyForm({
+  initial,
+  submitLabel,
+  onSaved,
+  onCancel,
+  create,
+}: {
+  initial?: Household;
+  submitLabel: string;
+  onSaved: (h: Household) => void;
+  onCancel?: () => void;
+  create?: boolean;
+}) {
+  const { busy, error, run } = useAction();
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const v = (k: string) => String(f.get(k) ?? "").trim();
+    const body = {
+      displayName: v("displayName"),
+      phone: v("phone"),
+      addressLine1: v("addressLine1"),
+      city: v("city"),
+      state: v("state"),
+      postalCode: v("postalCode"),
+    };
+    const res = await run(() =>
+      create ? api.post<{ household: Household }>("/households", body) : api.patch<{ household: Household }>("/households/me", body),
+    );
+    if (res) onSaved(res.household);
+  }
+  return (
+    <form className="stack" onSubmit={onSubmit}>
+      <ErrorAlert error={error} />
+      <label>
+        Family name (as you'd like it shown)
+        <input type="text" name="displayName" required maxLength={120} placeholder="The Smith Family" defaultValue={initial?.displayName ?? ""} />
+      </label>
+      <label>
+        Mobile phone
+        <input type="tel" name="phone" autoComplete="tel" maxLength={32} defaultValue={initial?.phone ?? ""} />
+      </label>
+      <label>
+        Street address (optional)
+        <input type="text" name="addressLine1" autoComplete="address-line1" maxLength={200} defaultValue={initial?.addressLine1 ?? ""} />
+      </label>
+      <div className="form-row">
+        <label>
+          City
+          <input type="text" name="city" autoComplete="address-level2" maxLength={100} defaultValue={initial?.city ?? ""} />
+        </label>
+        <label>
+          State
+          <input type="text" name="state" autoComplete="address-level1" maxLength={2} placeholder="FL" defaultValue={initial?.state ?? ""} />
+        </label>
+        <label>
+          ZIP
+          <input type="text" inputMode="numeric" name="postalCode" autoComplete="postal-code" maxLength={10} defaultValue={initial?.postalCode ?? ""} />
+        </label>
+      </div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <button className="btn" disabled={busy}>
+          {busy ? "Saving…" : submitLabel}
+        </button>
+        {onCancel && (
+          <button type="button" className="btn ghost" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+    </form>
   );
 }
 

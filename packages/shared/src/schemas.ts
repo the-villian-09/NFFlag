@@ -9,13 +9,28 @@ export const signUpInput = z.object({
 });
 export type SignUpInput = z.infer<typeof signUpInput>;
 
+/** Optional text a user can clear: "" becomes null (cleared), missing stays undefined (unchanged). */
+const clearable = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "" ? null : v));
+
 export const householdInput = z.object({
   displayName: z.string().trim().min(1).max(120),
-  phone: z.string().trim().max(32).optional(),
-  addressLine1: z.string().trim().max(200).optional(),
-  city: z.string().trim().max(100).optional(),
-  state: z.string().trim().length(2).optional(),
-  postalCode: z.string().trim().max(10).optional(),
+  phone: clearable(32),
+  addressLine1: clearable(200),
+  city: clearable(100),
+  state: z
+    .union([z.literal(""), z.string().trim().regex(/^[A-Za-z]{2}$/, "Use the 2-letter state code")])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "" ? null : v.toUpperCase())),
+  postalCode: z
+    .union([z.literal(""), z.string().trim().regex(/^\d{5}(-\d{4})?$/, "Use a 5-digit ZIP code")])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "" ? null : v)),
 });
 export type HouseholdInput = z.infer<typeof householdInput>;
 
