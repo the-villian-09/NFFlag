@@ -34,6 +34,14 @@ interface Reg {
   totalCents: number;
   decisionReason: string | null;
   payment: { receiptUrl: string | null; refundedCents: number } | null;
+  team: { name: string; coach: { name: string; email: string } | null } | null;
+}
+interface MyTeam {
+  id: string;
+  name: string;
+  roleKey: string;
+  divisionName: string;
+  seasonName: string;
 }
 
 /** Parent dashboard: family, players, registrations and payment status, security. */
@@ -121,6 +129,7 @@ export default function DashboardPage() {
         {household && <PlayersCard />}
         {household && <RegistrationsCard />}
         {household && <WaitlistCard />}
+        <MyTeamsCard />
         <section className="card">
           <h2>Coaches & team staff</h2>
           <p className="muted">Coach a team or be a team mom this season.</p>
@@ -131,6 +140,41 @@ export default function DashboardPage() {
         <SecurityCard enabled={me.mfa.enabled} required={me.mfa.required === "totp"} />
       </div>
     </main>
+  );
+}
+
+const ROLE: Record<string, string> = { head_coach: "Head coach", assistant_coach: "Assistant coach", team_mom: "Team mom" };
+
+/** Teams this person coaches or helps run (shown once rosters are published). */
+function MyTeamsCard() {
+  const [items, setItems] = useState<MyTeam[] | null>(null);
+  useEffect(() => {
+    api
+      .get<{ items: MyTeam[] }>("/my-teams")
+      .then((r) => setItems(r.items))
+      .catch(() => setItems([]));
+  }, []);
+  if (!items || items.length === 0) return null;
+  return (
+    <section className="card">
+      <h2>My teams</h2>
+      <ul className="list">
+        {items.map((t) => (
+          <li key={t.id}>
+            <span>
+              <span className="who">{t.name}</span>
+              <br />
+              <span className="muted">
+                {ROLE[t.roleKey] ?? t.roleKey} · {t.divisionName} · {t.seasonName}
+              </span>
+            </span>
+            <Link className="btn small" href={`/my-team/${t.id}`}>
+              Roster
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -284,6 +328,20 @@ function RegistrationsCard() {
                   {r.divisionName} · {r.seasonName} · {money(r.totalCents)}
                   {r.payment?.refundedCents ? ` · ${money(r.payment.refundedCents)} refunded` : ""}
                 </span>
+                {r.team && (
+                  <>
+                    <br />
+                    <span>
+                      <strong>Team: {r.team.name}</strong>
+                      {r.team.coach && (
+                        <>
+                          {" · Coach "}
+                          {r.team.coach.name} (<a href={`mailto:${r.team.coach.email}`}>{r.team.coach.email}</a>)
+                        </>
+                      )}
+                    </span>
+                  </>
+                )}
                 {r.status === "rejected" && r.decisionReason && (
                   <>
                     <br />

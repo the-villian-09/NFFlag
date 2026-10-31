@@ -36,6 +36,7 @@ export const api = {
   post: <T>(path: string, body?: unknown) => request<T>("POST", `/api/v1${path}`, body ?? {}),
   patch: <T>(path: string, body: unknown) => request<T>("PATCH", `/api/v1${path}`, body),
   put: <T>(path: string, body: unknown) => request<T>("PUT", `/api/v1${path}`, body),
+  del: <T>(path: string) => request<T>("DELETE", `/api/v1${path}`),
 };
 
 /** Auth endpoints (Better Auth on the API). */

@@ -78,6 +78,15 @@ export default function AdminPage() {
             </Link>
           </div>
         )}
+        {me.permissions.includes("teams.manage") && (
+          <div className="card">
+            <h2>Teams & draft</h2>
+            <p className="muted">Create teams, assign coaches and team moms, run the draft and publish rosters.</p>
+            <Link className="btn small" href="/admin/teams">
+              Teams & draft
+            </Link>
+          </div>
+        )}
         {me.permissions.includes("seasons.read") && (
           <div className="card">
             <h2>Seasons and divisions</h2>

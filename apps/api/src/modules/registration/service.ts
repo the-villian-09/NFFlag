@@ -18,6 +18,7 @@ import {
   players,
   refunds,
   registrations,
+  rosterEntries,
   seasons,
   waitlistEntries,
 } from "../../db/schema/index.js";
@@ -694,6 +695,8 @@ export async function decideRegistration(
     if (r.status !== "paid" && !(r.status === "approved" && input.decision === "rejected")) {
       throw new HttpError(409, "CONFLICT", "Only paid registrations can be approved or rejected.");
     }
+    // Leaving the league means leaving their team.
+    if (input.decision === "rejected") await tx.delete(rosterEntries).where(eq(rosterEntries.registrationId, r.id));
     const [after] = await tx
       .update(registrations)
       .set({
@@ -766,6 +769,8 @@ export async function cancelRegistration(
       .set({ status: "cancelled", holdExpiresAt: null, paymentRequest: null, processingStartedAt: null, updatedAt: new Date() })
       .where(eq(registrations.id, r.id))
       .returning();
+    // Leaving the league means leaving their team.
+    await tx.delete(rosterEntries).where(eq(rosterEntries.registrationId, r.id));
     await writeAudit(tx, {
       actorUserId: actor.userId,
       action: "registration.cancel",

@@ -19,6 +19,7 @@ import { adminLeagueRouter } from "./modules/registration/admin-routes.js";
 import { registrationRouter } from "./modules/registration/routes.js";
 import { adminPaymentsRouter, squareCallbackRouter, squareWebhook } from "./modules/square/routes.js";
 import { adminStaffRouter, staffRouter } from "./modules/staff/routes.js";
+import { adminTeamsRouter, myTeamsRouter } from "./modules/teams/routes.js";
 
 export function createApp() {
   const app = express();
@@ -57,6 +58,8 @@ export function createApp() {
   app.use("/api/v1", squareCallbackRouter);
   app.use("/api/v1", staffRouter);
   app.use("/api/v1/admin/staff", adminStaffRouter);
+  app.use("/api/v1", myTeamsRouter);
+  app.use("/api/v1/admin/teams", adminTeamsRouter);
   app.use("/api/v1/admin/content", adminContentRouter);
   app.use("/api/v1/admin/league", adminLeagueRouter);
   app.use("/api/v1/admin/payments", adminPaymentsRouter);

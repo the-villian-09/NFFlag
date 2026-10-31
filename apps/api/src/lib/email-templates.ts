@@ -212,4 +212,21 @@ export const templates = {
       details: [["Refund", d.amount]],
     });
   },
+
+  rosterPublished(to: string, d: { player: string; team: string; division: string; coach: string | null; coachEmail: string | null; dashboardUrl: string }): EmailMessage {
+    return message(to, "roster.published", `${d.player}'s team: ${d.team}`, {
+      preheader: `${d.player} is on ${d.team} (${d.division}).`,
+      heading: `${d.player} is on ${d.team}!`,
+      paragraphs: [
+        `${d.player} has been placed on ${d.team} in ${d.division}.`,
+        d.coach ? `Head coach: ${d.coach}${d.coachEmail ? ` (${d.coachEmail})` : ""}. Your coach will reach out with practice details.` : "Your coach will reach out with practice details.",
+      ],
+      details: [
+        ["Team", d.team],
+        ["Division", d.division],
+        ...(d.coach ? ([["Head coach", d.coach]] as [string, string][]) : []),
+      ],
+      button: { label: "View my account", url: d.dashboardUrl },
+    });
+  },
 };

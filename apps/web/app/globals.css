@@ -332,6 +332,7 @@ form.stack, fieldset { grid-template-columns: minmax(0, 1fr); }
   table.simple.stack td::before { content: attr(data-label); flex: none; text-align: left; font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted); }
   table.simple.stack td[data-label=""]::before { content: none; }
   table.simple.stack td:first-child { display: block; text-align: left !important; font-size: 19px; font-weight: 700; color: #fff; }
+  table.simple.stack td:first-child::before { display: block; margin-bottom: 2px; }
   table.simple.stack td:last-child[data-label=""] { justify-content: flex-start; padding-top: 8px; }
   table.simple.stack td[colspan] { display: block; text-align: left !important; }
   .table-wrap:has(table.stack) { overflow-x: visible; }

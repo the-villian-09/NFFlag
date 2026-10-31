@@ -9,7 +9,7 @@ import { db } from "../db/client.js";
 import { divisions, householdMembers, payments, players, registrations, seasons, user, userRoleAssignments, waitlistEntries } from "../db/schema/index.js";
 import { positionOf } from "./registration/waitlist.js";
 import { feeLabel, ROLE_LABELS, type VolunteerRole } from "./staff/service.js";
-import { volunteerApplications } from "../db/schema/index.js";
+import { rosterEntries, teams, teamStaff, volunteerApplications } from "../db/schema/index.js";
 import { getEmailSender } from "../lib/email.js";
 import { templates } from "../lib/email-templates.js";
 import { logger } from "../lib/logger.js";
@@ -83,6 +83,47 @@ async function applicationContext(id: string) {
 }
 
 export function registerSubscribers() {
+  subscribe("roster.published", async (e) => {
+    const [r] = await db
+      .select({
+        teamId: rosterEntries.teamId,
+        registrationId: rosterEntries.registrationId,
+        team: teams.name,
+        division: divisions.name,
+        player: players.firstName,
+        playerLast: players.lastName,
+        householdId: players.householdId,
+      })
+      .from(rosterEntries)
+      .innerJoin(teams, eq(teams.id, rosterEntries.teamId))
+      .innerJoin(divisions, eq(divisions.id, teams.divisionId))
+      .innerJoin(players, eq(players.id, rosterEntries.playerId))
+      .where(eq(rosterEntries.id, e.aggregateId));
+    if (!r) return; // removed since
+    const [coach] = await db
+      .select({ name: user.name, email: user.email })
+      .from(teamStaff)
+      .innerJoin(user, eq(user.id, teamStaff.userId))
+      .where(and(eq(teamStaff.teamId, r.teamId), eq(teamStaff.roleKey, "head_coach")));
+    const guardians = await db
+      .select({ email: user.email })
+      .from(householdMembers)
+      .innerJoin(user, eq(user.id, householdMembers.userId))
+      .where(eq(householdMembers.householdId, r.householdId));
+    for (const g of guardians) {
+      await getEmailSender().send(
+        templates.rosterPublished(g.email, {
+          player: `${r.player} ${r.playerLast}`,
+          team: r.team,
+          division: r.division,
+          coach: coach?.name ?? null,
+          coachEmail: coach?.email ?? null,
+          dashboardUrl: `${base()}/dashboard`,
+        }),
+      );
+    }
+  });
+
   subscribe("staff.application_submitted", async (e) => {
     const a = await applicationContext(e.aggregateId);
     if (!a) return;

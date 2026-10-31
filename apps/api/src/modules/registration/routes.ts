@@ -5,19 +5,24 @@
  * managing children is always available.
  */
 import { acceptOfferInput, joinWaitlistInput, payRegistrationInput, playerInput, startRegistrationInput } from "@nffl/shared";
-import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import { Router, type RequestHandler } from "express";
 import { rateLimit } from "express-rate-limit";
 import { env } from "../../config.js";
 import { db } from "../../db/client.js";
 import {
   divisions,
+  drafts,
   householdMembers,
   payments,
   playerMedical,
   players,
   registrations,
+  rosterEntries,
   seasons,
+  teams,
+  teamStaff,
+  user,
 } from "../../db/schema/index.js";
 import { handler, requireAuth, requireMfa } from "../../http/context.js";
 import { HttpError } from "../../http/errors.js";
@@ -315,7 +320,32 @@ registrationRouter.get(
           .from(payments)
           .where(inArray(payments.registrationId, ids))
       : [];
-    res.json({ items: rows.map((r) => ({ ...r, payment: pays.find((p) => p.registrationId === r.id) ?? null })) });
+    const placements = ids.length
+      ? await db
+          .select({ registrationId: rosterEntries.registrationId, teamId: teams.id, teamName: teams.name })
+          .from(rosterEntries)
+          .innerJoin(teams, eq(teams.id, rosterEntries.teamId))
+          .innerJoin(drafts, and(eq(drafts.divisionId, rosterEntries.divisionId), isNotNull(drafts.publishedAt)))
+          .where(inArray(rosterEntries.registrationId, ids))
+      : [];
+    const coaches = placements.length
+      ? await db
+          .select({ teamId: teamStaff.teamId, name: user.name, email: user.email })
+          .from(teamStaff)
+          .innerJoin(user, eq(user.id, teamStaff.userId))
+          .where(and(inArray(teamStaff.teamId, placements.map((p) => p.teamId)), eq(teamStaff.roleKey, "head_coach")))
+      : [];
+    res.json({
+      items: rows.map((r) => {
+        const place = placements.find((p) => p.registrationId === r.id);
+        const coach = place ? coaches.find((c) => c.teamId === place.teamId) : undefined;
+        return {
+          ...r,
+          payment: pays.find((p) => p.registrationId === r.id) ?? null,
+          team: place ? { name: place.teamName, coach: coach ? { name: coach.name, email: coach.email } : null } : null,
+        };
+      }),
+    });
   }),
 );
 

@@ -379,3 +379,90 @@ export const volunteerApplications = pgTable(
     check("va_role", sql`${t.roleKey} in ('head_coach','assistant_coach','team_manager')`),
   ],
 );
+
+/* ---------------------------------------------------------------- R3 ---- */
+
+export const teams = pgTable(
+  "teams",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seasonId: uuid("season_id")
+      .notNull()
+      .references(() => seasons.id),
+    divisionId: uuid("division_id")
+      .notNull()
+      .references(() => divisions.id),
+    name: text("name").notNull(),
+    color: text("color"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("team_division_name").on(t.divisionId, t.name), index("teams_division_idx").on(t.divisionId)],
+);
+
+/** Coaches and team moms on a team. Each row also has a team-scoped role grant (role_assignment_id). */
+export const teamStaff = pgTable(
+  "team_staff",
+  {
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** head_coach | assistant_coach | team_manager */
+    roleKey: text("role_key").notNull(),
+    roleAssignmentId: uuid("role_assignment_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.teamId, t.userId] }), index("team_staff_user_idx").on(t.userId)],
+);
+
+/**
+ * A player on a team. source: coach_child (placed before the draft; counts as
+ * that team's earliest picks), draft (pick_number = overall slot), admin (placed
+ * or moved by an admin after the draft).
+ */
+export const rosterEntries = pgTable(
+  "roster_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    divisionId: uuid("division_id")
+      .notNull()
+      .references(() => divisions.id),
+    registrationId: uuid("registration_id")
+      .notNull()
+      .references(() => registrations.id),
+    playerId: uuid("player_id")
+      .notNull()
+      .references(() => players.id),
+    source: text("source").notNull(),
+    pickNumber: integer("pick_number"),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("roster_one_team_per_registration").on(t.registrationId),
+    uniqueIndex("roster_unique_pick").on(t.divisionId, t.pickNumber).where(sql`${t.pickNumber} is not null`),
+    index("roster_team_idx").on(t.teamId),
+  ],
+);
+
+/** One draft per division. order = team ids for round 1 (snake after). */
+export const drafts = pgTable("drafts", {
+  divisionId: uuid("division_id")
+    .primaryKey()
+    .references(() => divisions.id),
+  /** setup | live | complete */
+  status: text("status").notNull().default("setup"),
+  order: jsonb("order").notNull().default([]),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  /** Rosters are visible to coaches and families once published. */
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
