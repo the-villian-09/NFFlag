@@ -360,3 +360,11 @@ input:disabled, select:disabled, textarea:disabled { background: #1a2633; color:
   .ev-tile { width: 64px; }
   .ev-day { font-size: 34px; }
 }
+
+/* ---------- Pop-up (native dialog) ---------- */
+.modal { padding: 0; border: 0; border-top: 4px solid var(--lime); background: var(--navy-2); color: var(--ink); width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); }
+.modal::backdrop { background: rgba(1, 19, 34, 0.8); }
+.modal-body { padding: 20px 24px 24px; }
+.modal-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; position: sticky; top: -20px; background: var(--navy-2); padding: 8px 0 12px; margin-top: -8px; z-index: 1; }
+.modal-head h2 { margin: 0; }
+@media (max-width: 420px) { .modal-body { padding: 16px; } }

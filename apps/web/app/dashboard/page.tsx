@@ -7,6 +7,7 @@ import { ErrorAlert, useAction } from "@/components/form";
 import { api, ApiError, authApi } from "@/lib/api";
 import { fmtDate, fmtDateTime, money, StatusBadge } from "@/lib/format";
 import { EventRow } from "@/components/event-row";
+import { Modal } from "@/components/modal";
 import { GAME_STATUS, resultFor, type Game, type Practice } from "@/lib/schedule";
 import { isAdmin, useMe } from "@/lib/use-me";
 
@@ -185,9 +186,39 @@ interface TeamSchedule {
   practices: Practice[];
 }
 
-/** Upcoming games and practices (and recent results) for the family's teams. Hidden until rosters are published. */
+function GameItem({ g, teamId }: { g: Game; teamId: string }) {
+  const home = g.homeTeamId === teamId;
+  const res = resultFor(g, teamId);
+  return (
+    <EventRow
+      startsAt={g.startsAt}
+      title={`Game ${home ? "vs" : "at"} ${home ? g.away : g.home}${res ? ` · ${res}` : ""}`}
+      detail={g.location}
+      struck={g.status === "cancelled"}
+      badge={g.status !== "scheduled" ? <span className={`status ${GAME_STATUS[g.status].tone}`}>{GAME_STATUS[g.status].label}</span> : null}
+    />
+  );
+}
+
+function PracticeItem({ p }: { p: Practice }) {
+  return (
+    <EventRow
+      startsAt={p.startsAt}
+      title={`Practice · ${p.durationMinutes} min`}
+      detail={`${p.location}${p.notes ? ` · ${p.notes}` : ""}`}
+      struck={p.status === "cancelled"}
+      badge={p.status === "cancelled" ? <span className="status bad">Cancelled</span> : null}
+    />
+  );
+}
+
+/**
+ * The family's (or coach's) teams: the next game and next practice for each,
+ * with buttons that open the full season's games or practices in a pop-up.
+ */
 function ScheduleCard() {
   const [items, setItems] = useState<TeamSchedule[] | null>(null);
+  const [open, setOpen] = useState<{ teamId: string; kind: "games" | "practices" } | null>(null);
   useEffect(() => {
     api
       .get<{ items: TeamSchedule[] }>("/my-schedule")
@@ -195,56 +226,61 @@ function ScheduleCard() {
       .catch(() => setItems([]));
   }, []);
   if (!items || items.length === 0) return null;
-  const now = Date.now();
+  // Still "next" until a few hours after it starts (covers the game in progress).
+  const cutoff = Date.now() - 3 * 3600_000;
+  const upcoming = <T extends { startsAt: string; status: string }>(xs: T[]) => xs.find((x) => new Date(x.startsAt).getTime() > cutoff && x.status !== "cancelled");
+  const shown = open ? items.find((t) => t.team.id === open.teamId) : undefined;
+
   return (
     <section className="card">
       <h2>Schedule</h2>
       {items.map((t) => {
-        const events = [
-          ...t.games.map((g) => ({ kind: "game" as const, at: new Date(g.startsAt).getTime(), g })),
-          ...t.practices.map((p) => ({ kind: "practice" as const, at: new Date(p.startsAt).getTime(), p })),
-        ].sort((a, b) => a.at - b.at);
-        const next = events.filter((e) => e.at > now - 3 * 3600_000).slice(0, 4);
+        const nextGame = upcoming(t.games);
+        const nextPractice = upcoming(t.practices);
         const last = t.games.filter((g) => g.status === "final").at(-1);
         return (
-          <div key={t.team.id} style={{ marginBottom: 16 }}>
-            <h3 style={{ margin: "8px 0" }}>
-              {t.team.name} <span className="muted" style={{ fontSize: 16 }}>· {t.team.divisionName}{t.players.length ? ` · ${t.players.join(", ")}` : ""}</span>
+          <div key={t.team.id} style={{ marginBottom: 20 }}>
+            <h3 style={{ margin: "8px 0 4px" }}>
+              {t.team.name}{" "}
+              <span className="muted" style={{ fontSize: 16 }}>
+                · {t.team.divisionName}
+                {t.players.length ? ` · ${t.players.join(", ")}` : ""}
+              </span>
             </h3>
-            {last && <p className="muted" style={{ margin: "0 0 8px" }}>Last game: {resultFor(last, t.team.id)} {last.homeTeamId === t.team.id ? "vs" : "at"} {last.homeTeamId === t.team.id ? last.away : last.home}</p>}
-            {next.length === 0 ? (
-              <p className="muted">Nothing scheduled yet. Your coach will add practices here.</p>
+            {last && (
+              <p className="muted" style={{ margin: "0 0 8px" }}>
+                Last game: {resultFor(last, t.team.id)} {last.homeTeamId === t.team.id ? "vs" : "at"} {last.homeTeamId === t.team.id ? last.away : last.home}
+              </p>
+            )}
+            {!nextGame && !nextPractice ? (
+              <p className="muted">Nothing coming up. Your coach adds practices here, and the league posts games after the draft.</p>
             ) : (
               <ul className="events">
-                {next.map((e) =>
-                  e.kind === "game" ? (
-                    <EventRow
-                      key={`g${e.g.id}`}
-                      startsAt={e.g.startsAt}
-                      title={`Game ${e.g.homeTeamId === t.team.id ? "vs" : "at"} ${e.g.homeTeamId === t.team.id ? e.g.away : e.g.home}${resultFor(e.g, t.team.id) ? ` · ${resultFor(e.g, t.team.id)}` : ""}`}
-                      detail={e.g.location}
-                      struck={e.g.status === "cancelled"}
-                      badge={e.g.status !== "scheduled" ? <span className={`status ${GAME_STATUS[e.g.status].tone}`}>{GAME_STATUS[e.g.status].label}</span> : null}
-                    />
-                  ) : (
-                    <EventRow
-                      key={`p${e.p.id}`}
-                      startsAt={e.p.startsAt}
-                      title={`Practice · ${e.p.durationMinutes} min`}
-                      detail={`${e.p.location}${e.p.notes ? ` · ${e.p.notes}` : ""}`}
-                      struck={e.p.status === "cancelled"}
-                      badge={e.p.status === "cancelled" ? <span className="status bad">Cancelled</span> : null}
-                    />
-                  ),
-                )}
+                {nextPractice && (!nextGame || nextPractice.startsAt < nextGame.startsAt) && <PracticeItem p={nextPractice} />}
+                {nextGame && <GameItem g={nextGame} teamId={t.team.id} />}
+                {nextPractice && nextGame && nextPractice.startsAt >= nextGame.startsAt && <PracticeItem p={nextPractice} />}
               </ul>
             )}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+              <button className="btn ghost small" disabled={!t.games.length} onClick={() => setOpen({ teamId: t.team.id, kind: "games" })}>
+                Games ({t.games.length})
+              </button>
+              <button className="btn ghost small" disabled={!t.practices.length} onClick={() => setOpen({ teamId: t.team.id, kind: "practices" })}>
+                Practices ({t.practices.length})
+              </button>
+            </div>
           </div>
         );
       })}
-      <Link className="btn ghost small" href="/schedule">
-        League schedule & standings
-      </Link>
+      <Modal open={!!shown} title={shown ? `${shown.team.name} ${open!.kind === "games" ? "games" : "practices"}` : ""} onClose={() => setOpen(null)}>
+        {shown && (
+          <ul className="events">
+            {open!.kind === "games"
+              ? shown.games.map((g) => <GameItem key={g.id} g={g} teamId={shown.team.id} />)
+              : shown.practices.map((p) => <PracticeItem key={p.id} p={p} />)}
+          </ul>
+        )}
+      </Modal>
     </section>
   );
 }

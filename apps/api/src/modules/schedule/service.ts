@@ -609,8 +609,7 @@ export async function listAnnouncements(filter: { teamId?: string; seasonId?: st
 
 /**
  * Teams the signed-in person follows: their children's teams (rosters
- * published) and teams they coach. Each with upcoming games, practices and
- * recent results.
+ * published) and teams they coach. Each with the season's games and practices.
  */
 export async function mySchedule(userId: string) {
   const kids = await db
@@ -632,11 +631,10 @@ export async function mySchedule(userId: string) {
     .from(teams)
     .innerJoin(divisions, eq(divisions.id, teams.divisionId))
     .where(inArray(teams.id, teamIds));
-  const since = new Date(Date.now() - 14 * 86400_000);
   const gs = await db
     .select()
     .from(games)
-    .where(and(or(inArray(games.homeTeamId, teamIds), inArray(games.awayTeamId, teamIds)), gte(games.startsAt, since)))
+    .where(or(inArray(games.homeTeamId, teamIds), inArray(games.awayTeamId, teamIds)))
     .orderBy(asc(games.startsAt));
   const opp = gs.length
     ? await db.select({ id: teams.id, name: teams.name }).from(teams).where(inArray(teams.id, [...new Set(gs.flatMap((g) => [g.homeTeamId, g.awayTeamId]))]))
@@ -645,7 +643,7 @@ export async function mySchedule(userId: string) {
   const ps = await db
     .select()
     .from(practices)
-    .where(and(inArray(practices.teamId, teamIds), gte(practices.startsAt, new Date(Date.now() - 86400_000))))
+    .where(inArray(practices.teamId, teamIds))
     .orderBy(asc(practices.startsAt));
   return ts.map((t) => ({
     team: { id: t.id, name: t.name, divisionName: t.divisionName },
