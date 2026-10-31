@@ -317,10 +317,22 @@ async function chargeAndSettle(registrationId: string, request: PaymentRequest, 
     payment = await createPayment(creds, { ...request, referenceId: registrationId });
   } catch (err) {
     if (err instanceof SquareError && err.status >= 400 && err.status < 500) {
-      const message = friendlyPaymentError(err);
-      await revertToPending(registrationId, message);
-      logger.info({ registrationId, code: err.code }, "card payment declined");
-      throw new HttpError(402, "PAYMENT_FAILED", message);
+      // Square's own reason, for the logs (no card data in it).
+      const squareErrors = err.errors.map((e) => ({ code: e.code, category: e.category, field: e.field, detail: e.detail }));
+      if (isCardProblem(err)) {
+        const message = friendlyPaymentError(err);
+        await revertToPending(registrationId, message);
+        logger.info({ registrationId, squareErrors }, "card payment declined");
+        throw new HttpError(402, "PAYMENT_FAILED", message);
+      }
+      // Our setup (token, location, app id) or request is wrong: not the family's card.
+      await revertToPending(registrationId, "Payment setup problem (not the card).");
+      logger.error({ registrationId, status: err.status, squareErrors }, "Square rejected the payment request: check Square settings");
+      throw new HttpError(
+        503,
+        "PAYMENTS_UNAVAILABLE",
+        "We couldn't process payments just now because of a problem on our side. Your card was not charged. Please try again later.",
+      );
     }
     logger.error({ registrationId, err: err instanceof Error ? err.message : String(err) }, "payment outcome unknown");
     throw new HttpError(502, "PAYMENT_PENDING", "We couldn't confirm your payment yet. Please don't pay again; check your registrations in a few minutes.");
@@ -338,6 +350,11 @@ async function chargeAndSettle(registrationId: string, request: PaymentRequest, 
   }
   // PENDING: Square hasn't finished; the webhook or the worker settles it.
   throw new HttpError(502, "PAYMENT_PENDING", "Your payment is still being confirmed. Please don't pay again; check your registrations in a few minutes.");
+}
+
+/** A decline the family can fix (card, CVV, ZIP, funds), as opposed to a problem with our Square setup. */
+function isCardProblem(err: SquareError) {
+  return err.errors.some((e) => e.category === "PAYMENT_METHOD_ERROR") || err.status === 402;
 }
 
 /** A charge that definitely didn't happen: the family can try again. */
