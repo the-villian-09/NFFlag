@@ -6,7 +6,7 @@
  * grants an admin changed by hand.
  */
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, ROLE_KEYS, type RoleKey } from "@nffl/shared";
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { db, pool, type DbOrTx } from "./client.js";
@@ -26,21 +26,23 @@ const ROLE_NAMES: Record<RoleKey, string> = {
 
 /** One flag per release capability; all off until that release is accepted. */
 export const FEATURE_FLAGS: { key: string; description: string }[] = [
-  { key: "r1b.registration", description: "R1b: registration and Square checkout" },
-  { key: "r2.waitlist_offers", description: "R2: automatic timed waitlist offers" },
-  { key: "r2.refunds", description: "R2: in-app refunds" },
-  { key: "r2.promo_codes", description: "R2: promo codes" },
-  { key: "r2.staff_applications", description: "R2: coach and team staff applications (Head Coach, Assistant Coach, Team Mom) and fees" },
-  { key: "r3.teams_draft", description: "R3: teams, offline draft, rosters" },
-  { key: "r3.practices", description: "R3: venues, fields and practices" },
-  { key: "r4.games", description: "R4: game schedule, results and standings" },
-  { key: "r4.announcements", description: "R4: announcements and targeted email" },
-  { key: "r4.sms", description: "R4: Twilio SMS (needs A2P approval)" },
-  { key: "r4.tixflo_widget", description: "R4: TixFlo ticket widget" },
-  { key: "r5.playoffs", description: "R5: playoffs and brackets" },
-  { key: "auth.google", description: "Backlog: Sign in with Google" },
-  { key: "auth.microsoft", description: "Backlog: Sign in with Microsoft" },
+  { key: "r1b.registration", description: "Registration and Square checkout" },
+  { key: "r2.waitlist_offers", description: "Waitlist: families join a full division and get timed offers" },
+  { key: "r2.staff_applications", description: "Coach and team staff applications (Head Coach, Assistant Coach, Team Mom) and fees" },
+  { key: "r3.teams_draft", description: "Teams and rosters for families and coaches: My team page, team and coach on registrations. Admins can set up teams and run the draft while it's off" },
+  { key: "r3.practices", description: "Practices: coaches add practices; families see them. Admins can test while it's off" },
+  { key: "r4.games", description: "Games: public schedule and standings, games on family and coach pages. Admins can enter games while it's off" },
+  { key: "r4.announcements", description: "Announcements: coaches email their team. Admins can send while it's off" },
+  { key: "r2.promo_codes", description: "Promo codes (not built yet; no effect)" },
+  { key: "r4.sms", description: "Text messages through Twilio (not built yet; needs A2P approval; no effect)" },
+  { key: "r4.tixflo_widget", description: "TixFlo ticket widget (not built yet; no effect)" },
+  { key: "r5.playoffs", description: "Playoffs and brackets (not built yet; no effect)" },
+  { key: "auth.google", description: "Sign in with Google (not built yet; no effect)" },
+  { key: "auth.microsoft", description: "Sign in with Microsoft (not built yet; no effect)" },
 ];
+
+/** Switches retired because the feature is always on (refunds ship with registration). */
+const RETIRED_FLAGS = ["r2.refunds"];
 
 export async function seedPlatform(conn: DbOrTx = db) {
   await conn
@@ -61,7 +63,12 @@ export async function seedPlatform(conn: DbOrTx = db) {
   );
   if (grants.length) await conn.insert(rolePermissions).values(grants).onConflictDoNothing();
 
-  await conn.insert(featureFlags).values(FEATURE_FLAGS).onConflictDoNothing();
+  // New switches start off; existing ones keep their on/off setting but get the current description.
+  await conn
+    .insert(featureFlags)
+    .values(FEATURE_FLAGS)
+    .onConflictDoUpdate({ target: featureFlags.key, set: { description: sql`excluded.description` } });
+  await conn.delete(featureFlags).where(inArray(featureFlags.key, RETIRED_FLAGS));
   await seedContent(conn);
   await seedPaymentSettings(conn);
 }

@@ -6,6 +6,7 @@ import { db } from "../../db/client.js";
 import { divisions, drafts, seasons, teams } from "../../db/schema/index.js";
 import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission } from "../../http/context.js";
 import { HttpError } from "../../http/errors.js";
+import { FLAG, isEnabled, requireFlag } from "../platform/flags.js";
 import {
   clearScore,
   createGame,
@@ -50,7 +51,8 @@ scheduleRouter.get(
     } else season = await currentSeasonId();
     if (!season) throw new HttpError(404, "NOT_FOUND", "No current season.");
     res.set("cache-control", "public, max-age=60");
-    res.json({ season, divisions: await publicSchedule(season.id) });
+    // Until games are switched on, the public page says the schedule is coming.
+    res.json({ season, divisions: (await isEnabled(FLAG.games)) ? await publicSchedule(season.id) : [] });
   }),
 );
 
@@ -61,7 +63,10 @@ scheduleRouter.get(
   requireMfa,
   handler(async (req, res) => {
     res.set("cache-control", "no-store");
-    res.json({ items: await mySchedule(req.ctx.auth!.user.id) });
+    const [teamsOn, gamesOn, practicesOn] = await Promise.all([isEnabled(FLAG.teams), isEnabled(FLAG.games), isEnabled(FLAG.practices)]);
+    if (!teamsOn) return void res.json({ items: [] });
+    const items = await mySchedule(req.ctx.auth!.user.id);
+    res.json({ items: items.map((t) => ({ ...t, games: gamesOn ? t.games : [], practices: practicesOn ? t.practices : [] })) });
   }),
 );
 
@@ -91,6 +96,7 @@ scheduleRouter.get(
   "/teams/:teamId/practices",
   requireAuth,
   requireMfa,
+  requireFlag(FLAG.practices, "practices.manage"),
   requirePermission("roster.read", teamScope),
   handler(async (req, res) => {
     res.json({ items: await listPractices(await teamOpen(req)) });
@@ -101,6 +107,7 @@ scheduleRouter.post(
   "/teams/:teamId/practices",
   requireAuth,
   requireMfa,
+  requireFlag(FLAG.practices, "practices.manage"),
   requirePermission("practices.manage", teamScope),
   handler(async (req, res) => {
     const input = practiceInput.parse(req.body);
@@ -112,6 +119,7 @@ scheduleRouter.put(
   "/teams/:teamId/practices/:id",
   requireAuth,
   requireMfa,
+  requireFlag(FLAG.practices, "practices.manage"),
   requirePermission("practices.manage", teamScope),
   handler(async (req, res) => {
     const input = practiceInput.extend({ status: z.enum(["scheduled", "cancelled"]), notify: z.boolean().optional() }).parse(req.body);
@@ -124,6 +132,7 @@ scheduleRouter.delete(
   "/teams/:teamId/practices/:id",
   requireAuth,
   requireMfa,
+  requireFlag(FLAG.practices, "practices.manage"),
   requirePermission("practices.manage", teamScope),
   handler(async (req, res) => {
     await deletePractice(await teamOpen(req), uuid.parse(req.params.id));
@@ -138,6 +147,7 @@ scheduleRouter.post(
   "/teams/:teamId/practices/series",
   requireAuth,
   requireMfa,
+  requireFlag(FLAG.practices, "practices.manage"),
   requirePermission("practices.manage", teamScope),
   handler(async (req, res) => {
     const input = z
@@ -160,6 +170,7 @@ scheduleRouter.delete(
   "/teams/:teamId/practices/:id/series",
   requireAuth,
   requireMfa,
+  requireFlag(FLAG.practices, "practices.manage"),
   requirePermission("practices.manage", teamScope),
   handler(async (req, res) => {
     res.json({ deleted: await deletePracticeSeriesFrom(await teamOpen(req), uuid.parse(req.params.id)) });
@@ -172,6 +183,7 @@ scheduleRouter.get(
   "/teams/:teamId/announcements",
   requireAuth,
   requireMfa,
+  requireFlag(FLAG.announcements, "announcements.send"),
   requirePermission("roster.read", teamScope),
   handler(async (req, res) => {
     res.json({ items: await listAnnouncements({ teamId: await teamOpen(req) }) });
@@ -182,6 +194,7 @@ scheduleRouter.post(
   "/teams/:teamId/announcements",
   requireAuth,
   requireMfa,
+  requireFlag(FLAG.announcements, "announcements.send"),
   requirePermission("announcements.send", teamScope),
   handler(async (req, res) => {
     const input = announcementBody.parse(req.body);

@@ -113,6 +113,7 @@ export default function AdminPage() {
               Create teams, assign coaches and team moms, run the draft and
               publish rosters.
             </p>
+            <OffNote flags={flags} k="r3.teams_draft" what="Teams and rosters" />
             <Link className="btn small" href="/admin/teams">
               Teams & draft
             </Link>
@@ -122,6 +123,7 @@ export default function AdminPage() {
           <div className="card">
             <h2>Schedule & scores</h2>
             <p className="muted">Add games or import a spreadsheet, reschedule or cancel, and enter final scores for the standings.</p>
+            <OffNote flags={flags} k="r4.games" what="Games and standings" />
             <Link className="btn small" href="/admin/schedule">
               Schedule
             </Link>
@@ -131,6 +133,7 @@ export default function AdminPage() {
           <div className="card">
             <h2>Announcements</h2>
             <p className="muted">Email every family this season, one division, or one team.</p>
+            <OffNote flags={flags} k="r4.announcements" what="Coach announcements" />
             <Link className="btn small" href="/admin/announcements">
               Send an announcement
             </Link>
@@ -213,5 +216,16 @@ export default function AdminPage() {
         </section>
       )}
     </main>
+  );
+}
+
+/** Shown on a card when its release switch is off (only the Super Admin sees switches). */
+function OffNote({ flags, k, what }: { flags: Flag[] | null; k: string; what: string }) {
+  const f = flags?.find((x) => x.key === k);
+  if (!f || f.enabled) return null;
+  return (
+    <p className="muted" style={{ margin: "0 0 12px", fontSize: 15 }}>
+      <span className="status warn">Off</span> {what} are hidden from families and coaches. Turn on <code>{k}</code> under Release switches when ready.
+    </p>
   );
 }

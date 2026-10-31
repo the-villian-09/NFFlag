@@ -8,6 +8,7 @@ import { api, ApiError } from "@/lib/api";
 import { fmtDate } from "@/lib/format";
 import { isAdmin, useMe } from "@/lib/use-me";
 import { TeamTools } from "@/components/team-tools";
+import { useFlags } from "@/lib/use-flags";
 
 interface Medical {
   allergies: string | null;
@@ -53,6 +54,7 @@ export default function MyTeamPage() {
   const { me, loading } = useMe();
   const [v, setV] = useState<TeamView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const flags = useFlags();
 
   useEffect(() => {
     if (!me) return;
@@ -92,8 +94,11 @@ export default function MyTeamPage() {
     );
 
   const myRole = v.staff.find((s) => s.userId === me.user.id)?.roleKey;
-  const canPractice = myRole === "head_coach" || myRole === "assistant_coach" || isAdmin(me);
-  const canAnnounce = !!myRole || isAdmin(me);
+  // Admins see everything; coaches see each tool once its release switch is on.
+  const admin = isAdmin(me);
+  const on = (key: string) => admin || !!flags?.has(key);
+  const canPractice = on("r3.practices") && (myRole === "head_coach" || myRole === "assistant_coach" || admin);
+  const canAnnounce = on("r4.announcements") && (!!myRole || admin);
   const emails = [
     ...new Set(v.roster.flatMap((r) => r.guardians.map((g) => g.email))),
   ];
@@ -153,7 +158,16 @@ export default function MyTeamPage() {
         </section>
       </div>
 
-      <TeamTools teamId={v.team.id} teamName={v.team.name} canPractice={canPractice} canAnnounce={canAnnounce} />
+      {flags && (
+        <TeamTools
+          teamId={v.team.id}
+          teamName={v.team.name}
+          canPractice={canPractice}
+          canAnnounce={canAnnounce}
+          showPractices={on("r3.practices")}
+          showGames={on("r4.games")}
+        />
+      )}
 
       <section className="card" style={{ marginTop: 24 }}>
         <h2>Roster</h2>

@@ -9,6 +9,7 @@ import { fmtDate, fmtDateTime, money, StatusBadge } from "@/lib/format";
 import { EventRow } from "@/components/event-row";
 import { Modal } from "@/components/modal";
 import { GAME_STATUS, resultFor, type Game, type Practice } from "@/lib/schedule";
+import { useFlags } from "@/lib/use-flags";
 import { isAdmin, useMe } from "@/lib/use-me";
 
 interface Household {
@@ -225,7 +226,10 @@ function ScheduleCard() {
       .then((r) => setItems(r.items))
       .catch(() => setItems([]));
   }, []);
-  if (!items || items.length === 0) return null;
+  const flags = useFlags();
+  const gamesOn = !!flags?.has("r4.games");
+  const practicesOn = !!flags?.has("r3.practices");
+  if (!items || items.length === 0 || !flags || (!gamesOn && !practicesOn)) return null;
   // Still "next" until a few hours after it starts (covers the game in progress).
   const cutoff = Date.now() - 3 * 3600_000;
   const upcoming = <T extends { startsAt: string; status: string }>(xs: T[]) => xs.find((x) => new Date(x.startsAt).getTime() > cutoff && x.status !== "cancelled");
@@ -262,12 +266,16 @@ function ScheduleCard() {
               </ul>
             )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-              <button className="btn ghost small" disabled={!t.games.length} onClick={() => setOpen({ teamId: t.team.id, kind: "games" })}>
-                Games ({t.games.length})
-              </button>
-              <button className="btn ghost small" disabled={!t.practices.length} onClick={() => setOpen({ teamId: t.team.id, kind: "practices" })}>
-                Practices ({t.practices.length})
-              </button>
+              {gamesOn && (
+                <button className="btn ghost small" disabled={!t.games.length} onClick={() => setOpen({ teamId: t.team.id, kind: "games" })}>
+                  Games ({t.games.length})
+                </button>
+              )}
+              {practicesOn && (
+                <button className="btn ghost small" disabled={!t.practices.length} onClick={() => setOpen({ teamId: t.team.id, kind: "practices" })}>
+                  Practices ({t.practices.length})
+                </button>
+              )}
             </div>
           </div>
         );

@@ -27,7 +27,7 @@ import {
 import { handler, requireAuth, requireMfa } from "../../http/context.js";
 import { HttpError } from "../../http/errors.js";
 import { writeAudit } from "../platform/audit.js";
-import { isEnabled } from "../platform/flags.js";
+import { FLAG, isEnabled } from "../platform/flags.js";
 import { getCredentials } from "../square/client.js";
 import {
   cancelRegistration,
@@ -320,6 +320,7 @@ registrationRouter.get(
           .from(payments)
           .where(inArray(payments.registrationId, ids))
       : [];
+    const teamsOn = await isEnabled(FLAG.teams);
     const placements = ids.length
       ? await db
           .select({ registrationId: rosterEntries.registrationId, teamId: teams.id, teamName: teams.name })
@@ -342,7 +343,7 @@ registrationRouter.get(
         return {
           ...r,
           payment: pays.find((p) => p.registrationId === r.id) ?? null,
-          team: place ? { name: place.teamName, coach: coach ? { name: coach.name, email: coach.email } : null } : null,
+          team: place && teamsOn ? { name: place.teamName, coach: coach ? { name: coach.name, email: coach.email } : null } : null,
         };
       }),
     });

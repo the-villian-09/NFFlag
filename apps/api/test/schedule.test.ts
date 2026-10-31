@@ -20,6 +20,16 @@ import { leagueLocalToUtc, utcToLeagueLocal } from "../src/lib/league-time.js";
 import { clearSubscribers, processOutbox } from "../src/modules/platform/outbox.js";
 import { computeStandings } from "../src/modules/schedule/service.js";
 import { registerSubscribers } from "../src/modules/subscribers.js";
+import { featureFlags } from "../src/db/schema/index.js";
+import { resetFlagCache } from "../src/modules/platform/flags.js";
+
+const RELEASE_FLAGS = ["r3.teams_draft", "r3.practices", "r4.games", "r4.announcements"];
+async function setFlags(on: boolean, keys = RELEASE_FLAGS) {
+  for (const key of keys) {
+    await db.insert(featureFlags).values({ key, enabled: on }).onConflictDoUpdate({ target: featureFlags.key, set: { enabled: on } });
+  }
+  resetFlagCache();
+}
 import { agent, mail, signUp, uniqueEmail, type Agent } from "./helpers.js";
 
 let admin: Agent;
@@ -68,6 +78,7 @@ const drainAll = async () => {
 };
 
 beforeAll(async () => {
+  await setFlags(true);
   clearSubscribers();
   registerSubscribers();
   const a = await person("sched-admin");
@@ -301,5 +312,33 @@ describe("practices, announcements and family schedules", () => {
     expect((await coach.a.post("/api/v1/admin/schedule/announcements").send({ audience: "league", subject: "x", body: "y" })).status).toBe(403);
     const audit = await db.select().from(announcements).where(and(eq(announcements.audience, "division"), eq(announcements.divisionId, divisionId)));
     expect(audit).toHaveLength(1);
+  });
+});
+
+describe("release switches", () => {
+  it("hides practices, games and coach announcements from families and coaches while off; admins still work", async () => {
+    const c = await coachOf("Switchcoach", team.sharks, "assistant_coach");
+    const fam = await rostered("Switchfam", team.sharks);
+    await setFlags(false, ["r3.practices", "r4.games", "r4.announcements"]);
+    try {
+      const p = { startsAt: "2027-02-20T18:00", durationMinutes: 60, location: "Park" };
+      const blocked = await c.a.post(`/api/v1/teams/${team.sharks}/practices`).send(p);
+      expect(blocked.status).toBe(403);
+      expect(blocked.body.error.code).toBe("FEATURE_DISABLED");
+      expect((await c.a.post(`/api/v1/teams/${team.sharks}/announcements`).send({ subject: "x", body: "y" })).body.error.code).toBe("FEATURE_DISABLED");
+      expect((await admin.post(`/api/v1/teams/${team.sharks}/practices`).send(p)).status).toBe(201);
+      const mine = (await fam.a.get("/api/v1/my-schedule")).body.items[0];
+      expect(mine.games).toHaveLength(0);
+      expect(mine.practices).toHaveLength(0);
+      expect((await agent().get("/api/v1/schedule")).body.divisions).toHaveLength(0);
+
+      await setFlags(false, ["r3.teams_draft"]);
+      expect((await fam.a.get("/api/v1/my-schedule")).body.items).toHaveLength(0);
+      expect((await c.a.get("/api/v1/my-teams")).body.items).toHaveLength(0);
+      expect((await c.a.get(`/api/v1/my-teams/${team.sharks}`)).status).toBe(403);
+    } finally {
+      await setFlags(true);
+    }
+    expect((await fam.a.get("/api/v1/my-schedule")).body.items[0].practices.length).toBeGreaterThan(0);
   });
 });

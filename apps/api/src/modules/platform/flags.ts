@@ -1,5 +1,8 @@
 /** Feature flags with a short in-process cache (flags change rarely). */
+import type { Permission } from "@nffl/shared";
 import { eq } from "drizzle-orm";
+import type { RequestHandler } from "express";
+import { HttpError } from "../../http/errors.js";
 import { db, type DbOrTx } from "../../db/client.js";
 import { featureFlags } from "../../db/schema/index.js";
 
@@ -31,4 +34,28 @@ export async function setFlag(conn: DbOrTx, key: string, enabled: boolean, actor
 
 export function resetFlagCache() {
   cache = null;
+}
+
+/** Release switches checked by the R3/R4 features. */
+export const FLAG = {
+  teams: "r3.teams_draft",
+  practices: "r3.practices",
+  games: "r4.games",
+  announcements: "r4.announcements",
+} as const;
+
+/**
+ * Blocks a route while its release switch is off. Admins holding `adminPermission`
+ * league-wide get through anyway, so they can set things up and test first.
+ */
+export function requireFlag(key: string, adminPermission?: Permission): RequestHandler {
+  return async (req, _res, next) => {
+    try {
+      if (await isEnabled(key)) return next();
+      if (adminPermission && req.ctx.access?.leagueWide.has(adminPermission)) return next();
+      next(new HttpError(403, "FEATURE_DISABLED", "This isn't turned on yet."));
+    } catch (err) {
+      next(err);
+    }
+  };
 }

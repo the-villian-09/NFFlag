@@ -17,6 +17,16 @@ import {
 } from "../src/db/schema/index.js";
 import { clearSubscribers, processOutbox } from "../src/modules/platform/outbox.js";
 import { registerSubscribers } from "../src/modules/subscribers.js";
+import { featureFlags } from "../src/db/schema/index.js";
+import { resetFlagCache } from "../src/modules/platform/flags.js";
+
+const RELEASE_FLAGS = ["r3.teams_draft", "r3.practices", "r4.games", "r4.announcements"];
+async function setFlags(on: boolean, keys = RELEASE_FLAGS) {
+  for (const key of keys) {
+    await db.insert(featureFlags).values({ key, enabled: on }).onConflictDoUpdate({ target: featureFlags.key, set: { enabled: on } });
+  }
+  resetFlagCache();
+}
 import { buildSlots } from "../src/modules/teams/service.js";
 import { agent, mail, signUp, uniqueEmail, type Agent } from "./helpers.js";
 
@@ -62,6 +72,7 @@ const drainAll = async () => {
 };
 
 beforeAll(async () => {
+  await setFlags(true);
   clearSubscribers();
   registerSubscribers();
   const a = await person("teams-admin");

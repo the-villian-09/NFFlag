@@ -20,6 +20,7 @@ import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission }
 import { HttpError } from "../../http/errors.js";
 import { can } from "../platform/access.js";
 import { writeAudit } from "../platform/audit.js";
+import { FLAG, isEnabled, requireFlag } from "../platform/flags.js";
 import {
   addToTeam,
   assignStaff,
@@ -219,6 +220,7 @@ myTeamsRouter.get(
   requireAuth,
   requireMfa,
   handler(async (req, res) => {
+    if (!(await isEnabled(FLAG.teams)) && !req.ctx.access!.leagueWide.has("teams.manage")) return void res.json({ items: [] });
     const rows = await db
       .select({
         id: teams.id,
@@ -243,6 +245,7 @@ myTeamsRouter.get(
   "/my-teams/:teamId",
   requireAuth,
   requireMfa,
+  requireFlag(FLAG.teams, "teams.manage"),
   requirePermission("roster.read", (req) => ({ type: "team", id: String(req.params.teamId) })),
   handler(async (req, res) => {
     const teamId = String(req.params.teamId);
