@@ -99,8 +99,8 @@ export function renderEmail(c: EmailContent): { html: string; text: string } {
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;">
       <tr><td style="padding:0 0 16px;">
         <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
-          <td style="padding-right:12px;"><img src="${base}/apple-icon.png" width="48" height="48" alt="NFFL" style="display:block;border:0;"></td>
-          <td style="font-family:${FONT};font-size:20px;font-weight:800;line-height:1.05;text-transform:uppercase;color:#ffffff;">North Florida<br>Flag League</td>
+          <td style="padding-right:16px;"><img src="${base}/apple-icon.png" width="88" height="88" alt="NFFL" style="display:block;width:88px;height:88px;border:0;"></td>
+          <td style="font-family:${FONT};font-size:24px;font-weight:800;line-height:1.05;text-transform:uppercase;color:#ffffff;">North Florida<br>Flag League</td>
         </tr></table>
       </td></tr>
       <tr><td bgcolor="${NAVY_2}" style="background:${NAVY_2};border-top:4px solid ${LIME};padding:28px 24px;">
