@@ -97,7 +97,7 @@ export default function AdminPage() {
           {!flags ? (
             <p className="muted">Loading…</p>
           ) : (
-            <table className="simple">
+            <table className="simple stack">
               <thead>
                 <tr>
                   <th>Feature</th>
@@ -108,13 +108,13 @@ export default function AdminPage() {
               <tbody>
                 {flags.map((f) => (
                   <tr key={f.key}>
-                    <td>
+                    <td data-label="">
                       {f.description ?? f.key}
                       <br />
                       <code className="muted">{f.key}</code>
                     </td>
-                    <td>{f.enabled ? "On" : "Off"}</td>
-                    <td>
+                    <td data-label="Status">{f.enabled ? "On" : "Off"}</td>
+                    <td data-label="">
                       <button className="btn ghost" onClick={() => toggle(f)}>
                         Turn {f.enabled ? "off" : "on"}
                       </button>

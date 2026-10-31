@@ -145,7 +145,7 @@ export default function AdminRegistrationsPage() {
               {data.total} registration{data.total === 1 ? "" : "s"} · {STATUS[status]?.label ?? FILTERS.find((f) => f.value === status)?.label}
             </p>
             <div className="table-wrap">
-              <table className="simple">
+              <table className="simple stack">
                 <thead>
                   <tr>
                     <th>Player</th>
@@ -159,15 +159,15 @@ export default function AdminRegistrationsPage() {
                 <tbody>
                   {data.items.map((r) => (
                     <tr key={r.id}>
-                      <td>
+                      <td data-label="">
                         <Link href={`/admin/registrations/${r.id}`}>
                           {r.playerFirstName} {r.playerLastName}
                         </Link>
                       </td>
-                      <td>{fmtDate(r.birthDate)}</td>
-                      <td>{r.divisionName}</td>
-                      <td>{r.householdName}</td>
-                      <td>
+                      <td data-label="Born">{fmtDate(r.birthDate)}</td>
+                      <td data-label="Division">{r.divisionName}</td>
+                      <td data-label="Family">{r.householdName}</td>
+                      <td data-label="Paid">
                         {r.paidAt ? (
                           <>
                             {money(r.totalCents)}
@@ -178,7 +178,7 @@ export default function AdminRegistrationsPage() {
                           "—"
                         )}
                       </td>
-                      <td>
+                      <td data-label="Status">
                         <StatusBadge status={r.status} />
                       </td>
                     </tr>

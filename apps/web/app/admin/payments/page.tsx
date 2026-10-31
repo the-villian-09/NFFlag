@@ -212,7 +212,7 @@ function SquareCard({ status, canManage, onChanged }: { status: Status; canManag
             Type DISCONNECT to confirm
             <input type="text" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />
           </label>
-          <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <button className="btn danger" disabled={busy || typed !== "DISCONNECT"}>
               {busy ? "Disconnecting…" : "Disconnect Square"}
             </button>

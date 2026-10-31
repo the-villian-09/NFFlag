@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
 import { api, ApiError } from "@/lib/api";
-import { fmtDateTime, GENDER_POLICY, money } from "@/lib/format";
+import { fmtDate, fmtDateTime, GENDER_POLICY, money } from "@/lib/format";
 import { useMe } from "@/lib/use-me";
 
 interface Division {
@@ -148,7 +148,7 @@ function SeasonCard({ season, canManage, onChanged }: { season: Season; canManag
 
       <h3 style={{ fontSize: 28, color: "#fff", marginTop: 24 }}>Divisions</h3>
       <div className="table-wrap">
-        <table className="simple">
+        <table className="simple stack">
           <thead>
             <tr>
               <th>Division</th>
@@ -162,20 +162,20 @@ function SeasonCard({ season, canManage, onChanged }: { season: Season; canManag
           <tbody>
             {season.divisions.map((d) => (
               <tr key={d.id}>
-                <td>
+                <td data-label="">
                   {d.name}
                   <br />
                   <span className="muted">{GENDER_POLICY[d.genderPolicy]}</span>
                 </td>
-                <td>
-                  {d.birthDateFrom ?? "any"} → {d.birthDateTo ?? "any"}
+                <td data-label="Born">
+                  {d.birthDateFrom ? fmtDate(d.birthDateFrom) : "any"} – {d.birthDateTo ? fmtDate(d.birthDateTo) : "any"}
                 </td>
-                <td>{money(d.priceCents)}</td>
-                <td>
+                <td data-label="Price">{money(d.priceCents)}</td>
+                <td data-label="Spots">
                   {d.taken} / {d.capacity}
                 </td>
-                <td>{d.status}</td>
-                <td style={{ textAlign: "right" }}>
+                <td data-label="Status">{d.status}</td>
+                <td data-label="" style={{ textAlign: "right" }}>
                   {canManage && (
                     <button className="btn ghost small" onClick={() => setEditingDivision(d)}>
                       Edit
@@ -274,7 +274,7 @@ function SeasonForm({ season, onDone, onCancel }: { season?: Season; onDone: () 
       <label className="check">
         <input type="checkbox" name="isCurrent" defaultChecked={!!season?.isCurrent} /> This is the current season (shown to families)
       </label>
-      <div style={{ display: "flex", gap: 12 }}>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <button className="btn" disabled={busy}>
           {busy ? "Saving…" : "Save season"}
         </button>
@@ -362,7 +362,7 @@ function DivisionForm({ seasonId, division, onDone, onCancel }: { seasonId: stri
           <input type="number" name="sortOrder" min={0} max={1000} defaultValue={division?.sortOrder ?? 0} />
         </label>
       </div>
-      <div style={{ display: "flex", gap: 12 }}>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <button className="btn" disabled={busy}>
           {busy ? "Saving…" : "Save division"}
         </button>

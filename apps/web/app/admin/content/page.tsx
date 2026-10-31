@@ -88,7 +88,7 @@ export default function AdminContentPage() {
           <p className="muted">Loading…</p>
         ) : (
           <div className="table-wrap">
-            <table className="simple">
+            <table className="simple stack">
               <thead>
                 <tr>
                   <th>Page</th>
@@ -100,14 +100,14 @@ export default function AdminContentPage() {
               <tbody>
                 {pages.map((p) => (
                   <tr key={p.slug}>
-                    <td>
+                    <td data-label="">
                       {p.title}
                       <br />
                       <code>/{p.slug}</code>
                     </td>
-                    <td>{p.isPlaceholder ? <span className="status warn">Placeholder</span> : <span className="status ok">Edited</span>}</td>
-                    <td>{fmt(p.updatedAt)}</td>
-                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <td data-label="Status">{p.isPlaceholder ? <span className="status warn">Placeholder</span> : <span className="status ok">Edited</span>}</td>
+                    <td data-label="Updated">{fmt(p.updatedAt)}</td>
+                    <td data-label="" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                       <Link className="btn small" href={`/admin/content/${p.slug}`}>
                         Edit
                       </Link>

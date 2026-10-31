@@ -70,7 +70,7 @@ export default function DashboardPage() {
     <main className="page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
         <h1 style={{ margin: 0 }}>Welcome, {me.user.name.split(" ")[0]}</h1>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {isAdmin(me) && (
             <Link className="btn accent" href="/admin">
               Admin portal
@@ -269,7 +269,7 @@ function SecurityCard({ enabled, required }: { enabled: boolean; required: boole
             Confirm your password
             <input type="password" name="password" autoComplete="current-password" required />
           </label>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="btn" disabled={busy}>
               Turn off
             </button>

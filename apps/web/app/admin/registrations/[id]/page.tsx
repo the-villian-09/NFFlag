@@ -333,7 +333,7 @@ function Actions({ detail, refundable, can, onDone }: { detail: Detail; refundab
               <input type="checkbox" name="refund" defaultChecked={mode === "reject"} /> Refund the remaining {money(refundable)} to their card
             </label>
           )}
-          <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <button className={`btn ${mode === "refund" ? "" : "danger"}`} disabled={busy}>
               {busy ? "Working…" : "Confirm"}
             </button>
