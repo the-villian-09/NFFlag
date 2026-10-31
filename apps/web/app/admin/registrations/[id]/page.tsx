@@ -23,6 +23,7 @@ interface Detail {
     paymentError: string | null;
     createdAt: string;
   };
+  team: { entryId: string; teamId: string; name: string; source: string } | null;
   player: { firstName: string; lastName: string; preferredName: string | null; birthDate: string; gender: string; shirtSize: string | null; school: string | null; grade: string | null };
   division: { name: string; genderPolicy: string; birthDateFrom: string | null; birthDateTo: string | null };
   season: { name: string } | null;
@@ -117,6 +118,16 @@ export default function AdminRegistrationPage() {
                   {d.player.school ?? "—"} {d.player.grade ? `· ${d.player.grade}` : ""}
                 </dd>
               </dl>
+              {d.team && (
+                <TeamLine
+                  team={d.team}
+                  canRemove={!!me?.permissions.includes("teams.manage")}
+                  onRemoved={() => {
+                    setNotice(`Removed from ${d.team!.name}.`);
+                    load();
+                  }}
+                />
+              )}
               <h3 style={{ fontSize: 24, color: "#fff", marginTop: 16 }}>Division rules</h3>
               <p className="muted" style={{ margin: 0 }}>
                 {GENDER_POLICY[d.division.genderPolicy]} · born {d.division.birthDateFrom ? fmtDate(d.division.birthDateFrom) : "any time"} –{" "}
@@ -344,5 +355,30 @@ function Actions({ detail, refundable, can, onDone }: { detail: Detail; refundab
         </form>
       )}
     </section>
+  );
+}
+
+/** Shows the player's team; an admin can take them off it (e.g. after a refund). */
+function TeamLine({ team, canRemove, onRemoved }: { team: { entryId: string; name: string }; canRemove: boolean; onRemoved: () => void }) {
+  const { busy, error, run } = useAction();
+  return (
+    <div style={{ marginTop: 16 }}>
+      <h3 style={{ fontSize: 24, color: "#fff", margin: "0 0 4px" }}>Team</h3>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <strong>{team.name}</strong>
+        {canRemove && (
+          <button
+            className="btn ghost small"
+            disabled={busy}
+            onClick={async () => {
+              if (window.confirm(`Take this player off ${team.name}? They won't be on any team until an admin adds them back. No email is sent.`) && (await run(() => api.del(`/admin/teams/roster/${team.entryId}`))) !== undefined) onRemoved();
+            }}
+          >
+            Remove from team
+          </button>
+        )}
+      </div>
+      <ErrorAlert error={error} />
+    </div>
   );
 }

@@ -427,10 +427,13 @@ function Rosters({ b, busy, act, divisionId }: { b: Board; busy: boolean; act: A
                         style={{ width: "auto", minHeight: 36, padding: "4px 8px", fontSize: 15 }}
                         onChange={(e) => {
                           const to = e.target.value;
-                          if (to && window.confirm(`Move ${r.firstName} to ${b.teams.find((x) => x.id === to)?.name}?`)) void act(() => api.post(`/admin/teams/roster/${r.id}/move`, { teamId: to }));
+                          if (to === "__remove") {
+                            if (window.confirm(`Take ${r.firstName} ${r.lastName} off ${b.teams.find((x) => x.id === teamId)?.name}? They go back to "Not on a team". No email is sent.`))
+                              void act(() => api.del(`/admin/teams/roster/${r.id}`));
+                          } else if (to && window.confirm(`Move ${r.firstName} to ${b.teams.find((x) => x.id === to)?.name}?`)) void act(() => api.post(`/admin/teams/roster/${r.id}/move`, { teamId: to }));
                         }}
                       >
-                        <option value="">Move…</option>
+                        <option value="">Move or remove…</option>
                         {b.teams
                           .filter((x) => x.id !== teamId)
                           .map((x) => (
@@ -438,6 +441,7 @@ function Rosters({ b, busy, act, divisionId }: { b: Board; busy: boolean; act: A
                               {x.name}
                             </option>
                           ))}
+                        <option value="__remove">Remove from team</option>
                       </select>
                     )}
                   </li>

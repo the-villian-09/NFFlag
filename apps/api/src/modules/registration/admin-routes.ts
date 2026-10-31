@@ -15,8 +15,10 @@ import {
   players,
   refunds,
   registrations,
+  rosterEntries,
   seasons,
   siteSettings,
+  teams,
   user,
   waitlistEntries,
 } from "../../db/schema/index.js";
@@ -354,8 +356,14 @@ adminLeagueRouter.get(
         ipAddress: req.ctx.ip,
       });
     }
+    const [team] = await db
+      .select({ entryId: rosterEntries.id, teamId: teams.id, name: teams.name, source: rosterEntries.source })
+      .from(rosterEntries)
+      .innerJoin(teams, eq(teams.id, rosterEntries.teamId))
+      .where(eq(rosterEntries.registrationId, id));
     res.json({
       registration: r,
+      team: team ?? null,
       player,
       division,
       season: season ? { id: season.id, name: season.name } : null,

@@ -206,6 +206,17 @@ describe("teams and the draft", () => {
     await admin.post(`/api/v1/admin/league/registrations/${families[1]!.registrationId}/decision`).send({ decision: "rejected", reason: "Wrong age", refund: false });
     expect(await db.select().from(rosterEntries).where(eq(rosterEntries.registrationId, families[1]!.registrationId))).toHaveLength(0);
   });
+
+  it("lets an admin take a player off a team after the draft, and the registration shows the team until then", async () => {
+    const reg = families[2]!.registrationId;
+    const detail = await admin.get(`/api/v1/admin/league/registrations/${reg}`);
+    expect(detail.body.team.name).toBeTruthy();
+    expect((await coach1.a.delete(`/api/v1/admin/teams/roster/${detail.body.team.entryId}`)).status).toBe(403);
+    expect((await admin.delete(`/api/v1/admin/teams/roster/${detail.body.team.entryId}`)).status).toBe(200);
+    expect((await admin.get(`/api/v1/admin/league/registrations/${reg}`)).body.team).toBeNull();
+    const board = (await admin.get(`/api/v1/admin/teams/divisions/${divisionId}/draft`)).body;
+    expect(board.available.some((a: { registrationId: string }) => a.registrationId === reg)).toBe(true);
+  });
 });
 
 describe("draft-night safeguards and staff access (review fixes)", () => {
