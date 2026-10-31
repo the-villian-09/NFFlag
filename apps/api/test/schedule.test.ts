@@ -224,6 +224,25 @@ describe("practices, announcements and family schedules", () => {
     expect((await assistant.a.post(`/api/v1/teams/${team.sharks}/practices`).send(p)).status).toBe(201);
   });
 
+  it("adds weekly practices (Tue + Wed at 6 PM) and deletes the rest of a series", async () => {
+    const body = { startDate: "2027-02-01", endDate: "2027-02-14", weekdays: [2, 3], time: "18:00", durationMinutes: 75, location: "Field 4" };
+    expect((await otherCoach.a.post(`/api/v1/teams/${team.sharks}/practices/series`).send(body)).status).toBe(403);
+    const r = await coach.a.post(`/api/v1/teams/${team.sharks}/practices/series`).send(body);
+    expect(r.status).toBe(201);
+    expect(r.body.count).toBe(4); // Feb 2, 3, 9, 10
+    const list = (await coach.a.get(`/api/v1/teams/${team.sharks}/practices`)).body.items.filter((p: { seriesId: string }) => p.seriesId === r.body.seriesId);
+    expect(list.map((p: { startsAtLocal: string }) => p.startsAtLocal)).toEqual(["2027-02-02T18:00", "2027-02-03T18:00", "2027-02-09T18:00", "2027-02-10T18:00"]);
+    expect(new Date(list[0].startsAt).toISOString()).toBe("2027-02-02T23:00:00.000Z");
+
+    expect((await coach.a.post(`/api/v1/teams/${team.sharks}/practices/series`).send({ ...body, endDate: "2027-01-01" })).status).toBe(400);
+    expect((await coach.a.post(`/api/v1/teams/${team.sharks}/practices/series`).send({ ...body, endDate: "2028-12-31", weekdays: [0, 1, 2, 3, 4, 5, 6] })).status).toBe(400);
+
+    const del = await coach.a.delete(`/api/v1/teams/${team.sharks}/practices/${list[2].id}/series`);
+    expect(del.body.deleted).toBe(2);
+    const left = (await coach.a.get(`/api/v1/teams/${team.sharks}/practices`)).body.items.filter((p: { seriesId: string }) => p.seriesId === r.body.seriesId);
+    expect(left).toHaveLength(2);
+  });
+
   it("shows each family their own team's games and practices", async () => {
     const mine = (await sharkFam.a.get("/api/v1/my-schedule")).body.items;
     expect(mine).toHaveLength(1);

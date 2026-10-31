@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { EventRow } from "@/components/event-row";
+import { Modal } from "@/components/modal";
 import { ErrorAlert, useAction } from "@/components/form";
 import { api } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
@@ -49,6 +50,23 @@ export function TeamTools({ teamId, teamName, canPractice, canAnnounce }: { team
 
   const now = Date.now();
   const upcoming = practices?.filter((p) => new Date(p.startsAt).getTime() > now - 3 * 3600_000) ?? [];
+  const nextGames = games?.filter((g) => new Date(g.startsAt).getTime() > now - 3 * 3600_000) ?? [];
+  const [showAll, setShowAll] = useState<"practices" | "games" | null>(null);
+  const SHOW = 3;
+  const gameRow = (g: Game) => {
+    const opp = g.homeTeamId === teamId ? g.away : g.home;
+    const res = resultFor(g, teamId);
+    return (
+      <EventRow
+        key={g.id}
+        startsAt={g.startsAt}
+        title={`${g.homeTeamId === teamId ? "vs" : "at"} ${opp}${res ? ` · ${res}` : ""}`}
+        detail={g.notes ? `${g.location} · ${g.notes}` : g.location}
+        struck={g.status === "cancelled"}
+        badge={g.status !== "scheduled" ? <span className={`status ${GAME_STATUS[g.status].tone}`}>{GAME_STATUS[g.status].label}</span> : null}
+      />
+    );
+  };
 
   return (
     <>
@@ -62,10 +80,15 @@ export function TeamTools({ teamId, teamName, canPractice, canAnnounce }: { team
             <p className="muted">No upcoming practices.{canPractice ? " Add one above; families see it on their account page." : ""}</p>
           ) : (
             <ul className="events" style={{ marginTop: 12 }}>
-              {upcoming.map((p) => (
+              {upcoming.slice(0, SHOW).map((p) => (
                 <PracticeRow key={p.id} teamId={teamId} p={p} canEdit={canPractice} onDone={load} />
               ))}
             </ul>
+          )}
+          {!!practices?.length && (
+            <button className="btn ghost small" style={{ marginTop: 12 }} onClick={() => setShowAll("practices")}>
+              All practices ({practices.length})
+            </button>
           )}
         </section>
         <section className="card">
@@ -74,26 +97,25 @@ export function TeamTools({ teamId, teamName, canPractice, canAnnounce }: { team
             <p className="muted">Loading…</p>
           ) : games.length === 0 ? (
             <p className="muted">The league hasn&apos;t posted games for {teamName} yet.</p>
+          ) : nextGames.length === 0 ? (
+            <p className="muted">No more games this season.</p>
           ) : (
-            <ul className="events">
-              {games.map((g) => {
-                const opp = g.homeTeamId === teamId ? g.away : g.home;
-                const res = resultFor(g, teamId);
-                return (
-                  <EventRow
-                    key={g.id}
-                    startsAt={g.startsAt}
-                    title={`${g.homeTeamId === teamId ? "vs" : "at"} ${opp}${res ? ` · ${res}` : ""}`}
-                    detail={g.notes ? `${g.location} · ${g.notes}` : g.location}
-                    struck={g.status === "cancelled"}
-                    badge={g.status !== "scheduled" ? <span className={`status ${GAME_STATUS[g.status].tone}`}>{GAME_STATUS[g.status].label}</span> : null}
-                  />
-                );
-              })}
-            </ul>
+            <ul className="events">{nextGames.slice(0, SHOW).map(gameRow)}</ul>
+          )}
+          {!!games?.length && (
+            <button className="btn ghost small" style={{ marginTop: 12 }} onClick={() => setShowAll("games")}>
+              All games ({games.length})
+            </button>
           )}
         </section>
       </div>
+      <Modal open={!!showAll} title={showAll === "games" ? `${teamName} games` : `${teamName} practices`} onClose={() => setShowAll(null)}>
+        <ul className="events">
+          {showAll === "games"
+            ? games?.map(gameRow)
+            : practices?.map((p) => <PracticeRow key={p.id} teamId={teamId} p={p} canEdit={canPractice} onDone={load} />)}
+        </ul>
+      </Modal>
 
       <section className="card" style={{ marginTop: 24 }} id="announce">
         <h2>Announcements</h2>
@@ -123,22 +145,47 @@ export function TeamTools({ teamId, teamName, canPractice, canAnnounce }: { team
   );
 }
 
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Dates from start to end (inclusive) that fall on the chosen weekdays — mirrors the server. */
+function countSeries(start: string, end: string, days: number[]) {
+  if (!start || !end || end < start || !days.length) return 0;
+  const [sy, sm, sd] = start.split("-").map(Number) as [number, number, number];
+  const [ey, em, ed] = end.split("-").map(Number) as [number, number, number];
+  let n = 0;
+  for (let t = Date.UTC(sy, sm - 1, sd); t <= Date.UTC(ey, em - 1, ed); t += 86400_000) if (days.includes(new Date(t).getUTCDay())) n++;
+  return n;
+}
+
 function AddPractice({ teamId, onDone }: { teamId: string; onDone: () => void }) {
   const { busy, error, run } = useAction();
   const [open, setOpen] = useState(false);
+  const [repeat, setRepeat] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
   const [f, setF] = useState({ startsAt: "", durationMinutes: 60, location: "", notes: "" });
+  const [r, setR] = useState({ startDate: "", endDate: "", time: "18:00", weekdays: [] as number[] });
+  const count = countSeries(r.startDate, r.endDate, r.weekdays);
   if (!open)
     return (
-      <button className="btn small" onClick={() => setOpen(true)}>
-        + Add practice
-      </button>
+      <>
+        {done && <div className="alert ok">{done}</div>}
+        <button className="btn small" onClick={() => (setOpen(true), setDone(null))}>
+          + Add practice
+        </button>
+      </>
     );
+  const toggleDay = (d: number) => setR({ ...r, weekdays: r.weekdays.includes(d) ? r.weekdays.filter((x) => x !== d) : [...r.weekdays, d].sort() });
   return (
     <form
       className="stack"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (await run(() => api.post(`/teams/${teamId}/practices`, { ...f, notes: f.notes || null }))) {
+        const common = { durationMinutes: f.durationMinutes, location: f.location, notes: f.notes || null };
+        const res = repeat
+          ? await run(() => api.post<{ count: number }>(`/teams/${teamId}/practices/series`, { ...r, ...common }))
+          : await run(() => api.post(`/teams/${teamId}/practices`, { startsAt: f.startsAt, ...common }));
+        if (res) {
+          setDone(repeat ? `Added ${(res as { count: number }).count} practices.` : "Practice added.");
           setF({ ...f, startsAt: "", notes: "" });
           setOpen(false);
           onDone();
@@ -146,22 +193,54 @@ function AddPractice({ teamId, onDone }: { teamId: string; onDone: () => void })
       }}
     >
       <ErrorAlert error={error} />
-      <div className="form-row">
-        <label>
-          Date and time
-          <input type="datetime-local" required value={f.startsAt} onChange={(e) => setF({ ...f, startsAt: e.target.value })} />
-        </label>
-        <label>
-          Length
-          <select value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: Number(e.target.value) })}>
-            {[45, 60, 75, 90, 120].map((m) => (
-              <option key={m} value={m}>
-                {m} min
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="seg" role="radiogroup" aria-label="One practice or weekly">
+        <button type="button" role="radio" aria-checked={!repeat} onClick={() => setRepeat(false)}>
+          One practice
+        </button>
+        <button type="button" role="radio" aria-checked={repeat} onClick={() => setRepeat(true)}>
+          Repeats weekly
+        </button>
       </div>
+      {repeat ? (
+        <>
+          <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+            <legend style={{ fontWeight: 700, marginBottom: 8 }}>Every</legend>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {DAYS.map((d, i) => (
+                <label key={d} className={`day-chip ${r.weekdays.includes(i) ? "on" : ""}`}>
+                  <input type="checkbox" checked={r.weekdays.includes(i)} onChange={() => toggleDay(i)} />
+                  {d}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="form-row">
+            <label>
+              Starting
+              <input type="date" required value={r.startDate} onChange={(e) => setR({ ...r, startDate: e.target.value })} />
+            </label>
+            <label>
+              Through
+              <input type="date" required min={r.startDate || undefined} value={r.endDate} onChange={(e) => setR({ ...r, endDate: e.target.value })} />
+            </label>
+          </div>
+          <div className="form-row">
+            <label>
+              Time
+              <input type="time" required step={300} value={r.time} onChange={(e) => setR({ ...r, time: e.target.value })} />
+            </label>
+            <LengthSelect value={f.durationMinutes} onChange={(v) => setF({ ...f, durationMinutes: v })} />
+          </div>
+        </>
+      ) : (
+        <div className="form-row">
+          <label>
+            Date and time
+            <input type="datetime-local" required value={f.startsAt} onChange={(e) => setF({ ...f, startsAt: e.target.value })} />
+          </label>
+          <LengthSelect value={f.durationMinutes} onChange={(v) => setF({ ...f, durationMinutes: v })} />
+        </div>
+      )}
       <label>
         Location
         <input type="text" required maxLength={200} value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} placeholder="e.g. Hendricks Park, Field 3" />
@@ -170,15 +249,39 @@ function AddPractice({ teamId, onDone }: { teamId: string; onDone: () => void })
         Notes <span className="muted">(optional)</span>
         <input type="text" maxLength={500} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} placeholder="Bring water and cleats" />
       </label>
+      {repeat && (
+        <p className="muted" style={{ margin: 0 }}>
+          {count === 0
+            ? "Pick the days and the dates."
+            : count > 100
+              ? `That's ${count} practices. Add up to 100 at a time.`
+              : `Adds ${count} practice${count === 1 ? "" : "s"}. You can still change or cancel any one of them later.`}
+        </p>
+      )}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <button className="btn small" disabled={busy}>
-          Add practice
+        <button className="btn small" disabled={busy || (repeat && (count === 0 || count > 100))}>
+          {repeat && count > 0 && count <= 100 ? `Add ${count} practices` : "Add practice"}
         </button>
         <button type="button" className="btn ghost small" onClick={() => setOpen(false)}>
           Cancel
         </button>
       </div>
     </form>
+  );
+}
+
+function LengthSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <label>
+      Length
+      <select value={value} onChange={(e) => onChange(Number(e.target.value))}>
+        {[45, 60, 75, 90, 120].map((m) => (
+          <option key={m} value={m}>
+            {m} min
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -262,6 +365,18 @@ function PracticeRow({ teamId, p, canEdit, onDone }: { teamId: string; p: Practi
             >
               Delete
             </button>
+            {p.seriesId && (
+              <button
+                type="button"
+                className="btn ghost small"
+                disabled={busy}
+                onClick={async () => {
+                  if (window.confirm("Delete this practice and every later one in this weekly series? No email is sent.") && (await run(() => api.del(`/teams/${teamId}/practices/${p.id}/series`))) !== undefined) onDone();
+                }}
+              >
+                Delete this and later
+              </button>
+            )}
             <button type="button" className="btn ghost small" onClick={() => setEditing(false)}>
               Close
             </button>

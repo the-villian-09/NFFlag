@@ -10,9 +10,11 @@ import {
   clearScore,
   createGame,
   createPractice,
+  createPracticeSeries,
   currentSeasonId,
   deleteGame,
   deletePractice,
+  deletePracticeSeriesFrom,
   importGames,
   listAnnouncements,
   listGames,
@@ -126,6 +128,41 @@ scheduleRouter.delete(
   handler(async (req, res) => {
     await deletePractice(await teamOpen(req), uuid.parse(req.params.id));
     res.status(204).end();
+  }),
+);
+
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a date.");
+
+/** Weekly practices: every chosen weekday from startDate to endDate at the same time. */
+scheduleRouter.post(
+  "/teams/:teamId/practices/series",
+  requireAuth,
+  requireMfa,
+  requirePermission("practices.manage", teamScope),
+  handler(async (req, res) => {
+    const input = z
+      .object({
+        startDate: day,
+        endDate: day,
+        weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7),
+        time: z.string().regex(/^\d{2}:\d{2}$/, "Enter a time."),
+        durationMinutes: z.number().int().min(15).max(300).default(60),
+        location: text(200),
+        notes: optText(500),
+      })
+      .parse(req.body);
+    res.status(201).json(await createPracticeSeries(actorOf(req), await teamOpen(req), input));
+  }),
+);
+
+/** Delete this practice and the rest of its weekly series. */
+scheduleRouter.delete(
+  "/teams/:teamId/practices/:id/series",
+  requireAuth,
+  requireMfa,
+  requirePermission("practices.manage", teamScope),
+  handler(async (req, res) => {
+    res.json({ deleted: await deletePracticeSeriesFrom(await teamOpen(req), uuid.parse(req.params.id)) });
   }),
 );
 

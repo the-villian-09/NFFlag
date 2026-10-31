@@ -24,6 +24,7 @@ export interface Practice {
   location: string;
   notes: string | null;
   status: "scheduled" | "cancelled";
+  seriesId?: string | null;
   startsAtLocal?: string;
 }
 

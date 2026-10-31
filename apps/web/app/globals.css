@@ -281,7 +281,7 @@ form.stack > .btn, form.stack > button.btn { justify-self: start; }
 .auth-wrap form.stack > .btn { justify-self: stretch; }
 
 /* ---------- R1b: registration, players, admin league screens ---------- */
-input[type="date"], input[type="number"], input[type="tel"], input[type="datetime-local"], input[type="search"] {
+input[type="date"], input[type="time"], input[type="number"], input[type="tel"], input[type="datetime-local"], input[type="search"] {
   font: inherit; font-size: 18px; padding: 12px; border: 2px solid var(--line); border-radius: 0; background: #fff; color: var(--navy); min-height: 48px;
   width: 100%; min-width: 0;
 }
@@ -368,3 +368,12 @@ input:disabled, select:disabled, textarea:disabled { background: #1a2633; color:
 .modal-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; position: sticky; top: -20px; background: var(--navy-2); padding: 8px 0 12px; margin-top: -8px; z-index: 1; }
 .modal-head h2 { margin: 0; }
 @media (max-width: 420px) { .modal-body { padding: 16px; } }
+
+/* ---------- Segmented choice + weekday chips (practice form) ---------- */
+.seg { display: inline-flex; border: 2px solid var(--line); width: fit-content; max-width: 100%; }
+.seg button { font: inherit; font-weight: 700; font-size: 16px; color: var(--ink-muted); background: transparent; border: 0; padding: 8px 16px; cursor: pointer; min-height: 44px; }
+.seg button[aria-checked="true"] { background: var(--lime); color: var(--navy); }
+.day-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 52px; min-height: 44px; padding: 0 10px; border: 2px solid var(--line); font-weight: 800; cursor: pointer; user-select: none; }
+.day-chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.day-chip.on { background: var(--gold); border-color: var(--gold); color: var(--navy); }
+.day-chip:has(input:focus-visible) { outline: 3px solid var(--gold); outline-offset: 2px; }

@@ -3,6 +3,7 @@
  * and email announcements to a team, a division or the whole league.
  */
 import { and, asc, desc, eq, gte, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { db, type DbOrTx } from "../../db/client.js";
 import {
   announcements,
@@ -480,6 +481,71 @@ export async function updatePractice(actor: Actor, teamId: string, id: string, i
 export async function deletePractice(teamId: string, id: string) {
   await practiceOnTeam(db, teamId, id);
   await db.delete(practices).where(eq(practices.id, id));
+}
+
+export interface PracticeSeriesInput {
+  startDate: string; // YYYY-MM-DD
+  endDate: string;
+  weekdays: number[]; // 0 = Sunday … 6 = Saturday
+  time: string; // HH:mm
+  durationMinutes: number;
+  location: string;
+  notes?: string | null;
+}
+
+const MAX_SERIES = 100;
+
+/** Every date (league calendar) from start to end that falls on one of the weekdays. */
+export function seriesDates(startDate: string, endDate: string, weekdays: number[]) {
+  const [sy, sm, sd] = startDate.split("-").map(Number) as [number, number, number];
+  const [ey, em, ed] = endDate.split("-").map(Number) as [number, number, number];
+  const start = Date.UTC(sy, sm - 1, sd);
+  const end = Date.UTC(ey, em - 1, ed);
+  const out: string[] = [];
+  for (let t = start; t <= end; t += 86400_000) {
+    if (weekdays.includes(new Date(t).getUTCDay())) out.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+/** Weekly practices on the chosen days between two dates, each saved as its own practice. */
+export async function createPracticeSeries(actor: Actor, teamId: string, input: PracticeSeriesInput) {
+  if (input.endDate < input.startDate) throw new HttpError(400, "VALIDATION_FAILED", "The end date is before the start date.");
+  const dates = seriesDates(input.startDate, input.endDate, input.weekdays);
+  if (!dates.length) throw new HttpError(400, "VALIDATION_FAILED", "None of those days fall between the start and end dates.");
+  if (dates.length > MAX_SERIES) throw new HttpError(400, "VALIDATION_FAILED", `That's ${dates.length} practices. Add up to ${MAX_SERIES} at a time.`);
+  const times = dates.map((d) => leagueLocalToUtc(`${d}T${input.time}`));
+  if (times.some((t) => !t)) throw new HttpError(400, "VALIDATION_FAILED", "Enter a valid time.");
+  const seriesId = randomUUID();
+  const rows = await db
+    .insert(practices)
+    .values(
+      times.map((startsAt) => ({
+        teamId,
+        startsAt: startsAt!,
+        durationMinutes: input.durationMinutes,
+        location: input.location,
+        notes: input.notes || null,
+        seriesId,
+        createdBy: actor.userId,
+      })),
+    )
+    .returning({ id: practices.id });
+  return { seriesId, count: rows.length };
+}
+
+/** Deletes this practice and every later one in its series (earlier ones stay). */
+export async function deletePracticeSeriesFrom(teamId: string, id: string) {
+  const p = await practiceOnTeam(db, teamId, id);
+  if (!p.seriesId) {
+    await db.delete(practices).where(eq(practices.id, id));
+    return 1;
+  }
+  const gone = await db
+    .delete(practices)
+    .where(and(eq(practices.teamId, teamId), eq(practices.seriesId, p.seriesId), gte(practices.startsAt, p.startsAt)))
+    .returning({ id: practices.id });
+  return gone.length;
 }
 
 /* ---------------- announcements ---------------- */

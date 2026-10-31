@@ -531,11 +531,14 @@ export const practices = pgTable(
     notes: text("notes"),
     /** scheduled | cancelled */
     status: text("status").notNull().default("scheduled"),
+    /** Practices added together as a weekly repeat share a series id. */
+    seriesId: uuid("series_id"),
     createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    index("practices_series_idx").on(t.seriesId),
     index("practices_team_time_idx").on(t.teamId, t.startsAt),
     check("practices_status", sql`${t.status} in ('scheduled','cancelled')`),
     check("practices_duration", sql`${t.durationMinutes} between 15 and 300`),
