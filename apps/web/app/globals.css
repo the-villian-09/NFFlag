@@ -343,3 +343,20 @@ form.stack, fieldset { grid-template-columns: minmax(0, 1fr); }
 
 /* Locked (view-only) fields read as locked. */
 input:disabled, select:disabled, textarea:disabled { background: #1a2633; color: var(--ink-muted); border-color: var(--line); cursor: not-allowed; }
+
+/* ---------- Games and practices: yellow date tile + lime start time ---------- */
+.events { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.ev { display: flex; gap: 16px; align-items: stretch; background: var(--navy); padding: 14px 16px; }
+.ev-tile { flex: none; width: 78px; background: var(--navy-3); display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 8px 4px; text-align: center; color: var(--gold); }
+.ev-dow, .ev-mon { font-weight: 800; font-size: 14px; letter-spacing: 0.12em; line-height: 1.2; }
+.ev-day { font-family: var(--font-display); font-weight: 700; font-size: 40px; line-height: 0.95; }
+.ev-body { display: flex; flex-direction: column; justify-content: center; min-width: 0; overflow-wrap: anywhere; }
+.ev-time { font-family: var(--font-display); font-weight: 600; font-size: 28px; line-height: 1.05; color: var(--lime); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ev-time .status { font-family: var(--font-body); font-size: 13px; line-height: 1.4; }
+.ev-title { font-weight: 700; font-size: 20px; color: #fff; }
+.ev-detail { color: var(--ink-muted); }
+@media (max-width: 420px) {
+  .ev { gap: 12px; padding: 12px; }
+  .ev-tile { width: 64px; }
+  .ev-day { font-size: 34px; }
+}

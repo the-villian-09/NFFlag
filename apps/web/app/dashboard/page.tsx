@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
 import { api, ApiError, authApi } from "@/lib/api";
 import { fmtDate, fmtDateTime, money, StatusBadge } from "@/lib/format";
-import { fmtWhen, GAME_STATUS, resultFor, type Game, type Practice } from "@/lib/schedule";
+import { EventRow } from "@/components/event-row";
+import { GAME_STATUS, resultFor, type Game, type Practice } from "@/lib/schedule";
 import { isAdmin, useMe } from "@/lib/use-me";
 
 interface Household {
@@ -214,35 +215,26 @@ function ScheduleCard() {
             {next.length === 0 ? (
               <p className="muted">Nothing scheduled yet. Your coach will add practices here.</p>
             ) : (
-              <ul className="list">
+              <ul className="events">
                 {next.map((e) =>
                   e.kind === "game" ? (
-                    <li key={`g${e.g.id}`}>
-                      <span>
-                        <span className="who">
-                          Game {e.g.homeTeamId === t.team.id ? "vs" : "at"} {e.g.homeTeamId === t.team.id ? e.g.away : e.g.home}
-                        </span>
-                        <br />
-                        <span className="muted">
-                          {fmtWhen(e.g.startsAt)} · {e.g.location}
-                        </span>
-                      </span>
-                      {e.g.status !== "scheduled" && <span className={`status ${GAME_STATUS[e.g.status].tone}`}>{GAME_STATUS[e.g.status].label}</span>}
-                    </li>
+                    <EventRow
+                      key={`g${e.g.id}`}
+                      startsAt={e.g.startsAt}
+                      title={`Game ${e.g.homeTeamId === t.team.id ? "vs" : "at"} ${e.g.homeTeamId === t.team.id ? e.g.away : e.g.home}${resultFor(e.g, t.team.id) ? ` · ${resultFor(e.g, t.team.id)}` : ""}`}
+                      detail={e.g.location}
+                      struck={e.g.status === "cancelled"}
+                      badge={e.g.status !== "scheduled" ? <span className={`status ${GAME_STATUS[e.g.status].tone}`}>{GAME_STATUS[e.g.status].label}</span> : null}
+                    />
                   ) : (
-                    <li key={`p${e.p.id}`}>
-                      <span>
-                        <span className="who" style={e.p.status === "cancelled" ? { textDecoration: "line-through" } : undefined}>
-                          Practice
-                        </span>
-                        <br />
-                        <span className="muted">
-                          {fmtWhen(e.p.startsAt)} · {e.p.durationMinutes} min · {e.p.location}
-                          {e.p.notes ? ` · ${e.p.notes}` : ""}
-                        </span>
-                      </span>
-                      {e.p.status === "cancelled" && <span className="status bad">Cancelled</span>}
-                    </li>
+                    <EventRow
+                      key={`p${e.p.id}`}
+                      startsAt={e.p.startsAt}
+                      title={`Practice · ${e.p.durationMinutes} min`}
+                      detail={`${e.p.location}${e.p.notes ? ` · ${e.p.notes}` : ""}`}
+                      struck={e.p.status === "cancelled"}
+                      badge={e.p.status === "cancelled" ? <span className="status bad">Cancelled</span> : null}
+                    />
                   ),
                 )}
               </ul>

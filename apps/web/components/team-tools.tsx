@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { EventRow } from "@/components/event-row";
 import { ErrorAlert, useAction } from "@/components/form";
 import { api } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
-import { fmtWhen, GAME_STATUS, resultFor, type Game, type Practice } from "@/lib/schedule";
+import { GAME_STATUS, resultFor, type Game, type Practice } from "@/lib/schedule";
 
 interface Announcement {
   id: string;
@@ -60,7 +61,7 @@ export function TeamTools({ teamId, teamName, canPractice, canAnnounce }: { team
           ) : upcoming.length === 0 ? (
             <p className="muted">No upcoming practices.{canPractice ? " Add one above; families see it on their account page." : ""}</p>
           ) : (
-            <ul className="list" style={{ marginTop: 12 }}>
+            <ul className="events" style={{ marginTop: 12 }}>
               {upcoming.map((p) => (
                 <PracticeRow key={p.id} teamId={teamId} p={p} canEdit={canPractice} onDone={load} />
               ))}
@@ -74,30 +75,19 @@ export function TeamTools({ teamId, teamName, canPractice, canAnnounce }: { team
           ) : games.length === 0 ? (
             <p className="muted">The league hasn&apos;t posted games for {teamName} yet.</p>
           ) : (
-            <ul className="list">
+            <ul className="events">
               {games.map((g) => {
                 const opp = g.homeTeamId === teamId ? g.away : g.home;
                 const res = resultFor(g, teamId);
                 return (
-                  <li key={g.id}>
-                    <span>
-                      <span className="who">
-                        {g.homeTeamId === teamId ? "vs" : "at"} {opp}
-                        {res ? ` · ${res}` : ""}
-                      </span>
-                      <br />
-                      <span className="muted">
-                        {fmtWhen(g.startsAt)} · {g.location}
-                      </span>
-                      {g.notes && (
-                        <>
-                          <br />
-                          <span className="muted">{g.notes}</span>
-                        </>
-                      )}
-                    </span>
-                    {g.status !== "scheduled" && <span className={`status ${GAME_STATUS[g.status].tone}`}>{GAME_STATUS[g.status].label}</span>}
-                  </li>
+                  <EventRow
+                    key={g.id}
+                    startsAt={g.startsAt}
+                    title={`${g.homeTeamId === teamId ? "vs" : "at"} ${opp}${res ? ` · ${res}` : ""}`}
+                    detail={g.notes ? `${g.location} · ${g.notes}` : g.location}
+                    struck={g.status === "cancelled"}
+                    badge={g.status !== "scheduled" ? <span className={`status ${GAME_STATUS[g.status].tone}`}>{GAME_STATUS[g.status].label}</span> : null}
+                  />
                 );
               })}
             </ul>
@@ -202,27 +192,21 @@ function PracticeRow({ teamId, p, canEdit, onDone }: { teamId: string; p: Practi
     run(() => api.put(`/teams/${teamId}/practices/${p.id}`, { startsAt: f.startsAt, durationMinutes: f.durationMinutes, location: f.location, notes: f.notes || null, status, notify }));
 
   return (
-    <li style={{ display: "block" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <span>
-          <span className="who" style={cancelled ? { textDecoration: "line-through" } : undefined}>
-            {fmtWhen(p.startsAt)}
-          </span>
-          <br />
-          <span className="muted">
-            {p.durationMinutes} min · {p.location}
-            {p.notes ? ` · ${p.notes}` : ""}
-          </span>
-        </span>
-        <span style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          {cancelled && <span className="status bad">Cancelled</span>}
+    <EventRow
+      startsAt={p.startsAt}
+      title={`Practice · ${p.durationMinutes} min`}
+      detail={`${p.location}${p.notes ? ` · ${p.notes}` : ""}`}
+      struck={cancelled}
+      badge={cancelled ? <span className="status bad">Cancelled</span> : null}
+      extra={
+        <>
           {canEdit && !editing && (
-            <button className="btn ghost small" onClick={() => setEditing(true)}>
-              {cancelled ? "Restore" : "Change"}
-            </button>
+            <span>
+              <button className="btn ghost small" style={{ marginTop: 8 }} onClick={() => setEditing(true)}>
+                {cancelled ? "Restore" : "Change"}
+              </button>
+            </span>
           )}
-        </span>
-      </div>
       <ErrorAlert error={error} />
       {editing && (
         <form
@@ -284,7 +268,9 @@ function PracticeRow({ teamId, p, canEdit, onDone }: { teamId: string; p: Practi
           </div>
         </form>
       )}
-    </li>
+        </>
+      }
+    />
   );
 }
 

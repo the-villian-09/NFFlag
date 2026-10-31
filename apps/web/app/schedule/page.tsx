@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { serverGet } from "@/lib/server-api";
-import { fmtWhen, GAME_STATUS, pct, type Game, type Standing } from "@/lib/schedule";
+import { EventRow } from "@/components/event-row";
+import { GAME_STATUS, pct, type Game, type Standing } from "@/lib/schedule";
 
 export const metadata: Metadata = { title: "Schedule & standings" };
 export const revalidate = 60;
@@ -81,26 +82,16 @@ export default async function SchedulePage() {
                 </div>
                 <div className="card">
                   <h3 style={{ marginTop: 0 }}>Games</h3>
-                  <ul className="list">
+                  <ul className="events">
                     {d.games.map((g) => (
-                      <li key={g.id}>
-                        <span>
-                          <span className="who">
-                            {g.home} vs {g.away}
-                            {g.status === "final" && (
-                              <>
-                                {" "}
-                                · {g.homeScore}–{g.awayScore}
-                              </>
-                            )}
-                          </span>
-                          <br />
-                          <span className="muted">
-                            {fmtWhen(g.startsAt)} · {g.location}
-                          </span>
-                        </span>
-                        {g.status !== "scheduled" && <span className={`status ${GAME_STATUS[g.status].tone}`}>{GAME_STATUS[g.status].label}</span>}
-                      </li>
+                      <EventRow
+                        key={g.id}
+                        startsAt={g.startsAt}
+                        title={g.status === "final" ? `${g.home} ${g.homeScore} – ${g.away} ${g.awayScore}` : `${g.home} vs ${g.away}`}
+                        detail={g.location}
+                        struck={g.status === "cancelled"}
+                        badge={g.status !== "scheduled" ? <span className={`status ${GAME_STATUS[g.status].tone}`}>{GAME_STATUS[g.status].label}</span> : null}
+                      />
                     ))}
                   </ul>
                 </div>
