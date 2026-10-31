@@ -46,6 +46,11 @@ describe("outbox", () => {
   afterEach(() => clearSubscribers());
 
   it("delivers once, ignores duplicate publishes, and retries failures", async () => {
+    // Start from an empty queue: other test files leave events behind.
+    for (;;) {
+      const r = await processOutbox(500);
+      if (r.processed + r.failed === 0) break;
+    }
     const seen: string[] = [];
     let failOnce = true;
     subscribe("registration.paid", async (e) => {

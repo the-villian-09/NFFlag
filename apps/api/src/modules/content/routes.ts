@@ -6,6 +6,7 @@
 import { desc, eq } from "drizzle-orm";
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
+import { DEFAULT_HOMEPAGE, homepageSchema } from "@nffl/shared";
 import { z } from "zod";
 import { env } from "../../config.js";
 import { db, type DbOrTx } from "../../db/client.js";
@@ -40,7 +41,7 @@ const contactSchema = z.object({
   phone: z.string().trim().max(32).optional(),
 });
 
-const SETTING_SCHEMAS = { announcement: announcementSchema, contact: contactSchema } as const;
+const SETTING_SCHEMAS = { announcement: announcementSchema, contact: contactSchema, homepage: homepageSchema } as const;
 type SettingKey = keyof typeof SETTING_SCHEMAS;
 
 const pageInput = z.object({
@@ -94,6 +95,15 @@ publicContentRouter.get(
     if (!page) throw new HttpError(404, "NOT_FOUND", "Page not found.");
     res.set("cache-control", "public, max-age=30");
     res.json({ page: { slug: page.slug, title: page.title, body: page.body, isPlaceholder: page.isPlaceholder, updatedAt: page.updatedAt } });
+  }),
+);
+
+/** Homepage facts (dates, schedule, divisions, fees). */
+publicContentRouter.get(
+  "/homepage",
+  handler(async (_req, res) => {
+    res.set("cache-control", "public, max-age=30");
+    res.json({ homepage: await getSetting("homepage") });
   }),
 );
 
@@ -227,7 +237,7 @@ adminContentRouter.put(
 adminContentRouter.get(
   "/settings",
   handler(async (_req, res) => {
-    res.json({ announcement: await getSetting("announcement"), contact: await getSetting("contact") });
+    res.json({ announcement: await getSetting("announcement"), contact: await getSetting("contact"), homepage: await getSetting("homepage") });
   }),
 );
 

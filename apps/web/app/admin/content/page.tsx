@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
 import { api, ApiError } from "@/lib/api";
 import { useMe } from "@/lib/use-me";
+import { HomepageForm } from "@/components/homepage-form";
+import type { Homepage } from "@nffl/shared";
 
 interface PageRow {
   slug: string;
@@ -45,6 +47,7 @@ export default function AdminContentPage() {
   const [pages, setPages] = useState<PageRow[] | null>(null);
   const [banner, setBanner] = useState<Announcement | null>(null);
   const [contact, setContact] = useState<Contact | null>(null);
+  const [homepage, setHomepage] = useState<Homepage | null>(null);
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -56,13 +59,14 @@ export default function AdminContentPage() {
     }
     Promise.all([
       api.get<{ items: PageRow[] }>("/admin/content/pages"),
-      api.get<{ announcement: Announcement; contact: Contact }>("/admin/content/settings"),
+      api.get<{ announcement: Announcement; contact: Contact; homepage: Homepage }>("/admin/content/settings"),
       api.get<{ items: Message[] }>("/admin/content/contact-messages"),
     ])
       .then(([p, s, m]) => {
         setPages(p.items);
         setBanner(s.announcement);
         setContact(s.contact);
+        setHomepage(s.homepage);
         setMessages(m.items);
       })
       .catch((err) => {
@@ -119,6 +123,8 @@ export default function AdminContentPage() {
           </div>
         )}
       </section>
+
+      {homepage && <HomepageForm initial={homepage} />}
 
       <div className="grid" style={{ marginTop: 24 }}>
         {banner && <BannerForm initial={banner} />}

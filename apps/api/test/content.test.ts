@@ -129,3 +129,30 @@ describe("admin content editing", () => {
     expect(msgs.body.items[0].ipAddress).toBeUndefined();
   });
 });
+
+describe("homepage facts", () => {
+  it("serves the flyer defaults and lets admins change them", async () => {
+    const pub = await agent().get("/api/v1/homepage");
+    expect(pub.status).toBe(200);
+    expect(pub.body.homepage.registrationFee).toBe("$100");
+    expect(pub.body.homepage.keyDates[1]).toEqual({ label: "Draft", value: "Jan 4, 2027" });
+
+    const email = uniqueEmail("homepage-admin");
+    const a = agent();
+    await signUp(a, email);
+    const [u] = await db.select().from(user).where(eq(user.email, email));
+    await db.insert(userRoleAssignments).values({ userId: u!.id, roleKey: "league_admin" });
+
+    const next = { ...pub.body.homepage, registrationFee: "$110", keyDates: [{ label: "Draft", value: "Jan 9, 2027" }] };
+    const put = await a.put("/api/v1/admin/content/settings/homepage").send(next);
+    expect(put.status).toBe(200);
+    const after = await agent().get("/api/v1/homepage");
+    expect(after.body.homepage).toMatchObject({ registrationFee: "$110", keyDates: [{ label: "Draft", value: "Jan 9, 2027" }] });
+
+    const tooMany = { ...next, keyDates: Array.from({ length: 7 }, (_, i) => ({ label: `D${i}`, value: "x" })) };
+    expect((await a.put("/api/v1/admin/content/settings/homepage").send(tooMany)).status).toBe(400);
+    const parent = agent();
+    await signUp(parent, uniqueEmail("homepage-parent"));
+    expect((await parent.put("/api/v1/admin/content/settings/homepage").send(next)).status).toBe(403);
+  });
+});

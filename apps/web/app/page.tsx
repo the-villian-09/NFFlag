@@ -1,20 +1,16 @@
 import Link from "next/link";
 
+import { DEFAULT_HOMEPAGE, type Homepage } from "@nffl/shared";
+import { serverGet } from "@/lib/server-api";
+
 /**
- * Public home — "Split Field" look. Dates, fees and age groups are from the
- * 2027 season flyer. R1a moves this copy into admin-editable content blocks.
+ * Public home — "Split Field" look. Dates, schedule, divisions and fees are
+ * edited by admins in Site content → Homepage; the flyer values are the fallback.
  */
+export const revalidate = 60;
 
-const KEY_DATES = [
-  { label: "Registration", value: "Dec 1 – Jan 3" },
-  { label: "Draft", value: "Jan 4, 2027" },
-  { label: "First practice", value: "Jan 6, 2027" },
-  { label: "Championship", value: "April 3 – 4" },
-];
-const BOYS_AGES = ["4U/5U", "6U", "7U", "8U", "9U", "10U", "11U", "12U"];
-const GIRLS_AGES = ["4U/5U", "6U", "7U", "8U", "9U", "10U", "11U", "12U", "14U"];
-
-export default function Home() {
+export default async function Home() {
+  const h: Homepage = (await serverGet<{ homepage: Homepage }>("/homepage"))?.homepage ?? DEFAULT_HOMEPAGE;
   return (
     <main>
       <section className="hero" aria-labelledby="hero-title">
@@ -22,9 +18,9 @@ export default function Home() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/images/nffl-logo.svg" alt="NFFL logo" className="logo-outline-lg" width={300} height={233} fetchPriority="high" />
           <h1 id="hero-title">North Florida Flag League</h1>
-          <p className="tagline">Boys and girls · Football · Fun · Development · Community</p>
+          {h.tagline && <p className="tagline">{h.tagline}</p>}
           <Link href="/sign-up" className="btn">
-            Register · Dec 1 – Jan 3
+            {h.registerButton}
           </Link>
         </div>
         <div className="hero-half boys">
@@ -33,7 +29,7 @@ export default function Home() {
           <div className="hero-tint" aria-hidden="true" />
           <div className="hero-label">
             <strong>Boys</strong>
-            <span>4U/5U – 12U</span>
+            <span>{h.boysAgeRange}</span>
           </div>
         </div>
         <div className="hero-half girls">
@@ -42,34 +38,36 @@ export default function Home() {
           <div className="hero-tint" aria-hidden="true" />
           <div className="hero-label">
             <strong>Girls</strong>
-            <span>4U/5U – 14U</span>
+            <span>{h.girlsAgeRange}</span>
           </div>
         </div>
       </section>
 
-      <section className="dates-band" aria-label="Key dates">
-        <div className="container">
-          {KEY_DATES.map((d) => (
-            <div key={d.label}>
-              <span>{d.label}</span>
-              <strong>{d.value}</strong>
-            </div>
-          ))}
-        </div>
-      </section>
+      {h.keyDates.length > 0 && (
+        <section className="dates-band" aria-label="Key dates">
+          <div className="container">
+            {h.keyDates.map((d) => (
+              <div key={d.label + d.value}>
+                <span>{d.label}</span>
+                <strong>{d.value}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section id="schedule" className="container section cols" aria-label="Weekly schedule">
         <div>
           <h2 style={{ marginBottom: 0 }}>Practice</h2>
           <div className="rule" />
-          <p className="big-line">Monday – Wednesday</p>
-          <p className="muted-line">6:00 – 7:30 PM</p>
+          <p className="big-line">{h.practiceDays}</p>
+          <p className="muted-line">{h.practiceTimes}</p>
         </div>
         <div>
           <h2 style={{ marginBottom: 0 }}>Games</h2>
           <div className="rule blue" />
-          <p className="big-line">Tuesday · Thursday · Saturday</p>
-          <p className="muted-line">February 2 – March 27</p>
+          <p className="big-line">{h.gameDays}</p>
+          <p className="muted-line">{h.gameDates}</p>
         </div>
       </section>
 
@@ -81,7 +79,7 @@ export default function Home() {
             <img src="/images/division-boys.jpg" alt="Boy player leaping to catch a pass" loading="lazy" style={{ objectPosition: "50% 30%" }} />
             <div className="ages">
               <h3>Boys</h3>
-              {BOYS_AGES.map((a) => (
+              {h.boysDivisions.map((a) => (
                 <span key={a}>{a}</span>
               ))}
             </div>
@@ -91,7 +89,7 @@ export default function Home() {
             <img src="/images/division-girls.jpg" alt="Girl player pulling a ball carrier's flag" loading="lazy" style={{ objectPosition: "55% 35%" }} />
             <div className="ages">
               <h3>Girls</h3>
-              {GIRLS_AGES.map((a) => (
+              {h.girlsDivisions.map((a) => (
                 <span key={a}>{a}</span>
               ))}
             </div>
@@ -104,19 +102,26 @@ export default function Home() {
         <div className="cols" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))" }}>
           <div className="fee primary">
             <span className="label">Registration</span>
-            <span className="amount">$100</span>
-            <span className="label" style={{ fontSize: 17 }}>Per player</span>
+            <span className="amount">{h.registrationFee}</span>
+            <span className="label" style={{ fontSize: 17 }}>{h.registrationFeeNote}</span>
           </div>
           <div className="fee">
             <span className="label" style={{ color: "#6fbfff" }}>League fees</span>
-            <div className="row"><span>Coaching badge</span><b>$25</b></div>
-            <div className="row"><span>Team mom</span><b>$25</b></div>
+            {h.leagueFees.map((f) => (
+              <div className="row" key={f.label}>
+                <span>{f.label}</span>
+                <b>{f.value}</b>
+              </div>
+            ))}
           </div>
           <div className="fee">
             <span className="label" style={{ color: "var(--gold)" }}>Gate fee</span>
-            <div className="row"><span>Adults</span><b>$7</b></div>
-            <div className="row"><span>Kids</span><b>$4</b></div>
-            <div className="row"><span>4 and under</span><b style={{ color: "var(--lime)" }}>Free</b></div>
+            {h.gateFees.map((f) => (
+              <div className="row" key={f.label}>
+                <span>{f.label}</span>
+                <b style={/^free$/i.test(f.value) ? { color: "var(--lime)" } : undefined}>{f.value}</b>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -124,8 +129,8 @@ export default function Home() {
       <section className="cta-band">
         <div className="container">
           <div>
-            <h2>More than a league</h2>
-            <p>We build players, leaders and a stronger North Florida.</p>
+            <h2>{h.ctaTitle}</h2>
+            <p>{h.ctaText}</p>
           </div>
           <Link href="/sign-up" className="btn">
             Register your player
