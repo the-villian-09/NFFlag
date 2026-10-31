@@ -1,5 +1,5 @@
 /** Teams and the draft (admin), and "My team" for coaches and team moms. */
-import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { Router, type Request } from "express";
 import { z } from "zod";
 import { db } from "../../db/client.js";
@@ -203,22 +203,29 @@ adminTeamsRouter.post(
 
 export const myTeamsRouter = Router();
 
-/** Teams the signed-in person coaches or manages (rosters must be published). */
+/** Teams the signed-in person coaches or manages. The roster opens once the division's rosters are published. */
 myTeamsRouter.get(
   "/my-teams",
   requireAuth,
   requireMfa,
   handler(async (req, res) => {
     const rows = await db
-      .select({ id: teams.id, name: teams.name, roleKey: teamStaff.roleKey, divisionName: divisions.name, seasonName: seasons.name })
+      .select({
+        id: teams.id,
+        name: teams.name,
+        roleKey: teamStaff.roleKey,
+        divisionName: divisions.name,
+        seasonName: seasons.name,
+        publishedAt: drafts.publishedAt,
+      })
       .from(teamStaff)
       .innerJoin(teams, eq(teams.id, teamStaff.teamId))
       .innerJoin(divisions, eq(divisions.id, teams.divisionId))
       .innerJoin(seasons, eq(seasons.id, teams.seasonId))
-      .innerJoin(drafts, and(eq(drafts.divisionId, teams.divisionId), isNotNull(drafts.publishedAt)))
+      .leftJoin(drafts, eq(drafts.divisionId, teams.divisionId))
       .where(eq(teamStaff.userId, req.ctx.auth!.user.id))
       .orderBy(asc(divisions.name));
-    res.json({ items: rows });
+    res.json({ items: rows.map(({ publishedAt, ...r }) => ({ ...r, published: !!publishedAt })) });
   }),
 );
 

@@ -244,6 +244,7 @@ function FeeCard({ initial, canManage }: { initial: Settings; canManage: boolean
   return (
     <section className="card">
       <h2>Checkout settings</h2>
+      {!canManage && <p className="muted">View only. Only the Super Admin can change these.</p>}
       <form className="stack" onSubmit={save}>
         <ErrorAlert error={error} />
         {saved && <div className="alert ok">Saved. New registrations use this right away.</div>}

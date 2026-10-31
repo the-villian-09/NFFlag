@@ -3,7 +3,7 @@
  * as separate routers under /api/v1/admin.
  */
 import { ROLE_KEYS } from "@nffl/shared";
-import { and, desc, eq, ilike, isNull, lt, or } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, lt, or } from "drizzle-orm";
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../../db/client.js";
@@ -141,6 +141,34 @@ adminRouter.get(
   }),
 );
 
+/** Everyone with admin-portal access (league-wide Super Admin or Admin). */
+adminRouter.get(
+  "/admins",
+  requirePermission("platform.admins.manage"),
+  handler(async (_req, res) => {
+    const rows = await db
+      .select({
+        assignmentId: userRoleAssignments.id,
+        roleKey: userRoleAssignments.roleKey,
+        grantedAt: userRoleAssignments.createdAt,
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+      })
+      .from(userRoleAssignments)
+      .innerJoin(user, eq(user.id, userRoleAssignments.userId))
+      .where(
+        and(
+          inArray(userRoleAssignments.roleKey, ["super_admin", "league_admin"]),
+          isNull(userRoleAssignments.revokedAt),
+          isNull(userRoleAssignments.scopeId),
+        ),
+      )
+      .orderBy(asc(userRoleAssignments.createdAt));
+    res.json({ items: rows });
+  }),
+);
+
 const roleInput = z.object({
   role: z.enum(ROLE_KEYS),
   scopeType: z.enum(["season", "team"]).optional(),
@@ -154,8 +182,10 @@ adminRouter.post(
     const input = roleInput.parse(req.body);
     const targetId = String(req.params.id);
     const actor = req.ctx.auth!.user.id;
-    if (input.role === "super_admin" && !req.ctx.access!.roles.includes("super_admin")) {
-      throw new HttpError(403, "FORBIDDEN", "Only a Super Admin can grant Super Admin.");
+    // The league has exactly one Super Admin (Square, checkout and admin management).
+    // Everyone else who runs the league is a League Admin.
+    if (input.role === "super_admin") {
+      throw new HttpError(409, "CONFLICT", "There's only one Super Admin. Add this person as an Admin instead.");
     }
     const [target] = await db.select({ id: user.id }).from(user).where(eq(user.id, targetId));
     if (!target) throw new HttpError(404, "NOT_FOUND", "User not found.");

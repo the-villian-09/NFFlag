@@ -164,14 +164,15 @@ describe("teams and the draft", () => {
   it("publishes rosters: coaches see only their team, head coach sees medical (audited), families are emailed", async () => {
     expect((await admin.post(`/api/v1/admin/teams/divisions/${divisionId}/draft/publish`)).status).toBe(409);
     await admin.post(`/api/v1/admin/teams/divisions/${divisionId}/draft/complete`);
-    expect((await coach1.a.get("/api/v1/my-teams")).body.items).toHaveLength(0);
+    const before = (await coach1.a.get("/api/v1/my-teams")).body.items;
+    expect(before.map((t: { name: string; published: boolean }) => [t.name, t.published])).toEqual([["Lightning", false]]);
     expect((await coach1.a.get(`/api/v1/my-teams/${teamIds[0]}`)).status).toBe(403);
 
     const pub = await admin.post(`/api/v1/admin/teams/divisions/${divisionId}/draft/publish`);
     expect(pub.body.draft.publishedAt).toBeTruthy();
 
     const mine = await coach1.a.get("/api/v1/my-teams");
-    expect(mine.body.items.map((t: { name: string }) => t.name)).toEqual(["Lightning"]);
+    expect(mine.body.items.map((t: { name: string; published: boolean }) => [t.name, t.published])).toEqual([["Lightning", true]]);
     const team = await coach1.a.get(`/api/v1/my-teams/${teamIds[0]}`);
     expect(team.status).toBe(200);
     expect(team.body.canSeeMedical).toBe(true);

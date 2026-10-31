@@ -33,6 +33,30 @@ describe("admin access", () => {
     expect((await admin.get("/api/v1/admin/flags")).status).toBe(200);
   });
 
+  it("adds regular Admins who can run the league but not payments setup or admin management; one Super Admin", async () => {
+    const email = uniqueEmail("helper");
+    const helper = agent();
+    await signUp(helper, email, "Helper Admin");
+    const [u] = await db.select().from(user).where(eq(user.email, email));
+
+    expect((await admin.post(`/api/v1/admin/users/${u!.id}/roles`).send({ role: "super_admin" })).status).toBe(409);
+    const g = await admin.post(`/api/v1/admin/users/${u!.id}/roles`).send({ role: "league_admin" });
+    expect(g.status).toBe(201);
+    const list = (await admin.get("/api/v1/admin/admins")).body.items as { email: string; roleKey: string }[];
+    expect(list.find((r) => r.email === email)?.roleKey).toBe("league_admin");
+
+    expect((await helper.get("/api/v1/admin/league/registrations")).status).toBe(200);
+    expect((await helper.get("/api/v1/admin/payments")).status).toBe(200);
+    expect((await helper.put("/api/v1/admin/league/payment-settings").send({})).status).toBe(403);
+    expect((await helper.post("/api/v1/admin/payments/square/connect")).status).toBe(403);
+    expect((await helper.post("/api/v1/admin/payments/square/disconnect")).status).toBe(403);
+    expect((await helper.get("/api/v1/admin/admins")).status).toBe(403);
+    expect((await helper.post(`/api/v1/admin/users/${u!.id}/roles`).send({ role: "league_admin" })).status).toBe(403);
+
+    expect((await admin.delete(`/api/v1/admin/users/${u!.id}/roles/${g.body.assignment.id}`)).status).toBe(204);
+    expect((await helper.get("/api/v1/admin/league/registrations")).status).toBe(403);
+  });
+
   it("audits feature-flag changes and exposes enabled flags publicly", async () => {
     const res = await admin.put("/api/v1/admin/flags/r1b.registration").send({ enabled: true });
     expect(res.status).toBe(200);

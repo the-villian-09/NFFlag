@@ -42,13 +42,23 @@ interface MyTeam {
   roleKey: string;
   divisionName: string;
   seasonName: string;
+  published: boolean;
+}
+interface MyApplication {
+  id: string;
+  roleKey: string;
+  roleLabel: string;
+  status: string;
+  seasonName: string;
 }
 
 /** Parent dashboard: family, players, registrations and payment status, security. */
 export default function DashboardPage() {
   const router = useRouter();
   const { me, loading } = useMe();
-  const [household, setHousehold] = useState<Household | null | undefined>(undefined);
+  const [household, setHousehold] = useState<Household | null | undefined>(
+    undefined,
+  );
   const [editingFamily, setEditingFamily] = useState(false);
 
   useEffect(() => {
@@ -56,7 +66,11 @@ export default function DashboardPage() {
     api
       .get<{ household: Household }>("/households/me")
       .then((r) => setHousehold(r.household))
-      .catch((err) => setHousehold(err instanceof ApiError && err.status === 404 ? null : undefined));
+      .catch((err) =>
+        setHousehold(
+          err instanceof ApiError && err.status === 404 ? null : undefined,
+        ),
+      );
   }, [me]);
 
   async function signOut() {
@@ -68,7 +82,15 @@ export default function DashboardPage() {
 
   return (
     <main className="page">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
         <h1 style={{ margin: 0 }}>Welcome, {me.user.name.split(" ")[0]}</h1>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {isAdmin(me) && (
@@ -102,14 +124,21 @@ export default function DashboardPage() {
                     <>
                       {household.addressLine1}
                       <br />
-                      {[household.city, household.state].filter(Boolean).join(", ")} {household.postalCode ?? ""}
+                      {[household.city, household.state]
+                        .filter(Boolean)
+                        .join(", ")}{" "}
+                      {household.postalCode ?? ""}
                     </>
                   ) : (
                     "—"
                   )}
                 </dd>
               </dl>
-              <button className="btn ghost small" style={{ marginTop: 16 }} onClick={() => setEditingFamily(true)}>
+              <button
+                className="btn ghost small"
+                style={{ marginTop: 16 }}
+                onClick={() => setEditingFamily(true)}
+              >
                 Edit
               </button>
             </>
@@ -129,51 +158,120 @@ export default function DashboardPage() {
         {household && <PlayersCard />}
         {household && <RegistrationsCard />}
         {household && <WaitlistCard />}
-        <MyTeamsCard />
-        <section className="card">
-          <h2>Coaches & team staff</h2>
-          <p className="muted">Coach a team or be a team mom this season.</p>
-          <Link className="btn ghost small" href="/coaches-staff">
-            Apply
-          </Link>
-        </section>
-        <SecurityCard enabled={me.mfa.enabled} required={me.mfa.required === "totp"} />
+        <StaffCard />
+        <SecurityCard
+          enabled={me.mfa.enabled}
+          required={me.mfa.required === "totp"}
+        />
       </div>
     </main>
   );
 }
 
-const ROLE: Record<string, string> = { head_coach: "Head coach", assistant_coach: "Assistant coach", team_mom: "Team mom" };
+const ROLE: Record<string, string> = {
+  head_coach: "Head coach",
+  assistant_coach: "Assistant coach",
+  team_mom: "Team mom",
+};
 
-/** Teams this person coaches or helps run (shown once rosters are published). */
-function MyTeamsCard() {
-  const [items, setItems] = useState<MyTeam[] | null>(null);
+const APP_LINE: Record<string, string> = {
+  pending_payment: "Fee not paid yet",
+  processing: "Payment processing",
+  submitted: "Submitted · under review",
+  rejected: "Not approved",
+  revoked: "Approval removed",
+};
+
+/** Coaches & team staff: application status, team assignment, and the roster once it's published. */
+function StaffCard() {
+  const [teams, setTeams] = useState<MyTeam[] | null>(null);
+  const [apps, setApps] = useState<MyApplication[] | null>(null);
   useEffect(() => {
     api
       .get<{ items: MyTeam[] }>("/my-teams")
-      .then((r) => setItems(r.items))
-      .catch(() => setItems([]));
+      .then((r) => setTeams(r.items))
+      .catch(() => setTeams([]));
+    api
+      .get<{ items: MyApplication[] }>("/volunteer/applications")
+      .then((r) => setApps(r.items))
+      .catch(() => setApps([]));
   }, []);
-  if (!items || items.length === 0) return null;
+  // Approved applications not yet placed on a team, and applications still in progress.
+  const waiting = (apps ?? []).filter(
+    (a) =>
+      a.status === "approved" &&
+      !(teams ?? []).some(
+        (t) => t.roleKey === a.roleKey && t.seasonName === a.seasonName,
+      ),
+  );
+  const other = (apps ?? []).filter((a) => a.status in APP_LINE);
+  const empty =
+    teams?.length === 0 && waiting.length === 0 && other.length === 0;
   return (
     <section className="card">
-      <h2>My teams</h2>
-      <ul className="list">
-        {items.map((t) => (
-          <li key={t.id}>
-            <span>
-              <span className="who">{t.name}</span>
-              <br />
-              <span className="muted">
-                {ROLE[t.roleKey] ?? t.roleKey} · {t.divisionName} · {t.seasonName}
+      <h2>{teams?.length ? "My teams" : "Coaches & team staff"}</h2>
+      {empty && (
+        <p className="muted">Coach a team or be a team mom this season.</p>
+      )}
+      {teams?.length || waiting.length || other.length ? (
+        <ul className="list">
+          {teams?.map((t) => (
+            <li key={t.id}>
+              <span>
+                <span className="who">{t.name}</span>
+                <br />
+                <span className="muted">
+                  {ROLE[t.roleKey] ?? t.roleKey} · {t.divisionName} ·{" "}
+                  {t.seasonName}
+                  {!t.published && (
+                    <>
+                      <br />
+                      The roster opens here after the draft.
+                    </>
+                  )}
+                </span>
               </span>
-            </span>
-            <Link className="btn small" href={`/my-team/${t.id}`}>
-              Roster
-            </Link>
-          </li>
-        ))}
-      </ul>
+              {t.published && (
+                <Link className="btn small" href={`/my-team/${t.id}`}>
+                  Roster
+                </Link>
+              )}
+            </li>
+          ))}
+          {waiting.map((a) => (
+            <li key={a.id}>
+              <span>
+                <span className="who">{a.roleLabel}</span>
+                <br />
+                <span className="muted">
+                  {a.seasonName} · The league will put you on a team before the
+                  draft.
+                </span>
+              </span>
+              <span className="status ok">Approved</span>
+            </li>
+          ))}
+          {other.map((a) => (
+            <li key={a.id}>
+              <span>
+                <span className="who">{a.roleLabel}</span>
+                <br />
+                <span className="muted">{a.seasonName}</span>
+              </span>
+              <Link className="status muted" href="/coaches-staff">
+                {APP_LINE[a.status]}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <Link
+        className="btn ghost small"
+        href="/coaches-staff"
+        style={{ marginTop: 12 }}
+      >
+        {apps?.length ? "Applications" : "Apply"}
+      </Link>
     </section>
   );
 }
@@ -206,7 +304,9 @@ function FamilyForm({
       postalCode: v("postalCode"),
     };
     const res = await run(() =>
-      create ? api.post<{ household: Household }>("/households", body) : api.patch<{ household: Household }>("/households/me", body),
+      create
+        ? api.post<{ household: Household }>("/households", body)
+        : api.patch<{ household: Household }>("/households/me", body),
     );
     if (res) onSaved(res.household);
   }
@@ -215,28 +315,67 @@ function FamilyForm({
       <ErrorAlert error={error} />
       <label>
         Family name (as you'd like it shown)
-        <input type="text" name="displayName" required maxLength={120} placeholder="The Smith Family" defaultValue={initial?.displayName ?? ""} />
+        <input
+          type="text"
+          name="displayName"
+          required
+          maxLength={120}
+          placeholder="The Smith Family"
+          defaultValue={initial?.displayName ?? ""}
+        />
       </label>
       <label>
         Mobile phone
-        <input type="tel" name="phone" autoComplete="tel" maxLength={32} defaultValue={initial?.phone ?? ""} />
+        <input
+          type="tel"
+          name="phone"
+          autoComplete="tel"
+          maxLength={32}
+          defaultValue={initial?.phone ?? ""}
+        />
       </label>
       <label>
         Street address (optional)
-        <input type="text" name="addressLine1" autoComplete="address-line1" maxLength={200} defaultValue={initial?.addressLine1 ?? ""} />
+        <input
+          type="text"
+          name="addressLine1"
+          autoComplete="address-line1"
+          maxLength={200}
+          defaultValue={initial?.addressLine1 ?? ""}
+        />
       </label>
       <div className="form-row">
         <label>
           City
-          <input type="text" name="city" autoComplete="address-level2" maxLength={100} defaultValue={initial?.city ?? ""} />
+          <input
+            type="text"
+            name="city"
+            autoComplete="address-level2"
+            maxLength={100}
+            defaultValue={initial?.city ?? ""}
+          />
         </label>
         <label>
           State
-          <input type="text" name="state" autoComplete="address-level1" maxLength={2} placeholder="FL" defaultValue={initial?.state ?? ""} />
+          <input
+            type="text"
+            name="state"
+            autoComplete="address-level1"
+            maxLength={2}
+            placeholder="FL"
+            defaultValue={initial?.state ?? ""}
+          />
         </label>
         <label>
           ZIP
-          <input type="text" inputMode="numeric" name="postalCode" autoComplete="postal-code" maxLength={10} defaultValue={initial?.postalCode ?? ""} />
+          <input
+            type="text"
+            inputMode="numeric"
+            name="postalCode"
+            autoComplete="postal-code"
+            maxLength={10}
+            defaultValue={initial?.postalCode ?? ""}
+          />
         </label>
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -304,7 +443,9 @@ function RegistrationsCard() {
       .then((r) => setRegs(r.items))
       .catch(() => setRegs([]));
     api
-      .get<{ enabled: boolean; window: { open: boolean } }>("/registration/options")
+      .get<{ enabled: boolean; window: { open: boolean } }>(
+        "/registration/options",
+      )
       .then((o) => setOpen(o.enabled && o.window.open))
       .catch(() => setOpen(false));
   }, []);
@@ -314,7 +455,11 @@ function RegistrationsCard() {
       {!regs ? (
         <p className="muted">Loading…</p>
       ) : regs.length === 0 ? (
-        <p className="muted">{open ? "Registration is open." : "Registration isn't open yet. You can add your players now."}</p>
+        <p className="muted">
+          {open
+            ? "Registration is open."
+            : "Registration isn't open yet. You can add your players now."}
+        </p>
       ) : (
         <ul className="list">
           {regs.map((r) => (
@@ -326,7 +471,9 @@ function RegistrationsCard() {
                 <br />
                 <span className="muted">
                   {r.divisionName} · {r.seasonName} · {money(r.totalCents)}
-                  {r.payment?.refundedCents ? ` · ${money(r.payment.refundedCents)} refunded` : ""}
+                  {r.payment?.refundedCents
+                    ? ` · ${money(r.payment.refundedCents)} refunded`
+                    : ""}
                 </span>
                 {r.team && (
                   <>
@@ -336,7 +483,11 @@ function RegistrationsCard() {
                       {r.team.coach && (
                         <>
                           {" · Coach "}
-                          {r.team.coach.name} (<a href={`mailto:${r.team.coach.email}`}>{r.team.coach.email}</a>)
+                          {r.team.coach.name} (
+                          <a href={`mailto:${r.team.coach.email}`}>
+                            {r.team.coach.email}
+                          </a>
+                          )
                         </>
                       )}
                     </span>
@@ -349,15 +500,30 @@ function RegistrationsCard() {
                   </>
                 )}
               </span>
-              <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
                 <StatusBadge status={r.status} />
-                {(r.status === "pending_payment" || r.status === "expired") && open && (
-                  <Link className="btn small" href={`/register?registration=${r.id}`}>
-                    Finish payment
-                  </Link>
-                )}
+                {(r.status === "pending_payment" || r.status === "expired") &&
+                  open && (
+                    <Link
+                      className="btn small"
+                      href={`/register?registration=${r.id}`}
+                    >
+                      Finish payment
+                    </Link>
+                  )}
                 {r.payment?.receiptUrl && (
-                  <a href={r.payment.receiptUrl} target="_blank" rel="noopener noreferrer">
+                  <a
+                    href={r.payment.receiptUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     Receipt
                   </a>
                 )}
@@ -399,7 +565,8 @@ function WaitlistCard() {
     void load();
   }, []);
   async function leave(id: string) {
-    if (!window.confirm("Leave the waitlist? You'll lose your place in line.")) return;
+    if (!window.confirm("Leave the waitlist? You'll lose your place in line."))
+      return;
     await api.post(`/waitlist/${id}/leave`).catch(() => undefined);
     void load();
   }
@@ -418,17 +585,28 @@ function WaitlistCard() {
               <span className="muted">
                 {w.divisionName}
                 {w.status === "waiting" && ` · #${w.position} in line`}
-                {w.status === "offered" && w.offerExpiresAt && ` · claim by ${fmtDateTime(w.offerExpiresAt)}`}
+                {w.status === "offered" &&
+                  w.offerExpiresAt &&
+                  ` · claim by ${fmtDateTime(w.offerExpiresAt)}`}
                 {w.status === "expired" && " · offer expired"}
               </span>
             </span>
-            <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
               {w.status === "offered" && (
                 <Link className="btn small" href={`/register?offer=${w.id}`}>
                   Claim the spot
                 </Link>
               )}
-              {w.status === "waiting" && <span className="status info">Waiting</span>}
+              {w.status === "waiting" && (
+                <span className="status info">Waiting</span>
+              )}
               {w.status !== "expired" && (
                 <button className="link-btn" onClick={() => leave(w.id)}>
                   {w.status === "offered" ? "Decline" : "Leave"}
@@ -443,7 +621,13 @@ function WaitlistCard() {
 }
 
 /** Optional two-step sign-in: turn on (choose method) or off (needs password). */
-function SecurityCard({ enabled, required }: { enabled: boolean; required: boolean }) {
+function SecurityCard({
+  enabled,
+  required,
+}: {
+  enabled: boolean;
+  required: boolean;
+}) {
   const { busy, error, run } = useAction();
   const [on, setOn] = useState(enabled);
   const [confirming, setConfirming] = useState(false);
@@ -465,13 +649,17 @@ function SecurityCard({ enabled, required }: { enabled: boolean; required: boole
       </p>
       {!on && (
         <>
-          <p className="muted">Optional. Adds a code check when you sign in on a new device.</p>
+          <p className="muted">
+            Optional. Adds a code check when you sign in on a new device.
+          </p>
           <Link className="btn ghost" href="/setup-mfa">
             Turn on
           </Link>
         </>
       )}
-      {on && required && <p className="muted">Required by the league for your role.</p>}
+      {on && required && (
+        <p className="muted">Required by the league for your role.</p>
+      )}
       {on && !required && !confirming && (
         <button className="btn ghost" onClick={() => setConfirming(true)}>
           Turn off
@@ -482,13 +670,22 @@ function SecurityCard({ enabled, required }: { enabled: boolean; required: boole
           <ErrorAlert error={error} />
           <label>
             Confirm your password
-            <input type="password" name="password" autoComplete="current-password" required />
+            <input
+              type="password"
+              name="password"
+              autoComplete="current-password"
+              required
+            />
           </label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="btn" disabled={busy}>
               Turn off
             </button>
-            <button type="button" className="btn ghost" onClick={() => setConfirming(false)}>
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => setConfirming(false)}
+            >
               Cancel
             </button>
           </div>
