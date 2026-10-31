@@ -30,6 +30,7 @@ import {
   getMerchantAndMainLocation,
   oauthConfigured,
   oauthRedirectUrl,
+  parseReference,
   revokeMerchant,
   SquareError,
   verifyWebhookSignature,
@@ -274,9 +275,10 @@ async function handleEvent(event: WebhookEvent) {
     } else {
       await db.update(payments).set({ status: p.status, updatedAt: new Date() }).where(eq(payments.providerPaymentId, p.id));
       // A charge that definitely failed frees the registration / application waiting on it.
-      if (p.status === "FAILED" || p.status === "CANCELED") {
-        if (isApplication) await failApplicationPayment(p.reference_id);
-        else await revertToPending(p.reference_id, "The payment didn't go through.");
+      // Only when Square says when it was created, so an older declined card can't undo a newer attempt.
+      if ((p.status === "FAILED" || p.status === "CANCELED") && p.created_at) {
+        if (isApplication) await failApplicationPayment(p);
+        else if (parseReference(p.reference_id)) await revertToPending(p.reference_id, "The payment didn't go through.", new Date(p.created_at));
       }
     }
     return;

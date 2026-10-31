@@ -44,6 +44,8 @@ const STATUS: Record<string, { label: string; tone: string; help: string }> = {
   submitted: { label: "Submitted", tone: "info", help: "The league will contact you about your background check." },
   approved: { label: "Approved", tone: "ok", help: "You're on the coaching staff this season. Thank you!" },
   rejected: { label: "Not approved", tone: "bad", help: "Any fee you paid has been refunded." },
+  withdrawn: { label: "Withdrawn", tone: "muted", help: "Any fee you paid is refunded to your card." },
+  revoked: { label: "Approval removed", tone: "bad", help: "Contact the league with any questions." },
 };
 
 /** Apply to coach or be a team manager; pay the volunteer fee; see status. */
@@ -114,7 +116,7 @@ export default function VolunteerPage() {
                           {a.seasonName}
                           {a.totalCents ? ` · ${money(a.totalCents)}` : ""} · {s.help}
                         </span>
-                        {a.decisionReason && a.status === "rejected" && (
+                        {a.decisionReason && (a.status === "rejected" || a.status === "revoked") && (
                           <>
                             <br />
                             <span className="muted">Reason: {a.decisionReason}</span>

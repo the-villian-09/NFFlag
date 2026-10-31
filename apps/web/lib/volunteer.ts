@@ -6,6 +6,7 @@ export const APP_STATUS: Record<string, { label: string; tone: string }> = {
   approved: { label: "Approved", tone: "ok" },
   rejected: { label: "Not approved", tone: "bad" },
   withdrawn: { label: "Withdrawn", tone: "muted" },
+  revoked: { label: "Approval removed", tone: "bad" },
 };
 export const SCREENING: Record<string, { label: string; tone: string }> = {
   not_started: { label: "Not started", tone: "muted" },

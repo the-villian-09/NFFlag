@@ -21,21 +21,41 @@ registerSubscribers();
 
 /** Housekeeping each pass: release unpaid holds, keep the Square token fresh (it lasts 30 days). */
 async function housekeeping() {
-  const settled = (await reconcileProcessing()) + (await reconcileApplications());
-  if (settled) logger.info({ settled }, "settled payments that were stuck in processing");
-  const expired = await expireHolds();
-  if (expired) logger.info({ expired }, "released unpaid registration holds");
-  const wl = await processWaitlist();
-  if (wl.offered || wl.expired) logger.info(wl, "waitlist offers sent / expired");
-  const [conn] = await db
-    .select({ expiresAt: squareConnection.accessTokenExpiresAt, lastRefreshedAt: squareConnection.lastRefreshedAt })
-    .from(squareConnection)
-    .where(eq(squareConnection.id, "default"));
-  const dayMs = 24 * 3600 * 1000;
-  if (conn?.expiresAt && conn.expiresAt.getTime() - Date.now() < 7 * dayMs) {
-    const recentlyTried = conn.lastRefreshedAt && Date.now() - conn.lastRefreshedAt.getTime() < dayMs;
-    if (!recentlyTried) await refreshConnection();
-  }
+  // Each step runs on its own, so one failing doesn't skip the rest.
+  const step = async (name: string, fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (err) {
+      logger.error({ step: name, err: err instanceof Error ? err.message : String(err) }, "housekeeping step failed");
+    }
+  };
+  await step("reconcile registrations", async () => {
+    const n = await reconcileProcessing();
+    if (n) logger.info({ settled: n }, "settled registration payments stuck in processing");
+  });
+  await step("reconcile volunteer fees", async () => {
+    const n = await reconcileApplications();
+    if (n) logger.info({ settled: n }, "settled volunteer fee payments stuck in processing");
+  });
+  await step("expire holds", async () => {
+    const n = await expireHolds();
+    if (n) logger.info({ expired: n }, "released unpaid registration holds");
+  });
+  await step("waitlist", async () => {
+    const wl = await processWaitlist();
+    if (wl.offered || wl.expired) logger.info(wl, "waitlist offers sent / expired");
+  });
+  await step("square token", async () => {
+    const [conn] = await db
+      .select({ expiresAt: squareConnection.accessTokenExpiresAt, lastRefreshedAt: squareConnection.lastRefreshedAt })
+      .from(squareConnection)
+      .where(eq(squareConnection.id, "default"));
+    const dayMs = 24 * 3600 * 1000;
+    if (conn?.expiresAt && conn.expiresAt.getTime() - Date.now() < 7 * dayMs) {
+      const recentlyTried = conn.lastRefreshedAt && Date.now() - conn.lastRefreshedAt.getTime() < dayMs;
+      if (!recentlyTried) await refreshConnection();
+    }
+  });
 }
 
 async function drain() {

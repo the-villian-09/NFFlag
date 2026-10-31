@@ -106,7 +106,9 @@ describe("volunteer applications", () => {
     expect(created.status).toBe(201);
     const app = created.body.application;
     expect(app).toMatchObject({ status: "pending_payment", totalCents: 2500 });
-    expect(app.agreements[0].signerName).toBe("Val Volunteer");
+    expect(app.screeningStatus).toBeUndefined(); // applicants get a limited view
+    const [stored] = await db.select().from(volunteerApplications).where(eq(volunteerApplications.id, app.id));
+    expect((stored!.agreements as { signerName: string }[])[0]!.signerName).toBe("Val Volunteer");
     expect((await v.a.post("/api/v1/volunteer/applications").send({ ...form, roleKey: "head_coach" })).status).toBe(409);
 
     expect((await v.a.post(`/api/v1/volunteer/applications/${app.id}/pay`).send({ sourceId: "cnon:declined" })).status).toBe(402);
@@ -195,5 +197,72 @@ describe("volunteer applications", () => {
     const app = (await v.a.post("/api/v1/volunteer/applications").send({ ...form, roleKey: "team_manager" })).body.application;
     expect(app).toMatchObject({ status: "submitted", totalCents: 0 });
     await admin.put("/api/v1/admin/league/payment-settings").send(s);
+  });
+});
+
+describe("volunteer review fixes", () => {
+  async function paidApp(prefix: string, role = "assistant_coach") {
+    const v = await volunteer(prefix);
+    const app = (await v.a.post("/api/v1/volunteer/applications").send({ ...form, roleKey: role })).body.application;
+    await v.a.post(`/api/v1/volunteer/applications/${app.id}/pay`).send({ sourceId: "cnon:ok" });
+    return { ...v, app };
+  }
+  const hook = (body: string) => agent().post("/api/v1/webhooks/square").set("content-type", "application/json").set("x-square-hmacsha256-signature", sign(body)).send(body);
+
+  it("admins can't approve their own application", async () => {
+    const own = (await admin.post("/api/v1/volunteer/applications").send({ ...form, roleKey: "head_coach" })).body.application;
+    await admin.post(`/api/v1/volunteer/applications/${own.id}/pay`).send({ sourceId: "cnon:ok" });
+    await admin.put(`/api/v1/admin/staff/applications/${own.id}/screening`).send({ status: "cleared", completedOn: "2026-10-01", expiresOn: "2028-10-01" });
+    const res = await admin.post(`/api/v1/admin/staff/applications/${own.id}/decision`).send({ decision: "approved" });
+    expect(res.status).toBe(403);
+  });
+
+  it("revoking an approval removes the season role; screening can't be downgraded while approved", async () => {
+    const v = await paidApp("revoke");
+    await admin.put(`/api/v1/admin/staff/applications/${v.app.id}/screening`).send({ status: "cleared", completedOn: "2026-10-01", expiresOn: "2028-10-01" });
+    await admin.post(`/api/v1/admin/staff/applications/${v.app.id}/decision`).send({ decision: "approved" });
+    expect((await admin.put(`/api/v1/admin/staff/applications/${v.app.id}/screening`).send({ status: "not_cleared" })).status).toBe(409);
+    const r = await admin.post(`/api/v1/admin/staff/applications/${v.app.id}/revoke`).send({ reason: "Check came back not cleared" });
+    expect(r.body.application.status).toBe("revoked");
+    const roles = await db
+      .select()
+      .from(userRoleAssignments)
+      .where(and(eq(userRoleAssignments.userId, v.userId), eq(userRoleAssignments.roleKey, "assistant_coach"), isNull(userRoleAssignments.revokedAt)));
+    expect(roles).toHaveLength(0);
+    // They can apply again later.
+    expect((await v.a.post("/api/v1/volunteer/applications").send({ ...form, roleKey: "assistant_coach" })).status).toBe(201);
+  });
+
+  it("withdrawing refunds every payment (original and duplicate) and hides admin notes", async () => {
+    const v = await paidApp("both");
+    await admin.put(`/api/v1/admin/staff/applications/${v.app.id}/screening`).send({ status: "pending", notes: "Internal: waiting on provider" });
+    // A duplicate arrives but its automatic refund fails (Square down), leaving two refundable payments.
+    await db.insert(payments).values({ applicationId: v.app.id, providerEnvironment: "sandbox", providerPaymentId: `dup2_${v.app.id}`, status: "COMPLETED", amountCents: 2500 });
+    const before = refundCalls();
+    const w = await v.a.post(`/api/v1/volunteer/applications/${v.app.id}/withdraw`).send({});
+    expect(w.body.refund.amountCents).toBe(5000);
+    expect(refundCalls() - before).toBe(2);
+    expect(JSON.stringify(w.body)).not.toContain("Internal");
+    expect(w.body.application.screeningNotes).toBeUndefined();
+  });
+
+  it("an old declined card's FAILED webhook doesn't undo a newer attempt; bad references are ignored", async () => {
+    const v = await volunteer("stale");
+    const app = (await v.a.post("/api/v1/volunteer/applications").send({ ...form, roleKey: "team_manager" })).body.application;
+    expect((await v.a.post(`/api/v1/volunteer/applications/${app.id}/pay`).send({ sourceId: "cnon:lost" })).body.error.code).toBe("PAYMENT_PENDING");
+    const stale = JSON.stringify({
+      event_id: `evt-stale-${app.id}`,
+      type: "payment.updated",
+      data: { object: { payment: { id: `old_${app.id}`, status: "FAILED", reference_id: `app:${app.id}`, created_at: new Date(Date.now() - 60_000).toISOString() } } },
+    });
+    expect((await hook(stale)).status).toBe(200);
+    const [still] = await db.select().from(volunteerApplications).where(eq(volunteerApplications.id, app.id));
+    expect(still!.status).toBe("processing");
+    expect(still!.paymentRequest).not.toBeNull();
+
+    const junk = JSON.stringify({ event_id: `evt-junk-${app.id}`, type: "payment.updated", data: { object: { payment: { id: "pos_1", status: "COMPLETED", reference_id: "app:not-a-uuid" } } } });
+    expect((await hook(junk)).status).toBe(200);
+    const pos = JSON.stringify({ event_id: `evt-pos-${app.id}`, type: "payment.updated", data: { object: { payment: { id: "pos_2", status: "COMPLETED", reference_id: "Table 4" } } } });
+    expect((await hook(pos)).status).toBe(200);
   });
 });

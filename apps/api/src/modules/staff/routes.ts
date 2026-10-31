@@ -11,7 +11,7 @@ import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission }
 import { HttpError } from "../../http/errors.js";
 import { can } from "../platform/access.js";
 import { issueRefund } from "../registration/service.js";
-import { applyToVolunteer, decideApplication, payApplication, ROLE_LABELS, updateScreening, volunteerOptions, withdrawApplication, type VolunteerRole } from "./service.js";
+import { applyToVolunteer, decideApplication, payApplication, publicApplication, revokeApproval, ROLE_LABELS, updateScreening, volunteerOptions, withdrawApplication, type VolunteerRole } from "./service.js";
 
 const actorOf = (req: Request) => ({ userId: req.ctx.auth!.user.id, requestId: req.ctx.requestId, ip: req.ctx.ip });
 
@@ -49,7 +49,7 @@ staffRouter.get(
       })
       .from(volunteerApplications)
       .innerJoin(seasons, eq(seasons.id, volunteerApplications.seasonId))
-      .where(and(eq(volunteerApplications.userId, req.ctx.auth!.user.id), inArray(volunteerApplications.status, ["pending_payment", "processing", "submitted", "approved", "rejected"])))
+      .where(and(eq(volunteerApplications.userId, req.ctx.auth!.user.id), inArray(volunteerApplications.status, ["pending_payment", "processing", "submitted", "approved", "rejected", "withdrawn", "revoked"])))
       .orderBy(desc(volunteerApplications.createdAt));
     res.json({ items: rows.map((r) => ({ ...r, roleLabel: ROLE_LABELS[r.roleKey as VolunteerRole] })) });
   }),
@@ -61,7 +61,7 @@ staffRouter.post(
   requireMfa,
   handler(async (req, res) => {
     const input = volunteerApplicationInput.parse(req.body);
-    res.status(201).json({ application: await applyToVolunteer(actorOf(req), input) });
+    res.status(201).json({ application: publicApplication(await applyToVolunteer(actorOf(req), input)) });
   }),
 );
 
@@ -81,7 +81,7 @@ staffRouter.post(
   payLimiter,
   handler(async (req, res) => {
     const input = payRegistrationInput.parse(req.body);
-    res.json({ application: await payApplication(actorOf(req), String(req.params.id), input, req.ctx.auth!.user.email) });
+    res.json({ application: publicApplication(await payApplication(actorOf(req), String(req.params.id), input, req.ctx.auth!.user.email)) });
   }),
 );
 
@@ -103,7 +103,7 @@ adminStaffRouter.get(
   "/applications",
   handler(async (req, res) => {
     const q = z.object({ seasonId: z.uuid().optional(), status: z.string().max(100).optional() }).parse(req.query);
-    const statuses = q.status ? q.status.split(",") : ["submitted", "approved", "rejected", "pending_payment", "processing"];
+    const statuses = q.status ? q.status.split(",") : ["submitted", "approved", "rejected", "pending_payment", "processing", "withdrawn", "revoked"];
     const rows = await db
       .select({
         id: volunteerApplications.id,
@@ -186,6 +186,14 @@ adminStaffRouter.post(
     if (input.decision === "rejected" && !input.reason) throw new HttpError(400, "VALIDATION_FAILED", "Give the applicant a reason.");
     if (input.decision === "rejected" && input.refund && !can(req.ctx.access!, "refunds.issue")) throw new HttpError(403, "FORBIDDEN", "You don't have permission to issue refunds.");
     res.json(await decideApplication(actorOf(req), String(req.params.id), input));
+  }),
+);
+
+adminStaffRouter.post(
+  "/applications/:id/revoke",
+  handler(async (req, res) => {
+    const { reason } = z.object({ reason: z.string().trim().min(3).max(500) }).parse(req.body);
+    res.json({ application: await revokeApproval(actorOf(req), String(req.params.id), reason) });
   }),
 );
 

@@ -18,9 +18,9 @@ import { logger } from "../../lib/logger.js";
 import { writeAudit } from "../platform/audit.js";
 import { isEnabled } from "../platform/flags.js";
 import { publish } from "../platform/outbox.js";
-import { COMPLETED, isUniqueViolation, issueRefund, type Actor, type PaymentRequest } from "../registration/service.js";
+import { COMPLETED, isUniqueViolation, issueRefund, refundAll, type Actor, type PaymentRequest } from "../registration/service.js";
 import { getPaymentSettings, quote } from "../registration/settings.js";
-import { createPayment, friendlyPaymentError, getCredentials, SquareError, type SquarePayment } from "../square/client.js";
+import { createPayment, friendlyPaymentError, getCredentials, parseReference, SquareError, type SquarePayment } from "../square/client.js";
 
 export const STAFF_FLAG = "r2.staff_applications";
 export const VOLUNTEER_ROLES = ["head_coach", "assistant_coach", "team_manager"] as const;
@@ -182,11 +182,18 @@ export async function payApplication(actor: Actor & { userId: string }, applicat
   return chargeApplication(applicationId, request, actor);
 }
 
-async function revertApplication(applicationId: string, message: string) {
+async function revertApplication(applicationId: string, message: string, failedPaymentCreatedAt?: Date) {
   await db
     .update(volunteerApplications)
     .set({ status: "pending_payment", paymentError: message, paymentRequest: null, processingStartedAt: null, updatedAt: new Date() })
-    .where(and(eq(volunteerApplications.id, applicationId), eq(volunteerApplications.status, "processing")));
+    .where(
+      and(
+        eq(volunteerApplications.id, applicationId),
+        eq(volunteerApplications.status, "processing"),
+        // From the webhook: only if that failed payment belongs to the current attempt.
+        failedPaymentCreatedAt ? sql`${volunteerApplications.processingStartedAt} <= ${failedPaymentCreatedAt.toISOString()}::timestamptz + interval '2 seconds'` : undefined,
+      ),
+    );
 }
 
 async function chargeApplication(applicationId: string, request: PaymentRequest, actor: Actor) {
@@ -225,7 +232,9 @@ async function chargeApplication(applicationId: string, request: PaymentRequest,
  * meanwhile, or if it duplicates an earlier payment.
  */
 export async function recordApplicationPayment(payment: SquarePayment, source: { environment: string; merchantId: string | null }, actor: Actor) {
-  const id = (payment.reference_id ?? "").replace(/^app:/, "");
+  const ref = parseReference(payment.reference_id);
+  if (!ref || !("applicationId" in ref)) return null;
+  const id = ref.applicationId;
   const outcome = await db.transaction(async (tx) => {
     const [a] = await tx.select().from(volunteerApplications).where(eq(volunteerApplications.id, id)).for("update");
     if (!a) return { app: null as Application | null, refundPaymentId: null as string | null, reason: "" };
@@ -288,9 +297,27 @@ export async function recordApplicationPayment(payment: SquarePayment, source: {
   return outcome.app;
 }
 
-/** Webhook: a FAILED/CANCELED fee payment frees the application to try again. */
-export function failApplicationPayment(referenceId: string) {
-  return revertApplication(referenceId.replace(/^app:/, ""), "The payment didn't go through.");
+/** Webhook: a FAILED/CANCELED fee payment frees the application to try again (only for the current attempt). */
+export async function failApplicationPayment(payment: SquarePayment) {
+  const ref = parseReference(payment.reference_id);
+  if (!ref || !("applicationId" in ref) || !payment.created_at) return;
+  await revertApplication(ref.applicationId, "The payment didn't go through.", new Date(payment.created_at));
+}
+
+/** What an applicant may see about their own application (no screening notes or admin fields). */
+export function publicApplication(a: Application) {
+  return {
+    id: a.id,
+    roleKey: a.roleKey,
+    roleLabel: ROLE_LABELS[a.roleKey as VolunteerRole],
+    status: a.status,
+    totalCents: a.totalCents,
+    feeCents: a.feeCents,
+    processingFeeCents: a.processingFeeCents,
+    paymentError: a.paymentError,
+    decisionReason: a.decisionReason,
+    createdAt: a.createdAt,
+  };
 }
 
 /** Worker: re-send stuck fee payments with the same idempotency key to learn the outcome. */
@@ -330,15 +357,8 @@ export async function withdrawApplication(actor: Actor & { userId: string }, app
     .returning();
   if (!a) throw new HttpError(409, "CONFLICT", "This application can't be withdrawn. Contact the league.");
   await writeAudit(db, { actorUserId: actor.userId, action: "staff.application.withdraw", targetType: "volunteer_application", targetId: a.id, requestId: actor.requestId, ipAddress: actor.ip });
-  let refund = null;
-  if (a.paidAt) {
-    try {
-      refund = await issueRefund({ applicationId: a.id }, { reason: "Application withdrawn" }, actor);
-    } catch (err) {
-      logger.error({ applicationId: a.id, err: err instanceof Error ? err.message : String(err) }, "withdrawal refund failed; refund from the admin portal");
-    }
-  }
-  return { application: a, refund };
+  const refund = a.paidAt ? await refundAll({ applicationId: a.id }, "Application withdrawn", actor) : null;
+  return { application: publicApplication(a), refund };
 }
 
 /* ---------------- admin ---------------- */
@@ -351,6 +371,9 @@ export async function updateScreening(
   if (input.status === "cleared" && !input.completedOn) throw new HttpError(400, "VALIDATION_FAILED", "Enter the date the check was completed.");
   const [before] = await db.select().from(volunteerApplications).where(eq(volunteerApplications.id, applicationId));
   if (!before) throw new HttpError(404, "NOT_FOUND", "Application not found.");
+  if (before.status === "approved" && input.status !== "cleared") {
+    throw new HttpError(409, "CONFLICT", "This volunteer is approved. Remove their approval first, then update the check.");
+  }
   const [after] = await db
     .update(volunteerApplications)
     .set({
@@ -387,6 +410,7 @@ export async function decideApplication(
     const [a] = await tx.select().from(volunteerApplications).where(eq(volunteerApplications.id, applicationId)).for("update");
     if (!a) throw new HttpError(404, "NOT_FOUND", "Application not found.");
     if (a.status !== "submitted") throw new HttpError(409, "CONFLICT", "Only submitted (paid) applications can be decided.");
+    if (a.userId === actor.userId) throw new HttpError(403, "FORBIDDEN", "Another admin has to decide your own application.");
     let roleAssignmentId: string | null = null;
     if (input.decision === "approved") {
       const today = new Date().toISOString().slice(0, 10);
@@ -423,9 +447,48 @@ export async function decideApplication(
     });
     return after!;
   });
-  let refund = null;
-  if (input.decision === "rejected" && input.refund && app.paidAt) {
-    refund = await issueRefund({ applicationId: app.id }, { reason: input.reason || "Application not approved" }, actor);
-  }
+  const refund = input.decision === "rejected" && input.refund && app.paidAt ? await refundAll({ applicationId: app.id }, input.reason || "Application not approved", actor) : null;
   return { application: app, refund };
+}
+
+/**
+ * Removes an approved volunteer's role for the season (e.g. a background check
+ * later comes back not cleared). The application closes as "revoked", so the
+ * person can apply again later if appropriate.
+ */
+export async function revokeApproval(actor: Actor & { userId: string }, applicationId: string, reason: string) {
+  return db.transaction(async (tx) => {
+    const [a] = await tx.select().from(volunteerApplications).where(eq(volunteerApplications.id, applicationId)).for("update");
+    if (!a) throw new HttpError(404, "NOT_FOUND", "Application not found.");
+    if (a.status !== "approved") throw new HttpError(409, "CONFLICT", "Only approved volunteers can be removed.");
+    await tx
+      .update(userRoleAssignments)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(userRoleAssignments.userId, a.userId),
+          eq(userRoleAssignments.roleKey, a.roleKey),
+          eq(userRoleAssignments.scopeType, "season"),
+          eq(userRoleAssignments.scopeId, a.seasonId),
+          sql`${userRoleAssignments.revokedAt} is null`,
+        ),
+      );
+    const [after] = await tx
+      .update(volunteerApplications)
+      .set({ status: "revoked", decisionReason: reason, decidedBy: actor.userId, decidedAt: new Date(), updatedAt: new Date() })
+      .where(eq(volunteerApplications.id, a.id))
+      .returning();
+    await writeAudit(tx, {
+      actorUserId: actor.userId,
+      action: "staff.application.revoke",
+      targetType: "volunteer_application",
+      targetId: a.id,
+      before: { status: "approved", roleKey: a.roleKey },
+      after: { status: "revoked" },
+      reason,
+      requestId: actor.requestId,
+      ipAddress: actor.ip,
+    });
+    return after!;
+  });
 }

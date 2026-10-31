@@ -30,6 +30,7 @@ import {
   createPayment,
   friendlyPaymentError,
   getCredentials,
+  parseReference,
   refundPayment,
   SquareError,
   type SquarePayment,
@@ -406,11 +407,18 @@ function isCardProblem(err: SquareError) {
 }
 
 /** A charge that definitely didn't happen: the family can try again. */
-export async function revertToPending(registrationId: string, message: string) {
+export async function revertToPending(registrationId: string, message: string, failedPaymentCreatedAt?: Date) {
   await db
     .update(registrations)
     .set({ status: "pending_payment", paymentError: message, paymentRequest: null, processingStartedAt: null, updatedAt: new Date() })
-    .where(and(eq(registrations.id, registrationId), eq(registrations.status, "processing")));
+    .where(
+      and(
+        eq(registrations.id, registrationId),
+        eq(registrations.status, "processing"),
+        // From the webhook: only if that failed payment belongs to the current attempt, not an older declined card.
+        failedPaymentCreatedAt ? sql`${registrations.processingStartedAt} <= ${failedPaymentCreatedAt.toISOString()}::timestamptz + interval '2 seconds'` : undefined,
+      ),
+    );
 }
 
 /**
@@ -482,7 +490,9 @@ export async function recordCompletedPayment(
   actor: Actor,
 ) {
   const outcome = await db.transaction(async (tx) => {
-    const [r] = await tx.select().from(registrations).where(eq(registrations.id, payment.reference_id ?? "")).for("update");
+    const ref = parseReference(payment.reference_id);
+    if (!ref || !("registrationId" in ref)) return { reg: null, refundPaymentId: null as string | null, reason: "" };
+    const [r] = await tx.select().from(registrations).where(eq(registrations.id, ref.registrationId)).for("update");
     if (!r) return { reg: null, refundPaymentId: null as string | null, reason: "" };
     const [row] = await tx
       .insert(payments)
@@ -645,6 +655,32 @@ export async function issueRefund(owner: PaymentOwner, input: { amountCents?: nu
   return { refundId: refund.id, amountCents: amount, status: refund.status };
 }
 
+/**
+ * Refunds every completed payment of an owner that still has money left (an
+ * original and any duplicate), each by its own payment id. Returns what was
+ * refunded and any failures, without throwing, so a decision that already
+ * committed still reports which refunds need retrying.
+ */
+export async function refundAll(owner: PaymentOwner, reason: string, actor: Actor) {
+  const open = await db
+    .select({ id: payments.id })
+    .from(payments)
+    .where(and(ownerFilter(owner), inArray(payments.status, COMPLETED), sql`${payments.amountCents} > ${payments.refundedCents}`))
+    .orderBy(asc(payments.createdAt));
+  const refunded: Awaited<ReturnType<typeof issueRefund>>[] = [];
+  const failed: string[] = [];
+  for (const p of open) {
+    try {
+      refunded.push(await issueRefund(owner, { reason, paymentId: p.id }, actor));
+    } catch (err) {
+      failed.push(err instanceof Error ? err.message : String(err));
+      logger.error({ owner, paymentId: p.id, err: failed.at(-1) }, "refund failed; retry from the admin portal");
+    }
+  }
+  const amountCents = refunded.reduce((n, r) => n + r.amountCents, 0);
+  return { amountCents, status: refunded[0]?.status ?? null, refunds: refunded, error: failed[0] ?? null };
+}
+
 /* ---------------- admin decisions ---------------- */
 
 export async function decideRegistration(
@@ -691,7 +727,7 @@ export async function decideRegistration(
   });
   let refund = null;
   if (input.decision === "rejected" && input.refund) {
-    refund = await refundRegistration(reg.id, { reason: input.reason || "Registration not accepted" }, actor);
+    refund = await refundAll({ registrationId: reg.id }, input.reason || "Registration not accepted", actor);
   }
   return { registration: reg, refund };
 }
@@ -753,7 +789,7 @@ export async function cancelRegistration(
       .from(payments)
       .where(and(eq(payments.registrationId, reg.id), inArray(payments.status, COMPLETED), sql`${payments.amountCents} > ${payments.refundedCents}`))
       .limit(1);
-    if (p) refund = await refundRegistration(reg.id, { reason: input.reason }, actor);
+    if (p) refund = await refundAll({ registrationId: reg.id }, input.reason, actor);
   }
   return { registration: reg, refund };
 }

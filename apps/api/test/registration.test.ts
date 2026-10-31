@@ -571,7 +571,7 @@ describe("payment recovery and refunds (review fixes)", () => {
     expect(res.body.error.code).toBe("PAYMENT_PENDING");
     const [r] = await db.select().from(registrations).where(eq(registrations.id, regId));
     expect(r!.status).toBe("processing");
-    const body = JSON.stringify({ event_id: `evt-fail-${regId}`, type: "payment.updated", data: { object: { payment: { id: "pay_x_failed", status: "FAILED", reference_id: regId } } } });
+    const body = JSON.stringify({ event_id: `evt-fail-${regId}`, type: "payment.updated", data: { object: { payment: { id: "pay_x_failed", status: "FAILED", reference_id: regId, created_at: new Date().toISOString() } } } });
     expect((await send(body)).status).toBe(200);
     const [after] = await db.select().from(registrations).where(eq(registrations.id, regId));
     expect(after!.status).toBe("pending_payment");

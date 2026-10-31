@@ -33,7 +33,7 @@ const FILTERS = [
   { value: "submitted,approved,rejected,pending_payment,processing", label: "All" },
   { value: "approved", label: "Approved" },
   { value: "pending_payment,processing", label: "Awaiting fee" },
-  { value: "rejected,withdrawn", label: "Not approved / withdrawn" },
+  { value: "rejected,withdrawn,revoked", label: "Not approved / withdrawn / removed" },
 ];
 
 /** Admin: coach and team manager applications. */

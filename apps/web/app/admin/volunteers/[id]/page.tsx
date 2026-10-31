@@ -259,12 +259,14 @@ function Decision({ detail, can, onDone }: { detail: Detail; can: (p: string) =>
   const paid = detail.payments.find((p) => p.status === "COMPLETED" || p.status === "APPROVED");
   const refundable = paid ? paid.amountCents - paid.refundedCents : 0;
   if (a.status !== "submitted") {
-    return a.decidedAt ? (
-      <p className="muted" style={{ marginTop: 24 }}>
-        Decided {fmtDateTime(a.decidedAt)}
-        {a.decisionReason ? ` · ${a.decisionReason}` : ""}
-      </p>
-    ) : null;
+    return (
+      <AfterDecision
+        detail={detail}
+        refundable={refundable}
+        canRefund={can("refunds.issue")}
+        onDone={onDone}
+      />
+    );
   }
   const cleared = a.screeningStatus === "cleared" && (!a.screeningExpiresOn || a.screeningExpiresOn >= new Date().toISOString().slice(0, 10));
   async function approve() {
@@ -313,6 +315,63 @@ function Decision({ detail, can, onDone }: { detail: Detail; can: (p: string) =>
             </button>
           </div>
         </form>
+      )}
+    </section>
+  );
+}
+
+/** After a decision: remove an approval, or refund money still held (e.g. a refund that failed earlier). */
+function AfterDecision({ detail, refundable, canRefund, onDone }: { detail: Detail; refundable: number; canRefund: boolean; onDone: (msg: string) => void }) {
+  const a = detail.application;
+  const [revoking, setRevoking] = useState(false);
+  const { busy, error, run } = useAction();
+  async function revoke(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const reason = String(new FormData(e.currentTarget).get("reason"));
+    if ((await run(() => api.post(`/admin/staff/applications/${a.id}/revoke`, { reason }))) !== undefined) onDone("Approval removed; their role for this season is gone.");
+  }
+  async function refundRest() {
+    const r = await run(() => api.post(`/admin/staff/applications/${a.id}/refund`, { reason: "Refund of volunteer fee" }));
+    if (r !== undefined) onDone("Refund issued.");
+  }
+  return (
+    <section className="card" style={{ marginTop: 24 }}>
+      <h2>Decision</h2>
+      <ErrorAlert error={error} />
+      {a.decidedAt && (
+        <p className="muted">
+          {fmtDateTime(a.decidedAt)}
+          {a.decisionReason ? ` · ${a.decisionReason}` : ""}
+        </p>
+      )}
+      {a.status === "approved" &&
+        (revoking ? (
+          <form className="stack" onSubmit={revoke}>
+            <label>
+              Why are you removing this approval? (kept in the audit log)
+              <input type="text" name="reason" required minLength={3} maxLength={500} />
+            </label>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <button className="btn danger" disabled={busy}>
+                {busy ? "Working…" : "Remove approval"}
+              </button>
+              <button type="button" className="btn ghost" onClick={() => setRevoking(false)}>
+                Back
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button className="btn ghost" onClick={() => setRevoking(true)}>
+            Remove approval…
+          </button>
+        ))}
+      {a.status !== "approved" && refundable > 0 && canRefund && (
+        <>
+          <p className="hint">{money(refundable)} of this volunteer's fee hasn't been refunded yet.</p>
+          <button className="btn" onClick={refundRest} disabled={busy}>
+            Refund {money(refundable)}
+          </button>
+        </>
       )}
     </section>
   );

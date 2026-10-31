@@ -193,6 +193,7 @@ export async function getMerchantAndMainLocation(token: string) {
 export interface SquarePayment {
   id: string;
   status: string;
+  created_at?: string;
   amount_money?: { amount: number; currency: string };
   reference_id?: string;
   receipt_url?: string;
@@ -276,4 +277,12 @@ export function friendlyPaymentError(err: unknown): string {
     default:
       return "The payment didn't go through. Please check your card details and try again.";
   }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Our Square reference_id: a registration id, or "app:" + an application id. Anything else isn't ours. */
+export function parseReference(ref: string | undefined): { registrationId: string } | { applicationId: string } | null {
+  if (!ref) return null;
+  if (ref.startsWith("app:")) return UUID.test(ref.slice(4)) ? { applicationId: ref.slice(4) } : null;
+  return UUID.test(ref) ? { registrationId: ref } : null;
 }
