@@ -13,6 +13,7 @@ import { contactMessages, contentPages, siteSettings } from "../../db/schema/ind
 import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission } from "../../http/context.js";
 import { HttpError } from "../../http/errors.js";
 import { getEmailSender } from "../../lib/email.js";
+import { templates } from "../../lib/email-templates.js";
 import { logger } from "../../lib/logger.js";
 import { writeAudit } from "../platform/audit.js";
 import { DEFAULT_PAGES, DEFAULT_SETTINGS, PAGE_SLUGS, type Announcement, type ContactInfo } from "./defaults.js";
@@ -146,13 +147,16 @@ publicContentRouter.post(
     const contact = (await getSetting("contact")) as ContactInfo;
     if (contact.inboxEmail) {
       try {
-        await getEmailSender().send({
-          to: contact.inboxEmail,
-          replyTo: input.email,
-          template: "contact.message",
-          subject: `Website message (${input.topic}) from ${input.name}`,
-          text: `${input.message}\n\n— ${input.name}\n${input.email}${input.phone ? `\n${input.phone}` : ""}\n\nReply to this email to answer them.`,
-        });
+        await getEmailSender().send(
+          templates.contactMessage(contact.inboxEmail, {
+            name: input.name,
+            email: input.email,
+            phone: input.phone || null,
+            topic: input.topic,
+            message: input.message,
+            adminUrl: `${env.APP_BASE_URL.replace(/\/$/, "")}/admin/content`,
+          }),
+        );
         await db.update(contactMessages).set({ emailedAt: new Date() }).where(eq(contactMessages.id, saved!.id));
       } catch (err) {
         logger.error({ err, messageId: saved!.id }, "contact message saved but email failed");

@@ -85,7 +85,7 @@ export function registerSubscribers() {
     if (!c) return;
     const amount = (e.payload as { amountCents?: number }).amountCents ?? 0;
     for (const to of c.emails) {
-      await getEmailSender().send(templates.registrationRefunded(to, { player: c.playerName, amount: money(amount) }));
+      await getEmailSender().send(templates.registrationRefunded(to, { player: c.playerName, amount: money(amount), dashboardUrl: `${base()}/dashboard` }));
     }
   });
 
