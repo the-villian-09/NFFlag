@@ -391,3 +391,15 @@ input:disabled, select:disabled, textarea:disabled { background: #1a2633; color:
 .ev-body { flex: 1 1 200px; }
 .ev-action { display: flex; align-items: center; margin-left: auto; }
 @media (max-width: 520px) { .ev-action { flex-basis: 100%; margin-left: 0; } .ev-action .btn { width: 100%; text-align: center; } }
+
+/* Phones: the date tile becomes a bar across the top (date left, time right). */
+.ev-bar { display: none; }
+@media (max-width: 520px) {
+  .ev { display: block; }
+  .ev-tile, .ev-body > .ev-time { display: none; }
+  .ev-bar { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border-bottom: 2px solid var(--line); padding-bottom: 8px; margin-bottom: 8px; }
+  .ev-bar-date { font-family: var(--font-display); font-weight: 700; font-size: 26px; line-height: 1.05; color: var(--gold); letter-spacing: 0.02em; }
+  .ev-bar-time { font-family: var(--font-display); font-weight: 600; font-size: 26px; line-height: 1.05; color: var(--lime); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .ev-bar-time .status { font-family: var(--font-body); font-size: 12px; line-height: 1.4; }
+  .ev-action { margin-top: 12px; }
+}

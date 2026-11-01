@@ -16,7 +16,8 @@ function dateParts(iso: string) {
 
 /**
  * A game or practice: yellow date tile, start time in lime, then the title and
- * details. Used on the public schedule, the coach's team page and the family's
+ * details. On phones the tile becomes a full-width date bar (date left, time
+ * right). Used on the public schedule, the coach's team page and the family's
  * Schedule card.
  */
 export function EventRow({
@@ -40,6 +41,15 @@ export function EventRow({
   const p = dateParts(startsAt);
   return (
     <li className="ev">
+      <span className="ev-bar">
+        <span className="ev-bar-date">
+          {p.dow}, {p.mon} {p.day}
+        </span>
+        <span className="ev-bar-time">
+          {p.time}
+          {badge}
+        </span>
+      </span>
       <time className="ev-tile" dateTime={startsAt} aria-label={`${p.dow} ${p.mon} ${p.day}`}>
         <span className="ev-dow">{p.dow}</span>
         <span className="ev-mon">{p.mon}</span>
