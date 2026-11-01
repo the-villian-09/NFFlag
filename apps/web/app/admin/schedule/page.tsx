@@ -130,18 +130,18 @@ export default function AdminSchedulePage() {
 
 function AddGame({ divisions, onDone }: { divisions: Division[]; onDone: () => void }) {
   const { busy, error, run } = useAction();
-  const [f, setF] = useState({ divisionId: "", homeTeamId: "", awayTeamId: "", startsAt: "", location: "", notes: "" });
+  const [f, setF] = useState({ divisionId: "", homeTeamId: "", awayTeamId: "", startsAt: "", location: "", notes: "", ticketUrl: "" });
   const [ok, setOk] = useState(false);
   const teams = divisions.find((d) => d.id === f.divisionId)?.teams ?? [];
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setOk(false);
-    const r = await run(() => api.post("/admin/schedule/games", { ...f, notes: f.notes || null }));
+    const r = await run(() => api.post("/admin/schedule/games", { ...f, notes: f.notes || null, ticketUrl: f.ticketUrl.trim() || null }));
     if (r) {
       setOk(true);
       // Keep division, time and place: the next game is usually right after.
-      setF({ ...f, homeTeamId: "", awayTeamId: "", notes: "" });
+      setF({ ...f, homeTeamId: "", awayTeamId: "", notes: "", ticketUrl: "" });
       onDone();
     }
   }
@@ -201,6 +201,10 @@ function AddGame({ divisions, onDone }: { divisions: Division[]; onDone: () => v
           Notes for the teams <span className="muted">(optional, not public)</span>
           <input type="text" maxLength={500} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} />
         </label>
+        <label>
+          Ticket link <span className="muted">(optional; shows a Buy tickets button)</span>
+          <input type="url" inputMode="url" maxLength={500} value={f.ticketUrl} onChange={(e) => setF({ ...f, ticketUrl: e.target.value })} placeholder="https://…" pattern="https://.*" title="Starts with https://" />
+        </label>
         <button className="btn" disabled={busy}>
           Add game
         </button>
@@ -218,7 +222,7 @@ function ImportGames({ seasonId, divisions, onDone }: { seasonId: string; divisi
     const d = divisions.find((x) => x.teams.length >= 2);
     const a = d?.teams[0]?.name ?? "Sharks";
     const b = d?.teams[1]?.name ?? "Jets";
-    const rows = ["Date,Time,Division,Home,Away,Location,Notes", `1/16/2027,9:00 AM,${d?.name ?? "8U"},${a},${b},Field 1,`];
+    const rows = ["Date,Time,Division,Home,Away,Location,Notes,Tickets", `1/16/2027,9:00 AM,${d?.name ?? "8U"},${a},${b},Field 1,,https://`];
     return `data:text/csv;charset=utf-8,${encodeURIComponent(rows.join("\n"))}`;
   }, [divisions]);
 
@@ -237,7 +241,7 @@ function ImportGames({ seasonId, divisions, onDone }: { seasonId: string; divisi
     <section className="card">
       <h2>Import a spreadsheet</h2>
       <p className="muted">
-        Save as CSV with columns <strong>Date, Time, Division, Home, Away, Location</strong> (Notes optional). Team and division names must match the
+        Save as CSV with columns <strong>Date, Time, Division, Home, Away, Location</strong> (Notes and Tickets optional; Tickets is the ticket link). Team and division names must match the
         site. <a href={template} download="nffl-games-template.csv">Download a template</a>.
       </p>
       <ErrorAlert error={error} />
@@ -300,7 +304,7 @@ function GameRow({ g, division, divName, canScore, onDone }: { g: Game; division
   const [mode, setMode] = useState<"view" | "edit" | "score">("view");
   const [home, setHome] = useState(g.homeScore?.toString() ?? "");
   const [away, setAway] = useState(g.awayScore?.toString() ?? "");
-  const [f, setF] = useState({ homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId, startsAt: g.startsAtLocal, location: g.location, notes: g.notes ?? "", status: g.status === "final" ? "scheduled" : g.status, notify: false });
+  const [f, setF] = useState({ homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId, startsAt: g.startsAtLocal, location: g.location, notes: g.notes ?? "", ticketUrl: g.ticketUrl ?? "", status: g.status === "final" ? "scheduled" : g.status, notify: false });
   const st = GAME_STATUS[g.status];
 
   async function saveScore(e: React.FormEvent) {
@@ -312,7 +316,7 @@ function GameRow({ g, division, divName, canScore, onDone }: { g: Game; division
   }
   async function saveEdit(e: React.FormEvent) {
     e.preventDefault();
-    if (await run(() => api.put(`/admin/schedule/games/${g.id}`, { ...f, notes: f.notes || null }))) {
+    if (await run(() => api.put(`/admin/schedule/games/${g.id}`, { ...f, notes: f.notes || null, ticketUrl: f.ticketUrl.trim() || null }))) {
       setMode("view");
       onDone();
     }
@@ -329,6 +333,7 @@ function GameRow({ g, division, divName, canScore, onDone }: { g: Game; division
           <br />
           <span className="muted">
             {divName} · {fmtWhen(g.startsAt)} · {g.location}
+            {g.ticketUrl ? " · Tickets link set" : ""}
           </span>
         </span>
         <span style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -428,6 +433,10 @@ function GameRow({ g, division, divName, canScore, onDone }: { g: Game; division
           <label>
             Notes for the teams
             <input type="text" maxLength={500} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} />
+          </label>
+          <label>
+            Ticket link <span className="muted">(optional)</span>
+            <input type="url" inputMode="url" maxLength={500} value={f.ticketUrl} onChange={(e) => setF({ ...f, ticketUrl: e.target.value })} placeholder="https://…" pattern="https://.*" title="Starts with https://" />
           </label>
           <label className="check">
             <input type="checkbox" checked={f.notify} onChange={(e) => setF({ ...f, notify: e.target.checked })} /> Email both teams about this change

@@ -506,6 +506,8 @@ export const games = pgTable(
     status: text("status").notNull().default("scheduled"),
     homeScore: integer("home_score"),
     awayScore: integer("away_score"),
+    /** Where to buy tickets for this game (shown as a "Buy tickets" button). */
+    ticketUrl: text("ticket_url"),
     notes: text("notes"),
     createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

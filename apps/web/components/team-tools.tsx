@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { EventRow } from "@/components/event-row";
+import { TicketButton } from "@/components/ticket-button";
 import { Modal } from "@/components/modal";
 import { ErrorAlert, useAction } from "@/components/form";
 import { api } from "@/lib/api";
@@ -96,6 +97,7 @@ export function TeamTools({
             </span>
           ) : null
         }
+        action={<TicketButton g={g} />}
       />
     );
   };

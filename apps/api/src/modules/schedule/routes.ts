@@ -17,6 +17,7 @@ import {
   deletePractice,
   deletePracticeSeriesFrom,
   importGames,
+  isTicketUrl,
   listAnnouncements,
   listGames,
   listPractices,
@@ -228,6 +229,14 @@ adminScheduleRouter.get(
   }),
 );
 
+const ticketUrl = z
+  .string()
+  .trim()
+  .max(500)
+  .refine((v) => v === "" || isTicketUrl(v), "Ticket links must start with https://")
+  .optional()
+  .nullable();
+
 const gameInput = z.object({
   divisionId: uuid,
   homeTeamId: uuid,
@@ -235,6 +244,7 @@ const gameInput = z.object({
   startsAt: local,
   location: text(200),
   notes: optText(500),
+  ticketUrl,
 });
 
 adminScheduleRouter.post(

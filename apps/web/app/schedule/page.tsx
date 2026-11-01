@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { serverGet } from "@/lib/server-api";
 import { EventRow } from "@/components/event-row";
+import { TicketButton } from "@/components/ticket-button";
 import { GAME_STATUS, pct, type Game, type Standing } from "@/lib/schedule";
 
 export const metadata: Metadata = { title: "Schedule & standings" };
@@ -91,6 +92,7 @@ export default async function SchedulePage() {
                         detail={g.location}
                         struck={g.status === "cancelled"}
                         badge={g.status !== "scheduled" ? <span className={`status ${GAME_STATUS[g.status].tone}`}>{GAME_STATUS[g.status].label}</span> : null}
+                        action={<TicketButton g={g} />}
                       />
                     ))}
                   </ul>

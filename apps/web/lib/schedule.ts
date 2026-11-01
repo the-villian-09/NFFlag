@@ -14,6 +14,7 @@ export interface Game {
   homeScore: number | null;
   awayScore: number | null;
   notes?: string | null;
+  ticketUrl?: string | null;
 }
 
 export interface Practice {
@@ -66,3 +67,7 @@ export function resultFor(g: Game, teamId: string) {
   const them = g.homeTeamId === teamId ? g.awayScore : g.homeScore;
   return `${us > them ? "W" : us < them ? "L" : "T"} ${us}–${them}`;
 }
+
+/** Show "Buy tickets" for games that have a link and haven't happened (or been called off). */
+export const canBuyTickets = (g: Game, now = Date.now()) =>
+  !!g.ticketUrl && (g.status === "scheduled" || g.status === "postponed") && new Date(g.startsAt).getTime() > now - 3 * 3600_000;

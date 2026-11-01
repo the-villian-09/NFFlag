@@ -7,6 +7,7 @@ import { ErrorAlert, useAction } from "@/components/form";
 import { api, ApiError, authApi } from "@/lib/api";
 import { fmtDate, fmtDateTime, money, StatusBadge } from "@/lib/format";
 import { EventRow } from "@/components/event-row";
+import { TicketButton } from "@/components/ticket-button";
 import { Modal } from "@/components/modal";
 import { GAME_STATUS, resultFor, type Game, type Practice } from "@/lib/schedule";
 import { useFlags } from "@/lib/use-flags";
@@ -198,6 +199,7 @@ function GameItem({ g, teamId }: { g: Game; teamId: string }) {
       detail={g.location}
       struck={g.status === "cancelled"}
       badge={g.status !== "scheduled" ? <span className={`status ${GAME_STATUS[g.status].tone}`}>{GAME_STATUS[g.status].label}</span> : null}
+      action={<TicketButton g={g} />}
     />
   );
 }

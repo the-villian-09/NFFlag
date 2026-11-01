@@ -44,6 +44,16 @@ function when(local: string) {
 
 /* ---------------- games ---------------- */
 
+/** Ticket links must be https web addresses (shown to the public as a button). */
+export function isTicketUrl(v: string) {
+  try {
+    const u = new URL(v);
+    return u.protocol === "https:" && !!u.hostname && v.length <= 500;
+  } catch {
+    return false;
+  }
+}
+
 async function teamsInDivision(conn: DbOrTx, divisionId: string, homeTeamId: string, awayTeamId: string) {
   if (homeTeamId === awayTeamId) throw new HttpError(400, "VALIDATION_FAILED", "Pick two different teams.");
   const rows = await conn.select().from(teams).where(inArray(teams.id, [homeTeamId, awayTeamId]));
@@ -60,6 +70,7 @@ export interface GameInput {
   startsAt: string; // league local "YYYY-MM-DDTHH:mm"
   location: string;
   notes?: string | null;
+  ticketUrl?: string | null;
 }
 
 export async function createGame(actor: Actor, input: GameInput) {
@@ -76,6 +87,7 @@ export async function createGame(actor: Actor, input: GameInput) {
         startsAt,
         location: input.location,
         notes: input.notes || null,
+        ticketUrl: input.ticketUrl || null,
         createdBy: actor.userId,
       })
       .returning();
@@ -90,6 +102,7 @@ export interface GameUpdate {
   startsAt: string;
   location: string;
   notes?: string | null;
+  ticketUrl?: string | null;
   status: "scheduled" | "cancelled" | "postponed";
   /** Email both teams about the change. */
   notify?: boolean;
@@ -110,6 +123,7 @@ export async function updateGame(actor: Actor, id: string, input: GameUpdate) {
         startsAt,
         location: input.location,
         notes: input.notes || null,
+        ticketUrl: input.ticketUrl || null,
         status: input.status,
         updatedAt: new Date(),
       })
@@ -184,6 +198,7 @@ function gameRow(g: typeof games.$inferSelect, teamName: (id: string) => string)
     homeScore: g.homeScore,
     awayScore: g.awayScore,
     notes: g.notes,
+    ticketUrl: g.ticketUrl,
   };
 }
 
@@ -215,6 +230,9 @@ const HEADER_ALIASES: Record<string, string> = {
   location: "location",
   field: "location",
   notes: "notes",
+  tickets: "tickets",
+  "ticket link": "tickets",
+  "ticket url": "tickets",
 };
 
 function parseDate(s: string): string | null {
@@ -254,6 +272,7 @@ export interface ImportRow {
   away: string;
   location: string;
   notes: string;
+  tickets: string;
   error?: string;
   duplicate?: boolean;
 }
@@ -289,6 +308,7 @@ export async function importGames(actor: Actor, seasonId: string, csv: string, d
       away: get("away"),
       location: get("location"),
       notes: header.includes("notes") ? get("notes") : "",
+      tickets: header.includes("tickets") ? get("tickets") : "",
     };
     const errs: string[] = [];
     const div = divs.find((d) => norm(d.name) === norm(r.division));
@@ -307,6 +327,7 @@ export async function importGames(actor: Actor, seasonId: string, csv: string, d
     if (date && time && !startsAt) errs.push("that date and time doesn't exist");
     if (!r.location) errs.push("location is empty");
     if (r.location.length > 200 || r.notes.length > 500) errs.push("location or notes too long");
+    if (r.tickets && !isTicketUrl(r.tickets)) errs.push("ticket link must start with https://");
     if (errs.length) r.error = errs.join("; ");
     else {
       const key = `${home!.id}|${away!.id}|${startsAt!.getTime()}`;
@@ -324,6 +345,7 @@ export async function importGames(actor: Actor, seasonId: string, csv: string, d
           startsAt: startsAt!,
           location: r.location,
           notes: r.notes || null,
+          ticketUrl: r.tickets || null,
           createdBy: actor.userId,
         };
     }

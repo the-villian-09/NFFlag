@@ -26,6 +26,7 @@ export function EventRow({
   badge,
   struck,
   extra,
+  action,
 }: {
   startsAt: string;
   title: ReactNode;
@@ -33,6 +34,8 @@ export function EventRow({
   badge?: ReactNode;
   struck?: boolean;
   extra?: ReactNode;
+  /** A button on the right (e.g. Buy tickets); drops below the details on narrow screens. */
+  action?: ReactNode;
 }) {
   const p = dateParts(startsAt);
   return (
@@ -53,6 +56,7 @@ export function EventRow({
         {detail && <span className="ev-detail">{detail}</span>}
         {extra}
       </span>
+      {action && <span className="ev-action">{action}</span>}
     </li>
   );
 }

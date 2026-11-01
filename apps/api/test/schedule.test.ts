@@ -194,6 +194,27 @@ describe("games, scores and standings", () => {
     expect(games.find((g: { location: string }) => g.location === "Field 2, north").startsAtLocal).toBe("2027-01-23T10:30");
   });
 
+  it("stores a ticket link per game (https only) and shows it on the public schedule", async () => {
+    const base = { divisionId, homeTeamId: team.jets, awayTeamId: team.sharks, startsAt: "2027-02-06T09:00", location: "Field 3" };
+    expect((await admin.post("/api/v1/admin/schedule/games").send({ ...base, ticketUrl: "http://tix.example.com/x" })).status).toBe(400);
+    expect((await admin.post("/api/v1/admin/schedule/games").send({ ...base, ticketUrl: "javascript:alert(1)" })).status).toBe(400);
+    const g = await admin.post("/api/v1/admin/schedule/games").send({ ...base, ticketUrl: "https://tixflo.example.com/e/123" });
+    expect(g.status).toBe(201);
+    const pub = (await agent().get("/api/v1/schedule")).body.divisions.find((d: { id: string }) => d.id === divisionId);
+    expect(pub.games.find((x: { id: string }) => x.id === g.body.game.id).ticketUrl).toBe("https://tixflo.example.com/e/123");
+    // Clearing the link on edit.
+    const e = await admin.put(`/api/v1/admin/schedule/games/${g.body.game.id}`).send({ homeTeamId: team.jets, awayTeamId: team.sharks, startsAt: "2027-02-06T09:00", location: "Field 3", status: "scheduled", ticketUrl: "" });
+    expect(e.body.game.ticketUrl).toBeNull();
+    // CSV "Tickets" column.
+    const csv = "Date,Time,Division,Home,Away,Location,Tickets\n2/13/2027,9:00 AM,Sched 8U,Sharks,Jets,Field 1,https://tixflo.example.com/e/456\n2/20/2027,9:00 AM,Sched 8U,Sharks,Jets,Field 1,tix.example.com";
+    const bad = await admin.post(`/api/v1/admin/schedule/seasons/${seasonId}/import`).send({ csv, dryRun: true });
+    expect(bad.body.rows[1].error).toMatch(/https/);
+    const ok = await admin.post(`/api/v1/admin/schedule/seasons/${seasonId}/import`).send({ csv: csv.split("\n").slice(0, 2).join("\n"), dryRun: false });
+    expect(ok.body.added).toBe(1);
+    const games = (await admin.get(`/api/v1/admin/schedule/seasons/${seasonId}`)).body.games;
+    expect(games.some((x: { ticketUrl: string | null }) => x.ticketUrl === "https://tixflo.example.com/e/456")).toBe(true);
+  });
+
   it("emails both teams when a game is cancelled with notify", async () => {
     const fam = await rostered("Gamefam", team.jets);
     const g = (await admin.get(`/api/v1/admin/schedule/seasons/${seasonId}`)).body.games.find((x: { status: string }) => x.status === "scheduled");
