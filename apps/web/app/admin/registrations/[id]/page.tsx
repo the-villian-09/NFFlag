@@ -26,6 +26,7 @@ interface Detail {
     createdAt: string;
   };
   team: { entryId: string; teamId: string; name: string; source: string } | null;
+  withdrawal: { status: "open" | "withdrawn" | "declined" | "completed"; reason: string | null; adminNote: string | null; createdAt: string; resolvedAt: string | null } | null;
   player: { firstName: string; lastName: string; preferredName: string | null; birthDate: string; gender: string; shirtSize: string | null; school: string | null; grade: string | null };
   division: { name: string; genderPolicy: string; birthDateFrom: string | null; birthDateTo: string | null };
   season: { name: string } | null;
@@ -99,6 +100,17 @@ export default function AdminRegistrationPage() {
             <StatusBadge status={d.registration.status} /> <span className="muted">· {d.division.name} · {d.season?.name}</span>
           </p>
 
+          {d.withdrawal && d.withdrawal.status !== "withdrawn" && (
+            <WithdrawalBanner
+              id={id}
+              w={d.withdrawal}
+              canManage={!!me?.permissions.includes("registrations.manage")}
+              onDone={(msg) => {
+                setNotice(msg);
+                load();
+              }}
+            />
+          )}
           <div className="grid" style={{ marginTop: 16 }}>
             <section className="card">
               <h2>Player</h2>
@@ -388,5 +400,73 @@ function TeamLine({ team, canRemove, onRemoved }: { team: { entryId: string; nam
       </div>
       <ErrorAlert error={error} />
     </div>
+  );
+}
+
+/** A family's withdrawal request: accept it with Cancel registration below, or decline with a note. */
+function WithdrawalBanner({
+  id,
+  w,
+  canManage,
+  onDone,
+}: {
+  id: string;
+  w: NonNullable<Detail["withdrawal"]>;
+  canManage: boolean;
+  onDone: (msg: string) => void;
+}) {
+  const { busy, error, run } = useAction();
+  const [declining, setDeclining] = useState(false);
+  const [note, setNote] = useState("");
+  if (w.status !== "open")
+    return (
+      <p className="muted" style={{ marginTop: 8 }}>
+        Withdrawal request from {fmtDate(w.createdAt)}: {w.status === "completed" ? "registration cancelled" : `declined${w.adminNote ? ` (“${w.adminNote}”)` : ""}`}.
+      </p>
+    );
+  return (
+    <section className="card" style={{ marginTop: 16, borderTopColor: "var(--gold)" }}>
+      <h2>Withdrawal requested</h2>
+      <p style={{ margin: "0 0 8px" }}>
+        The family asked on {fmtDate(w.createdAt)} to withdraw this player.
+        {w.reason ? (
+          <>
+            {" "}
+            Their reason: <em>{w.reason}</em>
+          </>
+        ) : null}
+      </p>
+      <p className="muted" style={{ margin: 0 }}>
+        To accept, use <strong>Cancel registration</strong> below and choose whether to refund. The family is emailed either way.
+      </p>
+      <ErrorAlert error={error} />
+      {canManage &&
+        (declining ? (
+          <form
+            className="stack"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (await run(() => api.post(`/admin/league/registrations/${id}/withdrawal/decline`, { note }))) onDone("Request declined; the family was emailed your note.");
+            }}
+          >
+            <label>
+              Note to the family
+              <textarea required minLength={3} maxLength={1000} rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Rosters are final after the draft, so we can't offer a refund." />
+            </label>
+            <span style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <button className="btn small" disabled={busy}>
+                Decline and email the family
+              </button>
+              <button type="button" className="btn ghost small" onClick={() => setDeclining(false)}>
+                Back
+              </button>
+            </span>
+          </form>
+        ) : (
+          <button className="btn ghost small" style={{ marginTop: 12 }} onClick={() => setDeclining(true)}>
+            Decline request
+          </button>
+        ))}
+    </section>
   );
 }

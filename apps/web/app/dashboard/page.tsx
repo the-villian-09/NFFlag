@@ -39,6 +39,7 @@ interface Reg {
   decisionReason: string | null;
   payment: { receiptUrl: string | null; refundedCents: number } | null;
   team: { name: string; coach: { name: string; email: string } | null } | null;
+  withdrawal: { status: "open" | "withdrawn" | "declined" | "completed"; createdAt: string; adminNote: string | null } | null;
 }
 interface MyTeam {
   id: string;
@@ -556,11 +557,13 @@ function PlayersCard() {
 function RegistrationsCard() {
   const [regs, setRegs] = useState<Reg[] | null>(null);
   const [open, setOpen] = useState<boolean | null>(null);
-  useEffect(() => {
+  const reload = () =>
     api
       .get<{ items: Reg[] }>("/registrations")
       .then((r) => setRegs(r.items))
       .catch(() => setRegs([]));
+  useEffect(() => {
+    void reload();
     api
       .get<{ enabled: boolean; window: { open: boolean } }>(
         "/registration/options",
@@ -618,6 +621,7 @@ function RegistrationsCard() {
                     <span className="muted">Reason: {r.decisionReason}</span>
                   </>
                 )}
+                {(r.status === "paid" || r.status === "approved") && <Withdraw r={r} onChange={reload} />}
               </span>
               <span
                 style={{
@@ -811,5 +815,77 @@ function SecurityCard({
         </form>
       )}
     </section>
+  );
+}
+
+/** Ask the league to withdraw a paid registration, or take an open request back. */
+function Withdraw({ r, onChange }: { r: Reg; onChange: () => void }) {
+  const { busy, error, run } = useAction();
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState("");
+  const w = r.withdrawal;
+
+  if (w?.status === "open")
+    return (
+      <span style={{ display: "block", marginTop: 8 }}>
+        <span className="status warn">Withdrawal requested</span>{" "}
+        <span className="muted">{fmtDate(w.createdAt)} · the league will email you.</span>{" "}
+        <button
+          type="button"
+          className="link-btn"
+          disabled={busy}
+          onClick={async () => {
+            if (window.confirm(`Take back your request to withdraw ${r.playerName}?`) && (await run(() => api.del(`/registrations/${r.id}/withdrawal`))) !== undefined) onChange();
+          }}
+        >
+          Take back
+        </button>
+        <ErrorAlert error={error} />
+      </span>
+    );
+
+  return (
+    <span style={{ display: "block", marginTop: 8 }}>
+      {w?.status === "declined" && w.adminNote && (
+        <span className="muted" style={{ display: "block" }}>
+          Withdrawal not approved: {w.adminNote}
+        </span>
+      )}
+      {!asking ? (
+        <button type="button" className="link-btn" onClick={() => setAsking(true)}>
+          Request to withdraw
+        </button>
+      ) : (
+        <form
+          className="stack"
+          style={{ marginTop: 8 }}
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if ((await run(() => api.post(`/registrations/${r.id}/withdrawal`, { reason: reason || null }))) !== undefined) {
+              setAsking(false);
+              setReason("");
+              onChange();
+            }
+          }}
+        >
+          <ErrorAlert error={error} />
+          <label>
+            Reason <span className="muted">(optional)</span>
+            <textarea rows={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. We're moving out of the area" />
+          </label>
+          <p className="muted" style={{ margin: 0, fontSize: 15 }}>
+            The league reviews each request and emails you, including whether a refund applies. {r.playerName} stays registered until then.
+          </p>
+          <span style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <button className="btn small" disabled={busy}>
+              Send request
+            </button>
+            <button type="button" className="btn ghost small" onClick={() => setAsking(false)}>
+              Cancel
+            </button>
+          </span>
+        </form>
+      )}
+    </span>
   );
 }

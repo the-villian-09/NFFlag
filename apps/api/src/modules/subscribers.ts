@@ -9,7 +9,8 @@ import { db } from "../db/client.js";
 import { divisions, householdMembers, payments, players, registrations, seasons, user, userRoleAssignments, waitlistEntries } from "../db/schema/index.js";
 import { positionOf } from "./registration/waitlist.js";
 import { feeLabel, ROLE_LABELS, type VolunteerRole } from "./staff/service.js";
-import { announcements, rosterEntries, teams, teamStaff, volunteerApplications } from "../db/schema/index.js";
+import { announcements, households, rosterEntries, teams, teamStaff, volunteerApplications, withdrawalRequests } from "../db/schema/index.js";
+import { getSetting } from "./content/routes.js";
 import { getEmailSender } from "../lib/email.js";
 import { templates } from "../lib/email-templates.js";
 import { logger } from "../lib/logger.js";
@@ -267,6 +268,41 @@ export function registerSubscribers() {
         }),
       );
     }
+  });
+
+  subscribe("registration.cancelled", async (e) => {
+    const c = await registrationContext(e.aggregateId);
+    if (!c) return;
+    for (const to of c.emails) await getEmailSender().send(templates.registrationCancelled(to, { player: c.playerName, division: c.division, dashboardUrl: `${base()}/dashboard` }));
+  });
+
+  subscribe("registration.withdrawal_requested", async (e) => {
+    const [w] = await db.select().from(withdrawalRequests).where(eq(withdrawalRequests.id, e.aggregateId));
+    if (!w) return;
+    const c = await registrationContext(w.registrationId);
+    if (!c) return;
+    const [h] = await db.select({ name: households.displayName }).from(households).where(eq(households.id, c.householdId));
+    const contact = await getSetting("contact");
+    if (contact.inboxEmail) {
+      await getEmailSender().send(
+        templates.withdrawalRequestedLeague(contact.inboxEmail, {
+          player: c.playerName,
+          division: c.division,
+          family: h?.name ?? "A family",
+          reason: w.reason,
+          adminUrl: `${base()}/admin/registrations/${w.registrationId}`,
+        }),
+      );
+    } else logger.warn({ requestId: w.id }, "withdrawal request saved; no inbox email set in Site content");
+    for (const to of c.emails) await getEmailSender().send(templates.withdrawalRequestedFamily(to, { player: c.playerName, dashboardUrl: `${base()}/dashboard` }));
+  });
+
+  subscribe("registration.withdrawal_declined", async (e) => {
+    const [w] = await db.select().from(withdrawalRequests).where(eq(withdrawalRequests.id, e.aggregateId));
+    if (!w) return;
+    const c = await registrationContext(w.registrationId);
+    if (!c) return;
+    for (const to of c.emails) await getEmailSender().send(templates.withdrawalDeclined(to, { player: c.playerName, note: w.adminNote ?? "", dashboardUrl: `${base()}/dashboard` }));
   });
 
   subscribe("registration.refunded", async (e) => {

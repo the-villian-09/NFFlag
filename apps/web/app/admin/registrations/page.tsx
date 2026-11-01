@@ -30,6 +30,7 @@ interface Season {
 
 const FILTERS: { value: string; label: string }[] = [
   { value: "paid", label: "Needs review" },
+  { value: "withdrawal", label: "Withdrawal requests" },
   { value: "paid,approved,rejected,processing,pending_payment", label: "All active" },
   { value: "approved", label: "Approved" },
   { value: "rejected", label: "Not accepted" },
@@ -44,7 +45,10 @@ export default function AdminRegistrationsPage() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [seasonId, setSeasonId] = useState("");
   const [divisionId, setDivisionId] = useState("");
-  const [status, setStatus] = useState("paid");
+  // ?show=withdrawal opens straight to withdrawal requests (link from the admin home).
+  const [status, setStatus] = useState(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("show") === "withdrawal" ? "withdrawal" : "paid",
+  );
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ items: Row[]; total: number; pageSize: number } | null>(null);
@@ -65,7 +69,12 @@ export default function AdminRegistrationsPage() {
       });
   }, [me, router]);
 
-  const query = new URLSearchParams({ ...(seasonId ? { seasonId } : {}), ...(divisionId ? { divisionId } : {}), status, ...(q ? { q } : {}) });
+  const query = new URLSearchParams({
+    ...(seasonId ? { seasonId } : {}),
+    ...(divisionId ? { divisionId } : {}),
+    ...(status === "withdrawal" ? { status: "paid,approved", withdrawal: "open" } : { status }),
+    ...(q ? { q } : {}),
+  });
 
   useEffect(() => {
     if (!me || !seasons.length) return;

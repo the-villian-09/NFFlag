@@ -20,6 +20,14 @@ export default function AdminPage() {
   const [flags, setFlags] = useState<Flag[] | null>(null);
   const { error, setError, run } = useAction();
   const canFlags = me?.permissions.includes("platform.flags.manage");
+  const [withdrawals, setWithdrawals] = useState(0);
+  useEffect(() => {
+    if (!me?.permissions.includes("registrations.read")) return;
+    api
+      .get<{ open: number }>("/admin/league/withdrawals/count")
+      .then((r) => setWithdrawals(r.open))
+      .catch(() => setWithdrawals(0));
+  }, [me]);
 
   useEffect(() => {
     if (!me) return;
@@ -69,6 +77,13 @@ export default function AdminPage() {
             <Link className="btn small" href="/admin/registrations">
               Open registrations
             </Link>
+            {withdrawals > 0 && (
+              <p style={{ margin: "12px 0 0" }}>
+                <Link href="/admin/registrations?show=withdrawal">
+                  <span className="status warn">{withdrawals}</span> withdrawal request{withdrawals === 1 ? "" : "s"} waiting
+                </Link>
+              </p>
+            )}
           </div>
         )}
         {me.permissions.includes("registrations.read") && (

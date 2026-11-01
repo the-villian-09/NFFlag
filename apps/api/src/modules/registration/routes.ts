@@ -32,6 +32,7 @@ import { writeAudit } from "../platform/audit.js";
 import { FLAG, isEnabled } from "../platform/flags.js";
 import { applyToRegistration, PROMO_FLAG } from "../promo/service.js";
 import { promoLimiter } from "../promo/routes.js";
+import { latestWithdrawals, requestWithdrawal, takeBackWithdrawal } from "./withdrawal.js";
 import { getCredentials } from "../square/client.js";
 import {
   cancelRegistration,
@@ -329,6 +330,7 @@ registrationRouter.get(
           .where(inArray(payments.registrationId, ids))
       : [];
     const teamsOn = await isEnabled(FLAG.teams);
+    const withdrawals = await latestWithdrawals(ids);
     const placements = ids.length
       ? await db
           .select({ registrationId: rosterEntries.registrationId, teamId: teams.id, teamName: teams.name })
@@ -351,6 +353,7 @@ registrationRouter.get(
         return {
           ...r,
           payment: pays.find((p) => p.registrationId === r.id) ?? null,
+          withdrawal: withdrawals.get(r.id) ? { status: withdrawals.get(r.id)!.status, createdAt: withdrawals.get(r.id)!.createdAt, adminNote: withdrawals.get(r.id)!.adminNote } : null,
           team: place && teamsOn ? { name: place.teamName, coach: coach ? { name: coach.name, email: coach.email } : null } : null,
         };
       }),
@@ -397,6 +400,29 @@ registrationRouter.post(
     const householdId = await householdOf(req.ctx.auth!.user.id);
     const reg = await payRegistration(actorOf(req), householdId, String(req.params.id), input, req.ctx.auth!.user.email);
     res.json({ registration: reg });
+  }),
+);
+
+/** Ask the league to withdraw a paid registration (optional reason). */
+registrationRouter.post(
+  "/registrations/:id/withdrawal",
+  requireAuth,
+  requireMfa,
+  handler(async (req, res) => {
+    const { reason } = z.object({ reason: z.string().trim().max(1000).optional().nullable() }).parse(req.body ?? {});
+    const householdId = await householdOf(req.ctx.auth!.user.id);
+    res.status(201).json({ withdrawal: await requestWithdrawal(actorOf(req), householdId, String(req.params.id), reason ?? null) });
+  }),
+);
+
+/** Take back an open withdrawal request. */
+registrationRouter.delete(
+  "/registrations/:id/withdrawal",
+  requireAuth,
+  requireMfa,
+  handler(async (req, res) => {
+    const householdId = await householdOf(req.ctx.auth!.user.id);
+    res.json({ withdrawal: await takeBackWithdrawal(actorOf(req), householdId, String(req.params.id)) });
   }),
 );
 

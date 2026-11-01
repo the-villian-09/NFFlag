@@ -77,7 +77,7 @@ export async function seedContent(conn: DbOrTx = db) {
     .onConflictDoNothing();
 }
 
-async function getSetting<K extends SettingKey>(key: K): Promise<z.infer<(typeof SETTING_SCHEMAS)[K]>> {
+export async function getSetting<K extends SettingKey>(key: K): Promise<z.infer<(typeof SETTING_SCHEMAS)[K]>> {
   const [row] = await db.select().from(siteSettings).where(eq(siteSettings.key, key));
   const parsed = SETTING_SCHEMAS[key].safeParse(row?.value ?? DEFAULT_SETTINGS[key]);
   return (parsed.success ? parsed.data : DEFAULT_SETTINGS[key]) as z.infer<(typeof SETTING_SCHEMAS)[K]>;

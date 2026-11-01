@@ -20,6 +20,7 @@ import {
   seasons,
   siteSettings,
   teams,
+  withdrawalRequests,
   user,
   waitlistEntries,
 } from "../../db/schema/index.js";
@@ -27,6 +28,7 @@ import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission }
 import { HttpError } from "../../http/errors.js";
 import { can } from "../platform/access.js";
 import { writeAudit } from "../platform/audit.js";
+import { declineWithdrawal, latestWithdrawals, openWithdrawalCount } from "./withdrawal.js";
 import { cancelRegistration, decideRegistration, refundRegistration, spotsTaken } from "./service.js";
 import { getPaymentSettings, paymentSettingsSchema } from "./settings.js";
 import { positionOf, removeFromWaitlist } from "./waitlist.js";
@@ -196,6 +198,8 @@ const listQuery = z.object({
     .optional()
     .transform((v) => (v ? v.split(",").filter((x) => REG_STATUSES.includes(x)) : undefined)),
   q: z.string().trim().max(100).optional(),
+  /** "open": only registrations with an open withdrawal request. */
+  withdrawal: z.enum(["open"]).optional(),
   page: z.coerce.number().int().min(1).default(1),
 });
 
@@ -208,6 +212,9 @@ function registrationFilters(q: z.infer<typeof listQuery>) {
     q.seasonId ? eq(registrations.seasonId, q.seasonId) : undefined,
     q.divisionId ? eq(registrations.divisionId, q.divisionId) : undefined,
     inArray(registrations.status, statuses),
+    q.withdrawal === "open"
+      ? sql`exists (select 1 from ${withdrawalRequests} w where w.registration_id = ${registrations.id} and w.status = 'open')`
+      : undefined,
     like
       ? or(
           ilike(players.firstName, like),
@@ -370,6 +377,7 @@ adminLeagueRouter.get(
     const [promo] = r.promoCodeId ? await db.select({ code: promoCodes.code }).from(promoCodes).where(eq(promoCodes.id, r.promoCodeId)) : [];
     res.json({
       registration: { ...r, promoCode: promo?.code ?? null },
+      withdrawal: (await latestWithdrawals([r.id])).get(r.id) ?? null,
       team: team ?? null,
       player,
       division,
@@ -381,6 +389,25 @@ adminLeagueRouter.get(
       medical: medical ?? null,
       canSeeMedical: canMedical,
     });
+  }),
+);
+
+/** Decline a family's withdrawal request with a note (to accept it, cancel the registration). */
+adminLeagueRouter.post(
+  "/registrations/:id/withdrawal/decline",
+  requirePermission("registrations.manage"),
+  handler(async (req, res) => {
+    const { note } = z.object({ note: z.string().trim().min(3).max(1000) }).parse(req.body);
+    res.json({ withdrawal: await declineWithdrawal({ userId: req.ctx.auth!.user.id, requestId: req.ctx.requestId, ip: req.ctx.ip }, String(req.params.id), note) });
+  }),
+);
+
+/** How many withdrawal requests are waiting (admin home). */
+adminLeagueRouter.get(
+  "/withdrawals/count",
+  requirePermission("registrations.read"),
+  handler(async (_req, res) => {
+    res.json({ open: await openWithdrawalCount() });
   }),
 );
 

@@ -122,6 +122,8 @@ export const DOMAIN_EVENTS = [
   "registration.paid",
   "registration.cancelled",
   "registration.refunded",
+  "registration.withdrawal_requested",
+  "registration.withdrawal_declined",
   "eligibility.decided",
   "square.connected",
   "waitlist.joined",

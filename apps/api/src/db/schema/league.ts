@@ -613,3 +613,32 @@ export const promoCodes = pgTable(
     check("promo_applies", sql`${t.appliesTo} in ('registration','staff','both')`),
   ],
 );
+
+/* --------------------------------------------- withdrawal requests ---- */
+
+/**
+ * A family asks the league to withdraw a paid registration. status: open,
+ * withdrawn (the family took it back), declined (with a note), completed (the
+ * league cancelled the registration). One open request per registration.
+ */
+export const withdrawalRequests = pgTable(
+  "withdrawal_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    registrationId: uuid("registration_id")
+      .notNull()
+      .references(() => registrations.id),
+    requestedBy: text("requested_by").references(() => user.id, { onDelete: "set null" }),
+    reason: text("reason"),
+    status: text("status").notNull().default("open"),
+    adminNote: text("admin_note"),
+    resolvedBy: text("resolved_by").references(() => user.id, { onDelete: "set null" }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("withdrawal_one_open").on(t.registrationId).where(sql`${t.status} = 'open'`),
+    index("withdrawal_status_idx").on(t.status, t.createdAt),
+    check("withdrawal_status", sql`${t.status} in ('open','withdrawn','declined','completed')`),
+  ],
+);

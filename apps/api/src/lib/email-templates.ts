@@ -251,4 +251,40 @@ export const templates = {
       d.replyTo ? { replyTo: d.replyTo } : {},
     );
   },
+
+  withdrawalRequestedLeague(to: string, d: { player: string; division: string; family: string; reason: string | null; adminUrl: string }): EmailMessage {
+    return message(to, "withdrawal.requested_league", `Withdrawal request: ${d.player} (${d.division})`, {
+      preheader: `${d.family} asked to withdraw ${d.player}.`,
+      heading: "Withdrawal request",
+      paragraphs: [`${d.family} asked to withdraw ${d.player} from ${d.division}.`, ...(d.reason ? [`Their reason: ${d.reason}`] : []), "Open the registration to cancel it (and choose a refund) or decline with a note."],
+      button: { label: "Review the request", url: d.adminUrl },
+    });
+  },
+
+  withdrawalRequestedFamily(to: string, d: { player: string; dashboardUrl: string }): EmailMessage {
+    return message(to, "withdrawal.requested_family", `We got your request to withdraw ${d.player}`, {
+      preheader: "The league will review it and email you.",
+      heading: "Withdrawal request received",
+      paragraphs: [`We received your request to withdraw ${d.player}. The league will review it and email you, including whether a refund applies.`, "Changed your mind? You can take the request back from your account page while it's open."],
+      button: { label: "My account", url: d.dashboardUrl },
+    });
+  },
+
+  withdrawalDeclined(to: string, d: { player: string; note: string; dashboardUrl: string }): EmailMessage {
+    return message(to, "withdrawal.declined", `About your request to withdraw ${d.player}`, {
+      preheader: d.note.slice(0, 100),
+      heading: `${d.player} is still registered`,
+      paragraphs: ["The league reviewed your request to withdraw and didn't cancel the registration. Their note:", d.note, "Reply to the league through the Contact page if you have questions."],
+      button: { label: "My account", url: d.dashboardUrl },
+    });
+  },
+
+  registrationCancelled(to: string, d: { player: string; division: string; dashboardUrl: string }): EmailMessage {
+    return message(to, "registration.cancelled", `${d.player}'s registration is cancelled`, {
+      preheader: `${d.player} is no longer registered for ${d.division}.`,
+      heading: "Registration cancelled",
+      paragraphs: [`${d.player}'s registration for ${d.division} has been cancelled.`, "If a refund was issued, you'll get a separate email with the amount. Refunds take 5–10 business days to appear on your card."],
+      button: { label: "My account", url: d.dashboardUrl },
+    });
+  },
 };

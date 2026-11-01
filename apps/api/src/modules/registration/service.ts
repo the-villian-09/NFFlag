@@ -29,6 +29,7 @@ import { WAIVER_SLUGS } from "../content/defaults.js";
 import { writeAudit } from "../platform/audit.js";
 import { publish } from "../platform/outbox.js";
 import { settleRegistrationCode } from "../promo/service.js";
+import { completeWithdrawal } from "./withdrawal.js";
 import {
   createPayment,
   friendlyPaymentError,
@@ -698,7 +699,10 @@ export async function decideRegistration(
       throw new HttpError(409, "CONFLICT", "Only paid registrations can be approved or rejected.");
     }
     // Leaving the league means leaving their team.
-    if (input.decision === "rejected") await tx.delete(rosterEntries).where(eq(rosterEntries.registrationId, r.id));
+    if (input.decision === "rejected") {
+      await tx.delete(rosterEntries).where(eq(rosterEntries.registrationId, r.id));
+      await completeWithdrawal(tx, r.id, actor.userId);
+    }
     const [after] = await tx
       .update(registrations)
       .set({
@@ -773,6 +777,7 @@ export async function cancelRegistration(
       .returning();
     // Leaving the league means leaving their team.
     await tx.delete(rosterEntries).where(eq(rosterEntries.registrationId, r.id));
+    await completeWithdrawal(tx, r.id, actor.userId);
     await writeAudit(tx, {
       actorUserId: actor.userId,
       action: "registration.cancel",
