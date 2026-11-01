@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { ErrorAlert } from "@/components/form";
 import { api, ApiError } from "@/lib/api";
 import { fmtDate, fmtDateTime, money, STATUS, StatusBadge } from "@/lib/format";
@@ -40,15 +40,26 @@ const FILTERS: { value: string; label: string }[] = [
 ];
 
 export default function AdminRegistrationsPage() {
+  return (
+    <Suspense fallback={<main className="page muted">Loading…</main>}>
+      <RegistrationsList />
+    </Suspense>
+  );
+}
+
+function RegistrationsList() {
+  const params = useSearchParams();
   const router = useRouter();
   const { me, loading } = useMe();
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [seasonId, setSeasonId] = useState("");
   const [divisionId, setDivisionId] = useState("");
   // ?show=withdrawal opens straight to withdrawal requests (link from the admin home).
-  const [status, setStatus] = useState(() =>
-    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("show") === "withdrawal" ? "withdrawal" : "paid",
-  );
+  const [status, setStatus] = useState(params.get("show") === "withdrawal" ? "withdrawal" : "paid");
+  // Arriving again from a link (e.g. the admin home) switches the filter.
+  useEffect(() => {
+    if (params.get("show") === "withdrawal") setStatus("withdrawal");
+  }, [params]);
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ items: Row[]; total: number; pageSize: number } | null>(null);
