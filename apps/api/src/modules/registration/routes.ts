@@ -31,6 +31,7 @@ import { HttpError } from "../../http/errors.js";
 import { writeAudit } from "../platform/audit.js";
 import { FLAG, isEnabled } from "../platform/flags.js";
 import { applyToRegistration, PROMO_FLAG } from "../promo/service.js";
+import { promoLimiter } from "../promo/routes.js";
 import { getCredentials } from "../square/client.js";
 import {
   cancelRegistration,
@@ -404,6 +405,8 @@ registrationRouter.put(
   "/registrations/:id/promo",
   requireAuth,
   requireMfa,
+  registrationOn,
+  promoLimiter,
   handler(async (req, res) => {
     const { code } = z.object({ code: z.string().trim().min(1).max(40).nullable() }).parse(req.body);
     const householdId = await householdOf(req.ctx.auth!.user.id);

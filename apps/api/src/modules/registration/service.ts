@@ -16,6 +16,7 @@ import {
   divisions,
   payments,
   players,
+  promoCodes,
   refunds,
   registrations,
   rosterEntries,
@@ -27,7 +28,7 @@ import { logger } from "../../lib/logger.js";
 import { WAIVER_SLUGS } from "../content/defaults.js";
 import { writeAudit } from "../platform/audit.js";
 import { publish } from "../platform/outbox.js";
-import { recheckRegistrationCode } from "../promo/service.js";
+import { settleRegistrationCode } from "../promo/service.js";
 import {
   createPayment,
   friendlyPaymentError,
@@ -304,71 +305,59 @@ export async function payRegistration(
   actor: Actor & { userId: string },
   householdId: string,
   registrationId: string,
-  input: { sourceId?: string; verificationToken?: string },
+  input: { sourceId?: string; verificationToken?: string; expectedTotalCents?: number },
   buyerEmail: string,
 ) {
   const [peek] = await db
-    .select({ divisionId: registrations.divisionId, totalCents: registrations.totalCents, playerId: registrations.playerId, status: registrations.status, promoCodeId: registrations.promoCodeId })
+    .select({ divisionId: registrations.divisionId, playerId: registrations.playerId })
     .from(registrations)
     .where(and(eq(registrations.id, registrationId), eq(registrations.householdId, householdId)));
   if (!peek) throw new HttpError(404, "NOT_FOUND", "Registration not found.");
   const settings = await getPaymentSettings();
-
-  // An expired hold with a promo code: make sure the code still works before charging.
-  if (peek.status === "expired" && peek.promoCodeId) {
-    const message = await db.transaction(async (tx) => {
-      const [r] = await tx.select().from(registrations).where(eq(registrations.id, registrationId)).for("update");
-      return r ? recheckRegistrationCode(tx, r) : null;
-    });
-    if (message) throw new HttpError(409, "CONFLICT", message);
-  }
-
-  // Free divisions: nothing to charge.
-  if (peek.totalCents === 0) {
-    return db
-      .transaction(async (tx) => {
-        const { r } = await claimForPayment(tx, registrationId, householdId, peek.divisionId, settings.holdMinutes);
-        // The total is re-read under the lock: a code removed meanwhile means it isn't free any more.
-        if (r.totalCents !== 0) throw new HttpError(409, "CONFLICT", "The total changed. Please review it and pay again.");
-        return markPaid(tx, r, null, actor);
-      })
-      .catch(uniqueAsConflict);
-  }
-
-  if (!input.sourceId) throw new HttpError(400, "VALIDATION_FAILED", "Enter your card details.");
-  const creds = await getCredentials().catch(() => null);
-  if (!creds) {
-    throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
-  }
+  const creds = input.sourceId ? await getCredentials().catch(() => null) : null;
   const [p] = await db.select({ firstName: players.firstName, lastName: players.lastName }).from(players).where(eq(players.id, peek.playerId));
-  const request: PaymentRequest = {
-    idempotencyKey: randomUUID(),
-    sourceId: input.sourceId,
-    verificationToken: input.verificationToken,
-    amountCents: peek.totalCents,
-    note: `NFFL registration: ${p?.firstName ?? ""} ${p?.lastName ?? ""}`.trim(),
-    buyerEmail,
-  };
 
-  await db
+  // One locked transaction decides the amount: the promo code is re-checked under its
+  // lock, and what's charged must match what the family was shown.
+  const outcome = await db
     .transaction(async (tx) => {
       const { r, holdExpiresAt } = await claimForPayment(tx, registrationId, householdId, peek.divisionId, settings.holdMinutes);
+      const codeChange = await settleRegistrationCode(tx, r);
+      if (codeChange) return { kind: "changed" as const, message: codeChange };
+      if (input.expectedTotalCents !== undefined && input.expectedTotalCents !== r.totalCents) {
+        return { kind: "changed" as const, message: `The total is now $${(r.totalCents / 100).toFixed(2)}. No payment was taken; review it and pay again.` };
+      }
+      // Nothing to charge (free division or a 100% code).
+      if (r.totalCents === 0) return { kind: "paid" as const, reg: await markPaid(tx, r, null, actor) };
+      if (!input.sourceId) throw new HttpError(400, "VALIDATION_FAILED", "Enter your card details.");
+      if (!creds) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
+      const request: PaymentRequest = {
+        idempotencyKey: randomUUID(),
+        sourceId: input.sourceId,
+        verificationToken: input.verificationToken,
+        amountCents: r.totalCents,
+        note: `NFFL registration: ${p?.firstName ?? ""} ${p?.lastName ?? ""}`.trim(),
+        buyerEmail,
+      };
       await tx
         .update(registrations)
-        .set({
-          status: "processing",
-          paymentError: null,
-          holdExpiresAt,
-          paymentRequest: { ...request, amountCents: r.totalCents },
-          processingStartedAt: new Date(),
-          updatedAt: new Date(),
-        })
+        .set({ status: "processing", paymentError: null, holdExpiresAt, paymentRequest: request, processingStartedAt: new Date(), updatedAt: new Date() })
         .where(eq(registrations.id, r.id));
-      request.amountCents = r.totalCents;
+      return { kind: "charge" as const, request };
     })
     .catch(uniqueAsConflict);
 
-  return chargeAndSettle(registrationId, request, actor);
+  if (outcome.kind === "changed") {
+    // The code change was saved; send the new totals so the page can show them.
+    const [fresh] = await db
+      .select({ totalCents: registrations.totalCents, discountCents: registrations.discountCents, feeCents: registrations.feeCents, promoCode: promoCodes.code })
+      .from(registrations)
+      .leftJoin(promoCodes, eq(promoCodes.id, registrations.promoCodeId))
+      .where(eq(registrations.id, registrationId));
+    throw new HttpError(409, "CONFLICT", outcome.message, { registration: fresh ?? null });
+  }
+  if (outcome.kind === "paid") return outcome.reg;
+  return chargeAndSettle(registrationId, outcome.request, actor);
 }
 
 /** Sends the payment to Square (or re-sends it with the same key) and settles the registration. */

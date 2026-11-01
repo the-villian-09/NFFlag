@@ -19,7 +19,8 @@ export const PROMO_FLAG = "r2.promo_codes";
 export type Promo = typeof promoCodes.$inferSelect;
 
 const REG_HOLDING = ["pending_payment", "processing", "paid", "approved"];
-const APP_HOLDING = ["pending_payment", "processing", "submitted", "approved"];
+// A revoked approval keeps its use: the fee was paid and the code was spent.
+const APP_HOLDING = ["pending_payment", "processing", "submitted", "approved", "revoked"];
 
 export const normalizeCode = (code: string) => code.trim().toUpperCase().replace(/\s+/g, "");
 
@@ -78,12 +79,13 @@ export async function usableCode(tx: Tx, raw: string, ctx: UseContext): Promise<
 
 async function checkUsable(tx: Tx, p: Promo, ctx: UseContext) {
   const now = new Date();
-  if (p.startsAt && p.startsAt > now) throw new HttpError(409, "CONFLICT", "That code isn't active yet.");
+  // Same message as an unknown code, so codes can't be discovered by guessing.
+  if (p.startsAt && p.startsAt > now) throw new HttpError(409, "CONFLICT", "That code isn't valid.");
   if (p.endsAt && p.endsAt <= now) throw new HttpError(409, "CONFLICT", "That code has expired.");
   if (p.appliesTo !== "both" && p.appliesTo !== ctx.target) {
     throw new HttpError(409, "CONFLICT", ctx.target === "staff" ? "That code is for player registration, not staff fees." : "That code is for coach and team mom fees, not player registration.");
   }
-  if (p.seasonId && p.seasonId !== ctx.seasonId) throw new HttpError(409, "CONFLICT", "That code is for a different season.");
+  if (p.seasonId && p.seasonId !== ctx.seasonId) throw new HttpError(409, "CONFLICT", "That code isn't valid.");
   const divs = (p.divisionIds as string[]) ?? [];
   if (ctx.target === "registration" && divs.length && (!ctx.divisionId || !divs.includes(ctx.divisionId))) {
     throw new HttpError(409, "CONFLICT", "That code can't be used for this division.");
@@ -131,27 +133,62 @@ async function checkUsable(tx: Tx, p: Promo, ctx: UseContext) {
   }
 }
 
+const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
 /**
- * Re-checks a held code when an expired registration is paid later (another
- * family may have taken the last use meanwhile). If it no longer works the code
- * is dropped, the full price restored, and a message returned for the family.
+ * At payment time, inside the same locked transaction that charges: checks the
+ * code a registration holds is still good (not paused, ended, used up, …) and
+ * still gives the same discount. If not, the code is dropped or the discount
+ * updated, the new totals are saved, and a message is returned so the family
+ * can review the new total before paying. Null means nothing changed.
  */
-export async function recheckRegistrationCode(tx: Tx, r: typeof registrations.$inferSelect): Promise<string | null> {
-  if (!r.promoCodeId || r.status !== "expired") return null;
+export async function settleRegistrationCode(tx: Tx, r: typeof registrations.$inferSelect): Promise<string | null> {
+  if (!r.promoCodeId) return null;
   const [p] = await tx.select().from(promoCodes).where(eq(promoCodes.id, r.promoCodeId)).for("update");
+  const settings = await getPaymentSettings(tx);
+  let reason: string | null = null;
   try {
-    if (!p || !p.active) throw new HttpError(409, "CONFLICT", "That code is no longer valid.");
+    if (!p || !p.active) throw new HttpError(409, "CONFLICT", "That code isn't valid.");
     await checkUsable(tx, p, { target: "registration", seasonId: r.seasonId, divisionId: r.divisionId, householdId: r.householdId, registrationId: r.id });
-    return null;
   } catch (err) {
     if (!(err instanceof HttpError)) throw err;
-    const q = quote(r.priceCents, await getPaymentSettings(tx));
-    await tx
-      .update(registrations)
-      .set({ promoCodeId: null, discountCents: 0, feeCents: q.feeCents, totalCents: q.totalCents, updatedAt: new Date() })
-      .where(eq(registrations.id, r.id));
-    return `Your hold expired and your promo code can't be used any more (${err.message.replace(/\.$/, "").replace(/^That code /, "it ")}). The total is now $${(q.totalCents / 100).toFixed(2)}. Review it and pay again.`;
+    reason = err.message;
   }
+  const discountCents = reason || !p ? 0 : discountFor(p, r.priceCents);
+  const q = quote(r.priceCents - discountCents, settings);
+  if (!reason && discountCents === r.discountCents && q.totalCents === r.totalCents) return null;
+  await tx
+    .update(registrations)
+    .set({ promoCodeId: reason ? null : r.promoCodeId, discountCents, feeCents: q.feeCents, totalCents: q.totalCents, updatedAt: new Date() })
+    .where(eq(registrations.id, r.id));
+  return reason
+    ? `Promo code ${p?.code ?? ""} can't be used any more (${reason.replace(/^That code /, "it ").replace(/\.$/, "")}). The total is now ${dollars(q.totalCents)}. No payment was taken; review it and pay again.`
+    : `Promo code ${p!.code} was changed by the league. The total is now ${dollars(q.totalCents)}. No payment was taken; review it and pay again.`;
+}
+
+/** The same check for a coach / team mom application's fee. */
+export async function settleApplicationCode(tx: Tx, a: typeof volunteerApplications.$inferSelect): Promise<string | null> {
+  if (!a.promoCodeId) return null;
+  const [p] = await tx.select().from(promoCodes).where(eq(promoCodes.id, a.promoCodeId)).for("update");
+  const settings = await getPaymentSettings(tx);
+  let reason: string | null = null;
+  try {
+    if (!p || !p.active) throw new HttpError(409, "CONFLICT", "That code isn't valid.");
+    await checkUsable(tx, p, { target: "staff", seasonId: a.seasonId, userId: a.userId, applicationId: a.id });
+  } catch (err) {
+    if (!(err instanceof HttpError)) throw err;
+    reason = err.message;
+  }
+  const discountCents = reason || !p ? 0 : discountFor(p, a.feeCents);
+  const q = quote(a.feeCents - discountCents, settings);
+  if (!reason && discountCents === a.discountCents && q.totalCents === a.totalCents) return null;
+  await tx
+    .update(volunteerApplications)
+    .set({ promoCodeId: reason ? null : a.promoCodeId, discountCents, processingFeeCents: q.feeCents, totalCents: q.totalCents, updatedAt: new Date() })
+    .where(eq(volunteerApplications.id, a.id));
+  return reason
+    ? `Promo code ${p?.code ?? ""} can't be used any more (${reason.replace(/^That code /, "it ").replace(/\.$/, "")}). The total is now ${dollars(q.totalCents)}. No payment was taken; review it and pay again.`
+    : `Promo code ${p!.code} was changed by the league. The total is now ${dollars(q.totalCents)}. No payment was taken; review it and pay again.`;
 }
 
 /* ---------------- families: apply / remove ---------------- */

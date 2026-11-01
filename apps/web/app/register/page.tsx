@@ -588,15 +588,18 @@ function Pay({
     setError(null);
     try {
       if (free) {
-        await api.post(`/registrations/${reg.id}/pay`, {});
+        await api.post(`/registrations/${reg.id}/pay`, { expectedTotalCents: 0 });
       } else {
         const [givenName, ...rest] = name.trim().split(/\s+/);
         const token = await card.current!.tokenize({ amountCents: reg.totalCents, givenName: givenName ?? "", familyName: rest.join(" "), email });
-        await api.post(`/registrations/${reg.id}/pay`, { sourceId: token });
+        await api.post(`/registrations/${reg.id}/pay`, { sourceId: token, expectedTotalCents: reg.totalCents });
       }
       onPaid();
     } catch (err) {
       if (err instanceof ApiError && err.code === "PAYMENT_PENDING") setPending(true);
+      // The total changed (promo code paused, edited or used up): show the new one before trying again.
+      const fresh = err instanceof ApiError ? (err.body.registration as Partial<Registration> | null | undefined) : undefined;
+      if (fresh) onChange(fresh);
       setError(err instanceof Error ? err.message : "The payment didn't go through.");
     } finally {
       setBusy(false);

@@ -9,6 +9,7 @@ import { db } from "../../db/client.js";
 import { divisions, householdMembers, households, payments, players, promoCodes, refunds, seasons, user, volunteerApplications } from "../../db/schema/index.js";
 import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission } from "../../http/context.js";
 import { applyToApplication } from "../promo/service.js";
+import { promoLimiter } from "../promo/routes.js";
 import { HttpError } from "../../http/errors.js";
 import { can } from "../platform/access.js";
 import { issueRefund } from "../registration/service.js";
@@ -94,6 +95,7 @@ staffRouter.put(
   "/volunteer/applications/:id/promo",
   requireAuth,
   requireMfa,
+  promoLimiter,
   handler(async (req, res) => {
     const { code } = z.object({ code: z.string().trim().min(1).max(40).nullable() }).parse(req.body);
     const r = await applyToApplication(actorOf(req), String(req.params.id), code);

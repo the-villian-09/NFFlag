@@ -12,14 +12,14 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { env } from "../../config.js";
 import { db } from "../../db/client.js";
-import { contentPages, divisions, householdMembers, payments, players, refunds, seasons, userRoleAssignments, volunteerApplications } from "../../db/schema/index.js";
+import { contentPages, divisions, householdMembers, payments, players, promoCodes, refunds, seasons, userRoleAssignments, volunteerApplications } from "../../db/schema/index.js";
 import { HttpError } from "../../http/errors.js";
 import { logger } from "../../lib/logger.js";
 import { writeAudit } from "../platform/audit.js";
 import { isEnabled } from "../platform/flags.js";
 import { publish } from "../platform/outbox.js";
 import { COMPLETED, isUniqueViolation, issueRefund, refundAll, type Actor, type PaymentRequest } from "../registration/service.js";
-import { PROMO_FLAG, submitFreeApplication } from "../promo/service.js";
+import { PROMO_FLAG, settleApplicationCode, submitFreeApplication } from "../promo/service.js";
 import { removeFromSeasonTeams } from "../teams/service.js";
 import { getPaymentSettings, quote } from "../registration/settings.js";
 import { createPayment, friendlyPaymentError, getCredentials, parseReference, SquareError, type SquarePayment } from "../square/client.js";
@@ -158,29 +158,16 @@ export async function applyToVolunteer(
 
 /* ---------------- payment ---------------- */
 
-export async function payApplication(actor: Actor & { userId: string }, applicationId: string, input: { sourceId?: string; verificationToken?: string }, buyerEmail: string) {
-  // Fee fully covered by a promo code: submit without a card.
-  const [peek] = await db
-    .select({ totalCents: volunteerApplications.totalCents })
-    .from(volunteerApplications)
-    .where(and(eq(volunteerApplications.id, applicationId), eq(volunteerApplications.userId, actor.userId)));
-  if (peek?.totalCents === 0) {
-    return db.transaction(async (tx) => {
-      const [a] = await tx
-        .select()
-        .from(volunteerApplications)
-        .where(and(eq(volunteerApplications.id, applicationId), eq(volunteerApplications.userId, actor.userId)))
-        .for("update");
-      if (!a || a.status !== "pending_payment") throw new HttpError(409, "CONFLICT", "This application doesn't need a payment.");
-      if (a.totalCents !== 0) throw new HttpError(409, "CONFLICT", "The total changed. Please review it and pay again.");
-      return submitFreeApplication(tx, a, actor);
-    });
-  }
-  if (!input.sourceId) throw new HttpError(400, "VALIDATION_FAILED", "Enter your card details.");
-  const sourceId = input.sourceId;
-  const creds = await getCredentials().catch(() => null);
-  if (!creds) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
-  const request = await db.transaction(async (tx) => {
+export async function payApplication(
+  actor: Actor & { userId: string },
+  applicationId: string,
+  input: { sourceId?: string; verificationToken?: string; expectedTotalCents?: number },
+  buyerEmail: string,
+) {
+  const creds = input.sourceId ? await getCredentials().catch(() => null) : null;
+  // One locked transaction decides the amount: the promo code is re-checked under its
+  // lock, and what's charged must match what the applicant was shown.
+  const outcome = await db.transaction(async (tx) => {
     const [a] = await tx
       .select()
       .from(volunteerApplications)
@@ -189,9 +176,18 @@ export async function payApplication(actor: Actor & { userId: string }, applicat
     if (!a) throw new HttpError(404, "NOT_FOUND", "Application not found.");
     if (a.status === "processing") throw new HttpError(409, "CONFLICT", "This payment is already being processed.");
     if (a.status !== "pending_payment") throw new HttpError(409, "CONFLICT", "This application doesn't need a payment.");
+    const codeChange = await settleApplicationCode(tx, a);
+    if (codeChange) return { kind: "changed" as const, message: codeChange };
+    if (input.expectedTotalCents !== undefined && input.expectedTotalCents !== a.totalCents) {
+      return { kind: "changed" as const, message: `The total is now $${(a.totalCents / 100).toFixed(2)}. No payment was taken; review it and pay again.` };
+    }
+    // Fee fully covered by a promo code: submit without a card.
+    if (a.totalCents === 0) return { kind: "done" as const, app: await submitFreeApplication(tx, a, actor) };
+    if (!input.sourceId) throw new HttpError(400, "VALIDATION_FAILED", "Enter your card details.");
+    if (!creds) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
     const request: PaymentRequest = {
       idempotencyKey: randomUUID(),
-      sourceId,
+      sourceId: input.sourceId,
       verificationToken: input.verificationToken,
       amountCents: a.totalCents,
       note: `NFFL ${feeLabel(a.roleKey).toLowerCase()}: ${ROLE_LABELS[a.roleKey as VolunteerRole]}`,
@@ -201,9 +197,18 @@ export async function payApplication(actor: Actor & { userId: string }, applicat
       .update(volunteerApplications)
       .set({ status: "processing", paymentError: null, paymentRequest: request, processingStartedAt: new Date(), updatedAt: new Date() })
       .where(eq(volunteerApplications.id, a.id));
-    return request;
+    return { kind: "charge" as const, request };
   });
-  return chargeApplication(applicationId, request, actor);
+  if (outcome.kind === "changed") {
+    const [fresh] = await db
+      .select({ totalCents: volunteerApplications.totalCents, discountCents: volunteerApplications.discountCents, processingFeeCents: volunteerApplications.processingFeeCents, promoCode: promoCodes.code })
+      .from(volunteerApplications)
+      .leftJoin(promoCodes, eq(promoCodes.id, volunteerApplications.promoCodeId))
+      .where(eq(volunteerApplications.id, applicationId));
+    throw new HttpError(409, "CONFLICT", outcome.message, { application: fresh ?? null });
+  }
+  if (outcome.kind === "done") return outcome.app;
+  return chargeApplication(applicationId, outcome.request, actor);
 }
 
 async function revertApplication(applicationId: string, message: string, failedPaymentCreatedAt?: Date) {

@@ -1,8 +1,20 @@
 /** Admin: create, edit and track promo codes. */
 import { Router, type Request } from "express";
+import { rateLimit } from "express-rate-limit";
+import { env } from "../../config.js";
 import { z } from "zod";
 import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission } from "../../http/context.js";
 import { createPromo, listPromos, updatePromo } from "./service.js";
+
+/** Slows down guessing: each signed-in person can try 15 codes an hour. */
+export const promoLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: env.NODE_ENV === "test" ? 1000 : 15,
+  keyGenerator: (req) => req.ctx?.auth?.user.id ?? "anon",
+  validate: false,
+  handler: (req, res) =>
+    res.status(429).json({ error: { code: "RATE_LIMITED", message: "Too many promo code attempts. Please try again later.", requestId: req.ctx?.requestId } }),
+});
 
 const actorOf = (req: Request) => ({ userId: req.ctx.auth!.user.id, requestId: req.ctx.requestId, ip: req.ctx.ip });
 

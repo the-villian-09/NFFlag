@@ -134,7 +134,7 @@ describe("promo codes", () => {
     const boy = await startReg(f.a);
     expect((await apply(f.a, boy.id, "GIRLSONLY")).body.error.message).toMatch(/this division/);
     expect((await apply(f.a, boy.id, "COACHES")).body.error.message).toMatch(/coach and team mom fees/);
-    expect((await apply(f.a, boy.id, "LATER")).body.error.message).toMatch(/isn't active yet/);
+    expect((await apply(f.a, boy.id, "LATER")).body.error.message).toBe("That code isn't valid."); // not revealed before it starts
     expect((await apply(f.a, boy.id, "GONE")).body.error.message).toMatch(/expired/);
     expect((await apply(f.a, boy.id, "PAUSED")).body.error.message).toBe("That code isn't valid.");
     const girl = await startReg(f.a, { divisionId: girlsId, gender: "girl", first: "Gia" });
@@ -192,7 +192,8 @@ describe("promo codes", () => {
     expect((await apply(b.a, rb.id, "LASTONE")).status).toBe(200);
     const pay = await a.a.post(`/api/v1/registrations/${ra.id}/pay`).send({ sourceId: "cnon:card-nonce-ok" });
     expect(pay.status).toBe(409);
-    expect(pay.body.error.message).toMatch(/promo code can't be used any more.*\$100\.00/);
+    expect(pay.body.error.message).toMatch(/LASTONE can't be used any more.*\$100\.00/);
+    expect(pay.body.error.registration).toMatchObject({ totalCents: 10000, discountCents: 0, promoCode: null });
     const [after] = await db.select().from(registrations).where(eq(registrations.id, ra.id));
     expect(after).toMatchObject({ promoCodeId: null, discountCents: 0, totalCents: 10000 });
   });
@@ -214,5 +215,49 @@ describe("promo codes", () => {
     expect(paid.status).toBe(200);
     const [row] = await db.select().from(volunteerApplications).where(eq(volunteerApplications.id, id));
     expect(row!.status).toBe("submitted");
+  });
+
+  it("re-checks a held code at payment: paused or edited codes don't slip through, and the shown total must match", async () => {
+    const p = (await promo({ code: "LEAKED", value: 100 })).body.promo;
+    const f = await family("Leak");
+    const reg = await startReg(f.a);
+    await apply(f.a, reg.id, "LEAKED");
+    // The league pauses the code after it leaked; an unpaid hold can't use it any more.
+    await admin.put(`/api/v1/admin/promo-codes/${p.id}`).send({ ...p, active: false });
+    const blocked = await f.a.post(`/api/v1/registrations/${reg.id}/pay`).send({ expectedTotalCents: 0 });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error.message).toMatch(/LEAKED can't be used any more.*\$100\.00/);
+    expect(blocked.body.error.registration).toMatchObject({ totalCents: 10000, promoCode: null });
+    const [row] = await db.select().from(registrations).where(eq(registrations.id, reg.id));
+    expect(row!.status).toBe("pending_payment");
+
+    // An edited code (typo fixed: 50% → 10%) updates the price instead of honoring the old one.
+    const q = (await promo({ code: "TYPO", value: 50 })).body.promo;
+    await apply(f.a, reg.id, "TYPO");
+    await admin.put(`/api/v1/admin/promo-codes/${q.id}`).send({ ...q, value: 10 });
+    const changed = await f.a.post(`/api/v1/registrations/${reg.id}/pay`).send({ sourceId: "cnon:x", expectedTotalCents: 5000 });
+    expect(changed.status).toBe(409);
+    expect(changed.body.error.message).toMatch(/TYPO was changed by the league.*\$90\.00/);
+    expect(changed.body.error.registration).toMatchObject({ totalCents: 9000, discountCents: 1000, promoCode: "TYPO" });
+
+    // A screen showing an old total is never charged a different amount.
+    const stale = await f.a.post(`/api/v1/registrations/${reg.id}/pay`).send({ sourceId: "cnon:x", expectedTotalCents: 5000 });
+    expect(stale.status).toBe(409);
+    expect(stale.body.error.message).toMatch(/\$90\.00/);
+  });
+
+  it("re-checks a staff application's code at payment too", async () => {
+    const p = (await promo({ code: "STAFFLEAK", value: 100, appliesTo: "staff" })).body.promo;
+    const v = agent();
+    await signUp(v, uniqueEmail("promo-asst"), "Asst Promo");
+    const app = await v.post("/api/v1/volunteer/applications").send({ roleKey: "assistant_coach", phone: "904-555-0111", signerName: "Asst Promo", acceptAgreement: true });
+    const id = app.body.application.id;
+    await v.put(`/api/v1/volunteer/applications/${id}/promo`).send({ code: "STAFFLEAK" });
+    await admin.put(`/api/v1/admin/promo-codes/${p.id}`).send({ ...p, active: false });
+    const blocked = await v.post(`/api/v1/volunteer/applications/${id}/pay`).send({ expectedTotalCents: 0 });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error.application).toMatchObject({ totalCents: 2500, promoCode: null });
+    const [row] = await db.select().from(volunteerApplications).where(eq(volunteerApplications.id, id));
+    expect(row!.status).toBe("pending_payment");
   });
 });

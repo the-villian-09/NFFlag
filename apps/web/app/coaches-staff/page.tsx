@@ -372,15 +372,17 @@ function PayFee({
     setError(null);
     try {
       if (free) {
-        await api.post(`/volunteer/applications/${app.id}/pay`, {});
+        await api.post(`/volunteer/applications/${app.id}/pay`, { expectedTotalCents: 0 });
         setDone("Thanks! Your application is submitted. The league will contact you about your background check.");
         return;
       }
       const [givenName, ...rest] = name.trim().split(/\s+/);
       const token = await card.current!.tokenize({ amountCents: app.totalCents, givenName: givenName ?? "", familyName: rest.join(" "), email });
-      await api.post(`/volunteer/applications/${app.id}/pay`, { sourceId: token });
+      await api.post(`/volunteer/applications/${app.id}/pay`, { sourceId: token, expectedTotalCents: app.totalCents });
       setDone("Thanks! Your application is submitted and a receipt is on its way. The league will contact you about your background check.");
     } catch (err) {
+      const fresh = err instanceof ApiError ? (err.body.application as Partial<Application> | null | undefined) : undefined;
+      if (fresh) onChange(fresh);
       setError(err instanceof Error ? err.message : "The payment didn't go through.");
     } finally {
       setBusy(false);
