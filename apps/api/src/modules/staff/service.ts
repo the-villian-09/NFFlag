@@ -19,6 +19,7 @@ import { writeAudit } from "../platform/audit.js";
 import { isEnabled } from "../platform/flags.js";
 import { publish } from "../platform/outbox.js";
 import { COMPLETED, isUniqueViolation, issueRefund, refundAll, type Actor, type PaymentRequest } from "../registration/service.js";
+import { PROMO_FLAG, submitFreeApplication } from "../promo/service.js";
 import { removeFromSeasonTeams } from "../teams/service.js";
 import { getPaymentSettings, quote } from "../registration/settings.js";
 import { createPayment, friendlyPaymentError, getCredentials, parseReference, SquareError, type SquarePayment } from "../square/client.js";
@@ -62,6 +63,7 @@ export async function volunteerOptions() {
     season: season ? { id: season.id, name: season.name } : null,
     roles: VOLUNTEER_ROLES.map((key) => ({ key, label: ROLE_LABELS[key], ...quote(settings.volunteerFees[key], settings) })),
     divisions: divs,
+    promoCodes: await isEnabled(PROMO_FLAG),
     agreement: agreement ? { slug: agreement.slug, title: agreement.title, body: agreement.body, isPlaceholder: agreement.isPlaceholder } : null,
     // Public values for the Square card form; null = payments unavailable right now.
     square: creds && env.SQUARE_APPLICATION_ID ? { applicationId: env.SQUARE_APPLICATION_ID, locationId: creds.locationId, environment: creds.environment } : null,
@@ -156,7 +158,26 @@ export async function applyToVolunteer(
 
 /* ---------------- payment ---------------- */
 
-export async function payApplication(actor: Actor & { userId: string }, applicationId: string, input: { sourceId: string; verificationToken?: string }, buyerEmail: string) {
+export async function payApplication(actor: Actor & { userId: string }, applicationId: string, input: { sourceId?: string; verificationToken?: string }, buyerEmail: string) {
+  // Fee fully covered by a promo code: submit without a card.
+  const [peek] = await db
+    .select({ totalCents: volunteerApplications.totalCents })
+    .from(volunteerApplications)
+    .where(and(eq(volunteerApplications.id, applicationId), eq(volunteerApplications.userId, actor.userId)));
+  if (peek?.totalCents === 0) {
+    return db.transaction(async (tx) => {
+      const [a] = await tx
+        .select()
+        .from(volunteerApplications)
+        .where(and(eq(volunteerApplications.id, applicationId), eq(volunteerApplications.userId, actor.userId)))
+        .for("update");
+      if (!a || a.status !== "pending_payment") throw new HttpError(409, "CONFLICT", "This application doesn't need a payment.");
+      if (a.totalCents !== 0) throw new HttpError(409, "CONFLICT", "The total changed. Please review it and pay again.");
+      return submitFreeApplication(tx, a, actor);
+    });
+  }
+  if (!input.sourceId) throw new HttpError(400, "VALIDATION_FAILED", "Enter your card details.");
+  const sourceId = input.sourceId;
   const creds = await getCredentials().catch(() => null);
   if (!creds) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
   const request = await db.transaction(async (tx) => {
@@ -170,7 +191,7 @@ export async function payApplication(actor: Actor & { userId: string }, applicat
     if (a.status !== "pending_payment") throw new HttpError(409, "CONFLICT", "This application doesn't need a payment.");
     const request: PaymentRequest = {
       idempotencyKey: randomUUID(),
-      sourceId: input.sourceId,
+      sourceId,
       verificationToken: input.verificationToken,
       amountCents: a.totalCents,
       note: `NFFL ${feeLabel(a.roleKey).toLowerCase()}: ${ROLE_LABELS[a.roleKey as VolunteerRole]}`,
@@ -317,6 +338,7 @@ export function publicApplication(a: Application) {
     totalCents: a.totalCents,
     feeCents: a.feeCents,
     processingFeeCents: a.processingFeeCents,
+    discountCents: a.discountCents,
     paymentError: a.paymentError,
     decisionReason: a.decisionReason,
     createdAt: a.createdAt,

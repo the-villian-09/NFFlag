@@ -377,3 +377,11 @@ input:disabled, select:disabled, textarea:disabled { background: #1a2633; color:
 .day-chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .day-chip.on { background: var(--gold); border-color: var(--gold); color: var(--navy); }
 .day-chip:has(input:focus-visible) { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+/* ---------- Promo code at checkout ---------- */
+.promo-form { margin-top: 12px; }
+.promo-row { display: flex; gap: 8px; margin-top: 4px; }
+.promo-row input { flex: 1; min-width: 0; text-transform: uppercase; letter-spacing: 0.05em; }
+.promo-applied { margin: 12px 0 0; color: var(--ok); }
+.field-error { color: var(--danger); margin: 6px 0 0; font-size: 16px; }
+.summary .discount span:last-child { color: var(--ok); }

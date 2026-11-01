@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorAlert } from "@/components/form";
 import { Markdown } from "@/components/markdown";
+import { PromoField } from "@/components/promo-field";
 import { SquareCard, type SquareCardHandle } from "@/components/square-card";
 import { api, ApiError } from "@/lib/api";
 import { money } from "@/lib/format";
@@ -22,6 +23,7 @@ interface Options {
   roles: Role[];
   divisions: { id: string; name: string }[];
   agreement: { title: string; body: string } | null;
+  promoCodes?: boolean;
   square: { applicationId: string; locationId: string; environment: "sandbox" | "production" } | null;
 }
 interface Application {
@@ -32,6 +34,8 @@ interface Application {
   totalCents: number;
   feeCents: number;
   processingFeeCents: number;
+  discountCents?: number;
+  promoCode?: string | null;
   paymentError: string | null;
   decisionReason: string | null;
   screeningStatus: string;
@@ -92,6 +96,8 @@ export default function CoachesStaffPage() {
         <PayFee
           app={paying}
           square={opts.square}
+          promoCodes={!!opts.promoCodes}
+          onChange={(a) => setPaying({ ...paying, ...a })}
           email={me.user.email}
           name={me.user.name}
           onDone={async () => {
@@ -330,12 +336,16 @@ function ApplyForm({
 function PayFee({
   app,
   square,
+  promoCodes,
+  onChange,
   email,
   name,
   onDone,
 }: {
   app: Application;
   square: Options["square"];
+  promoCodes: boolean;
+  onChange: (a: Partial<Application>) => void;
   email: string;
   name: string;
   onDone: () => void;
@@ -346,10 +356,26 @@ function PayFee({
   const [error, setError] = useState<string | null>(app.paymentError);
   const [done, setDone] = useState<string | null>(null);
 
+  const free = app.totalCents === 0;
+  useEffect(() => {
+    if (free) setReady(false);
+  }, [free]);
+
+  async function applyCode(code: string | null) {
+    const r = await api.put<{ application: Application }>(`/volunteer/applications/${app.id}/promo`, { code });
+    setError(null);
+    onChange(r.application);
+  }
+
   async function pay() {
     setBusy(true);
     setError(null);
     try {
+      if (free) {
+        await api.post(`/volunteer/applications/${app.id}/pay`, {});
+        setDone("Thanks! Your application is submitted. The league will contact you about your background check.");
+        return;
+      }
       const [givenName, ...rest] = name.trim().split(/\s+/);
       const token = await card.current!.tokenize({ amountCents: app.totalCents, givenName: givenName ?? "", familyName: rest.join(" "), email });
       await api.post(`/volunteer/applications/${app.id}/pay`, { sourceId: token });
@@ -381,6 +407,12 @@ function PayFee({
             <span>{app.roleLabel}</span>
             <span>{money(app.feeCents || app.totalCents)}</span>
           </div>
+          {!!app.discountCents && (
+            <div className="discount">
+              <span>Promo {app.promoCode}</span>
+              <span>−{money(app.discountCents)}</span>
+            </div>
+          )}
           {app.processingFeeCents > 0 && (
             <div>
               <span>Card processing fee</span>
@@ -392,16 +424,27 @@ function PayFee({
             <span>{money(app.totalCents)}</span>
           </div>
         </div>
-        <p className="hint" style={{ marginTop: 12 }}>
-          Refunded if your application isn't approved.
-        </p>
+        {promoCodes && <PromoField applied={app.promoCode ?? null} onApply={applyCode} disabled={busy} />}
+        {!free && (
+          <p className="hint" style={{ marginTop: 12 }}>
+            Refunded if your application isn&apos;t approved.
+          </p>
+        )}
         <button className="link-btn" onClick={onDone} disabled={busy}>
           Pay later
         </button>
       </div>
       <div className="card">
-        <h2>Card</h2>
-        {square ? (
+        <h2>{free ? "Nothing to pay" : "Card"}</h2>
+        {free ? (
+          <>
+            <p className="muted">Your promo code covers the full fee, so no card is needed.</p>
+            <ErrorAlert error={error} />
+            <button className="btn" style={{ marginTop: 16 }} onClick={pay} disabled={busy}>
+              {busy ? "Saving…" : "Submit application"}
+            </button>
+          </>
+        ) : square ? (
           <>
             <SquareCard ref={card} applicationId={square.applicationId} locationId={square.locationId} environment={square.environment} onReady={setReady} />
             <ErrorAlert error={error} />

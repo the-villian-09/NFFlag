@@ -13,6 +13,7 @@ import {
   payments,
   playerMedical,
   players,
+  promoCodes,
   refunds,
   registrations,
   rosterEntries,
@@ -225,6 +226,8 @@ function listSelect() {
       status: registrations.status,
       totalCents: registrations.totalCents,
       feeCents: registrations.feeCents,
+      discountCents: registrations.discountCents,
+      promoCode: promoCodes.code,
       paidAt: registrations.paidAt,
       createdAt: registrations.createdAt,
       playerFirstName: players.firstName,
@@ -240,7 +243,8 @@ function listSelect() {
     .from(registrations)
     .innerJoin(players, eq(players.id, registrations.playerId))
     .innerJoin(divisions, eq(divisions.id, registrations.divisionId))
-    .innerJoin(households, eq(households.id, registrations.householdId));
+    .innerJoin(households, eq(households.id, registrations.householdId))
+    .leftJoin(promoCodes, eq(promoCodes.id, registrations.promoCodeId));
 }
 
 adminLeagueRouter.get(
@@ -286,7 +290,7 @@ adminLeagueRouter.get(
           .where(inArray(householdMembers.householdId, householdIds))
           .orderBy(asc(householdMembers.createdAt))
       : [];
-    const header = ["Player first name", "Player last name", "Birth date", "Gender", "Division", "Status", "Shirt size", "Family", "Guardian", "Guardian email", "Phone", "Total paid", "Paid at", "Registration id"];
+    const header = ["Player first name", "Player last name", "Birth date", "Gender", "Division", "Status", "Shirt size", "Family", "Guardian", "Guardian email", "Phone", "Promo code", "Discount", "Total paid", "Paid at", "Registration id"];
     const lines = rows.map((r) => {
       const g = guardians.find((x) => x.householdId === r.householdId);
       return [
@@ -301,6 +305,8 @@ adminLeagueRouter.get(
         g?.name,
         g?.email,
         r.householdPhone,
+        r.promoCode,
+        r.discountCents ? (r.discountCents / 100).toFixed(2) : "",
         (r.totalCents / 100).toFixed(2),
         r.paidAt,
         r.id,
@@ -361,8 +367,9 @@ adminLeagueRouter.get(
       .from(rosterEntries)
       .innerJoin(teams, eq(teams.id, rosterEntries.teamId))
       .where(eq(rosterEntries.registrationId, id));
+    const [promo] = r.promoCodeId ? await db.select({ code: promoCodes.code }).from(promoCodes).where(eq(promoCodes.id, r.promoCodeId)) : [];
     res.json({
-      registration: r,
+      registration: { ...r, promoCode: promo?.code ?? null },
       team: team ?? null,
       player,
       division,

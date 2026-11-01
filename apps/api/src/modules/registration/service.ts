@@ -27,6 +27,7 @@ import { logger } from "../../lib/logger.js";
 import { WAIVER_SLUGS } from "../content/defaults.js";
 import { writeAudit } from "../platform/audit.js";
 import { publish } from "../platform/outbox.js";
+import { recheckRegistrationCode } from "../promo/service.js";
 import {
   createPayment,
   friendlyPaymentError,
@@ -303,26 +304,38 @@ export async function payRegistration(
   actor: Actor & { userId: string },
   householdId: string,
   registrationId: string,
-  input: { sourceId: string; verificationToken?: string },
+  input: { sourceId?: string; verificationToken?: string },
   buyerEmail: string,
 ) {
   const [peek] = await db
-    .select({ divisionId: registrations.divisionId, totalCents: registrations.totalCents, playerId: registrations.playerId })
+    .select({ divisionId: registrations.divisionId, totalCents: registrations.totalCents, playerId: registrations.playerId, status: registrations.status, promoCodeId: registrations.promoCodeId })
     .from(registrations)
     .where(and(eq(registrations.id, registrationId), eq(registrations.householdId, householdId)));
   if (!peek) throw new HttpError(404, "NOT_FOUND", "Registration not found.");
   const settings = await getPaymentSettings();
+
+  // An expired hold with a promo code: make sure the code still works before charging.
+  if (peek.status === "expired" && peek.promoCodeId) {
+    const message = await db.transaction(async (tx) => {
+      const [r] = await tx.select().from(registrations).where(eq(registrations.id, registrationId)).for("update");
+      return r ? recheckRegistrationCode(tx, r) : null;
+    });
+    if (message) throw new HttpError(409, "CONFLICT", message);
+  }
 
   // Free divisions: nothing to charge.
   if (peek.totalCents === 0) {
     return db
       .transaction(async (tx) => {
         const { r } = await claimForPayment(tx, registrationId, householdId, peek.divisionId, settings.holdMinutes);
+        // The total is re-read under the lock: a code removed meanwhile means it isn't free any more.
+        if (r.totalCents !== 0) throw new HttpError(409, "CONFLICT", "The total changed. Please review it and pay again.");
         return markPaid(tx, r, null, actor);
       })
       .catch(uniqueAsConflict);
   }
 
+  if (!input.sourceId) throw new HttpError(400, "VALIDATION_FAILED", "Enter your card details.");
   const creds = await getCredentials().catch(() => null);
   if (!creds) {
     throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");

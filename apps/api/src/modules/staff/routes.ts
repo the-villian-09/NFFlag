@@ -6,8 +6,9 @@ import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import { env } from "../../config.js";
 import { db } from "../../db/client.js";
-import { divisions, householdMembers, households, payments, players, refunds, seasons, user, volunteerApplications } from "../../db/schema/index.js";
+import { divisions, householdMembers, households, payments, players, promoCodes, refunds, seasons, user, volunteerApplications } from "../../db/schema/index.js";
 import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission } from "../../http/context.js";
+import { applyToApplication } from "../promo/service.js";
 import { HttpError } from "../../http/errors.js";
 import { can } from "../platform/access.js";
 import { issueRefund } from "../registration/service.js";
@@ -39,6 +40,8 @@ staffRouter.get(
         roleKey: volunteerApplications.roleKey,
         status: volunteerApplications.status,
         totalCents: volunteerApplications.totalCents,
+        discountCents: volunteerApplications.discountCents,
+        promoCode: promoCodes.code,
         feeCents: volunteerApplications.feeCents,
         processingFeeCents: volunteerApplications.processingFeeCents,
         paymentError: volunteerApplications.paymentError,
@@ -49,6 +52,7 @@ staffRouter.get(
       })
       .from(volunteerApplications)
       .innerJoin(seasons, eq(seasons.id, volunteerApplications.seasonId))
+      .leftJoin(promoCodes, eq(promoCodes.id, volunteerApplications.promoCodeId))
       .where(and(eq(volunteerApplications.userId, req.ctx.auth!.user.id), inArray(volunteerApplications.status, ["pending_payment", "processing", "submitted", "approved", "rejected", "withdrawn", "revoked"])))
       .orderBy(desc(volunteerApplications.createdAt));
     res.json({ items: rows.map((r) => ({ ...r, roleLabel: ROLE_LABELS[r.roleKey as VolunteerRole] })) });
@@ -82,6 +86,18 @@ staffRouter.post(
   handler(async (req, res) => {
     const input = payRegistrationInput.parse(req.body);
     res.json({ application: publicApplication(await payApplication(actorOf(req), String(req.params.id), input, req.ctx.auth!.user.email)) });
+  }),
+);
+
+/** Apply a promo code to an unpaid application (body { code }), or remove it (code: null). */
+staffRouter.put(
+  "/volunteer/applications/:id/promo",
+  requireAuth,
+  requireMfa,
+  handler(async (req, res) => {
+    const { code } = z.object({ code: z.string().trim().min(1).max(40).nullable() }).parse(req.body);
+    const r = await applyToApplication(actorOf(req), String(req.params.id), code);
+    res.json({ application: { ...publicApplication(r.application), promoCode: r.code } });
   }),
 );
 

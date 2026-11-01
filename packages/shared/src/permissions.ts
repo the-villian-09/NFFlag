@@ -29,6 +29,7 @@ export const PERMISSIONS = [
   // Payments (R1/R2)
   "payments.read",
   "refunds.issue",
+  "promo.manage",
 
   // Content (R1)
   "content.manage",
@@ -95,6 +96,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, readonly Permission[]> = 
     "medical.read",
     "payments.read",
     "refunds.issue",
+    "promo.manage",
     "content.manage",
     "staff.applications.review",
     "teams.manage",

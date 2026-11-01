@@ -106,6 +106,16 @@ export default function AdminPage() {
             </Link>
           </div>
         )}
+        {me.permissions.includes("promo.manage") && (
+          <div className="card">
+            <h2>Promo codes</h2>
+            <p className="muted">Discount codes for registration and coach / team mom fees, with how often each was used.</p>
+            <OffNote flags={flags} k="r2.promo_codes" what="Promo code boxes at checkout" />
+            <Link className="btn small" href="/admin/promo-codes">
+              Promo codes
+            </Link>
+          </div>
+        )}
         {me.permissions.includes("teams.manage") && (
           <div className="card">
             <h2>Teams & draft</h2>

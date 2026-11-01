@@ -6,6 +6,7 @@
  */
 import { acceptOfferInput, joinWaitlistInput, payRegistrationInput, playerInput, startRegistrationInput } from "@nffl/shared";
 import { and, asc, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { z } from "zod";
 import { Router, type RequestHandler } from "express";
 import { rateLimit } from "express-rate-limit";
 import { env } from "../../config.js";
@@ -17,6 +18,7 @@ import {
   payments,
   playerMedical,
   players,
+  promoCodes,
   registrations,
   rosterEntries,
   seasons,
@@ -28,6 +30,7 @@ import { handler, requireAuth, requireMfa } from "../../http/context.js";
 import { HttpError } from "../../http/errors.js";
 import { writeAudit } from "../platform/audit.js";
 import { FLAG, isEnabled } from "../platform/flags.js";
+import { applyToRegistration, PROMO_FLAG } from "../promo/service.js";
 import { getCredentials } from "../square/client.js";
 import {
   cancelRegistration,
@@ -235,6 +238,7 @@ registrationRouter.get(
       feeMode: settings.feeMode,
       holdMinutes: settings.holdMinutes,
       waitlist: await isEnabled(WAITLIST_FLAG),
+      promoCodes: await isEnabled(PROMO_FLAG),
       offerHours: settings.offerHours,
       divisions: withSpots,
       waivers: waivers.map((w) => ({ slug: w.slug, title: w.title, body: w.body, isPlaceholder: w.isPlaceholder })),
@@ -290,6 +294,8 @@ registrationRouter.get(
         priceCents: registrations.priceCents,
         feeCents: registrations.feeCents,
         totalCents: registrations.totalCents,
+        discountCents: registrations.discountCents,
+        promoCode: promoCodes.code,
         holdExpiresAt: registrations.holdExpiresAt,
         paymentError: registrations.paymentError,
         decisionReason: registrations.decisionReason,
@@ -305,6 +311,7 @@ registrationRouter.get(
       .innerJoin(players, eq(players.id, registrations.playerId))
       .innerJoin(divisions, eq(divisions.id, registrations.divisionId))
       .innerJoin(seasons, eq(seasons.id, registrations.seasonId))
+      .leftJoin(promoCodes, eq(promoCodes.id, registrations.promoCodeId))
       .where(and(eq(registrations.householdId, householdId), ne(registrations.status, "cancelled")))
       .orderBy(desc(registrations.createdAt));
     const ids = rows.map((r) => r.id);
@@ -389,6 +396,19 @@ registrationRouter.post(
     const householdId = await householdOf(req.ctx.auth!.user.id);
     const reg = await payRegistration(actorOf(req), householdId, String(req.params.id), input, req.ctx.auth!.user.email);
     res.json({ registration: reg });
+  }),
+);
+
+/** Apply a promo code to an unpaid registration (body { code }), or remove it (code: null). */
+registrationRouter.put(
+  "/registrations/:id/promo",
+  requireAuth,
+  requireMfa,
+  handler(async (req, res) => {
+    const { code } = z.object({ code: z.string().trim().min(1).max(40).nullable() }).parse(req.body);
+    const householdId = await householdOf(req.ctx.auth!.user.id);
+    const r = await applyToRegistration(actorOf(req), householdId, String(req.params.id), code);
+    res.json({ registration: { ...r.registration, promoCode: r.code } });
   }),
 );
 

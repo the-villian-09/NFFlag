@@ -4,7 +4,7 @@
  * Square connection.
  */
 import { sql } from "drizzle-orm";
-import { check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { user } from "./auth.js";
 
 export const households = pgTable("households", {
@@ -167,6 +167,9 @@ export const registrations = pgTable(
     /** Division price, processing fee charged to the family (0 when the league absorbs it), and total. */
     priceCents: integer("price_cents").notNull(),
     feeCents: integer("fee_cents").notNull().default(0),
+    /** Promo code discount taken off the division price (before any card fee). */
+    discountCents: integer("discount_cents").notNull().default(0),
+    promoCodeId: uuid("promo_code_id").references((): AnyPgColumn => promoCodes.id),
     totalCents: integer("total_cents").notNull(),
     /** [{ slug, title, version, sha256, signerName, acceptedAt }] */
     waivers: jsonb("waivers").notNull().default([]),
@@ -350,6 +353,8 @@ export const volunteerApplications = pgTable(
     status: text("status").notNull().default("pending_payment"),
     feeCents: integer("fee_cents").notNull().default(0),
     processingFeeCents: integer("processing_fee_cents").notNull().default(0),
+    discountCents: integer("discount_cents").notNull().default(0),
+    promoCodeId: uuid("promo_code_id").references((): AnyPgColumn => promoCodes.id),
     totalCents: integer("total_cents").notNull().default(0),
     paymentRequest: jsonb("payment_request"),
     processingStartedAt: timestamp("processing_started_at", { withTimezone: true }),
@@ -569,5 +574,42 @@ export const announcements = pgTable(
     index("announcements_team_idx").on(t.teamId, t.createdAt),
     index("announcements_season_idx").on(t.seasonId, t.createdAt),
     check("announcements_audience", sql`${t.audience} in ('team','division','league')`),
+  ],
+);
+
+/* ------------------------------------------------------- promo codes ---- */
+
+/**
+ * A discount code. kind: percent (value = 1–100) or amount (value = cents).
+ * appliesTo: registration, staff (coach / team mom fees) or both. Empty
+ * divisionIds = every division. Uses are counted from registrations and
+ * applications that hold the code (not cancelled or expired).
+ */
+export const promoCodes = pgTable(
+  "promo_codes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Stored upper-case; families can type any case. */
+    code: text("code").notNull(),
+    description: text("description"),
+    kind: text("kind").notNull(),
+    value: integer("value").notNull(),
+    appliesTo: text("applies_to").notNull().default("registration"),
+    seasonId: uuid("season_id").references(() => seasons.id),
+    divisionIds: jsonb("division_ids").notNull().default([]),
+    maxUses: integer("max_uses"),
+    onePerFamily: boolean("one_per_family").notNull().default(false),
+    startsAt: timestamp("starts_at", { withTimezone: true }),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("promo_code_unique").on(t.code),
+    check("promo_kind", sql`${t.kind} in ('percent','amount')`),
+    check("promo_value", sql`(${t.kind} = 'percent' and ${t.value} between 1 and 100) or (${t.kind} = 'amount' and ${t.value} > 0)`),
+    check("promo_applies", sql`${t.appliesTo} in ('registration','staff','both')`),
   ],
 );

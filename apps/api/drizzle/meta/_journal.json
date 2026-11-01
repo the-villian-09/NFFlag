@@ -71,6 +71,13 @@
       "when": 1793479634597,
       "tag": "0009_practice_series",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793546607279,
+      "tag": "0010_promo_codes",
+      "breakpoints": true
     }
   ]
 }

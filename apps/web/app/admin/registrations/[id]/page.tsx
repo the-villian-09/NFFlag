@@ -15,6 +15,8 @@ interface Detail {
     priceCents: number;
     feeCents: number;
     totalCents: number;
+    discountCents: number;
+    promoCode: string | null;
     waivers: { slug: string; title: string; version: string; signerName: string; acceptedAt: string }[];
     decision: string | null;
     decisionReason: string | null;
@@ -179,6 +181,12 @@ export default function AdminRegistrationPage() {
               <dl className="kv">
                 <dt>Division price</dt>
                 <dd>{money(d.registration.priceCents)}</dd>
+                {d.registration.discountCents > 0 && (
+                  <>
+                    <dt>Promo {d.registration.promoCode}</dt>
+                    <dd>−{money(d.registration.discountCents)}</dd>
+                  </>
+                )}
                 {d.registration.feeCents > 0 && (
                   <>
                     <dt>Processing fee</dt>

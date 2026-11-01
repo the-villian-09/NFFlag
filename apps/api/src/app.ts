@@ -21,6 +21,7 @@ import { adminPaymentsRouter, squareCallbackRouter, squareWebhook } from "./modu
 import { adminStaffRouter, staffRouter } from "./modules/staff/routes.js";
 import { adminTeamsRouter, myTeamsRouter } from "./modules/teams/routes.js";
 import { adminScheduleRouter, scheduleRouter } from "./modules/schedule/routes.js";
+import { adminPromoRouter } from "./modules/promo/routes.js";
 
 export function createApp() {
   const app = express();
@@ -63,6 +64,7 @@ export function createApp() {
   app.use("/api/v1/admin/teams", adminTeamsRouter);
   app.use("/api/v1", scheduleRouter);
   app.use("/api/v1/admin/schedule", adminScheduleRouter);
+  app.use("/api/v1/admin/promo-codes", adminPromoRouter);
   app.use("/api/v1/admin/content", adminContentRouter);
   app.use("/api/v1/admin/league", adminLeagueRouter);
   app.use("/api/v1/admin/payments", adminPaymentsRouter);

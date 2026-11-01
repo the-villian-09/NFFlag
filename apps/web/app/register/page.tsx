@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorAlert } from "@/components/form";
 import { Markdown } from "@/components/markdown";
+import { PromoField } from "@/components/promo-field";
 import { SquareCard, type SquareCardHandle } from "@/components/square-card";
 import { api, ApiError } from "@/lib/api";
 import { fmtDate, fmtDateTime, GENDER_POLICY, money } from "@/lib/format";
@@ -29,6 +30,7 @@ interface Options {
   feeMode?: "league" | "parent";
   holdMinutes?: number;
   waitlist?: boolean;
+  promoCodes?: boolean;
   offerHours?: number;
   divisions: Division[];
   waivers: { slug: string; title: string; body: string; isPlaceholder: boolean }[];
@@ -49,6 +51,8 @@ interface Registration {
   priceCents: number;
   feeCents: number;
   totalCents: number;
+  discountCents?: number;
+  promoCode?: string | null;
   holdExpiresAt: string | null;
   paymentError?: string | null;
 }
@@ -335,11 +339,13 @@ function Register() {
             />
           )}
 
-          {step === "pay" && reg && player && options.square && (
+          {step === "pay" && reg && player && (options.square || reg.totalCents === 0) && (
             <Pay
               reg={reg}
               player={player}
               square={options.square}
+              promoCodes={!!options.promoCodes}
+              onChange={(r) => setReg({ ...reg, ...r })}
               email={me.user.email}
               name={me.user.name}
               onPaid={() => setStep("done")}
@@ -541,6 +547,8 @@ function Pay({
   reg,
   player,
   square,
+  promoCodes,
+  onChange,
   email,
   name,
   onPaid,
@@ -548,7 +556,9 @@ function Pay({
 }: {
   reg: Registration;
   player: Player;
-  square: NonNullable<Options["square"]>;
+  square: Options["square"];
+  promoCodes: boolean;
+  onChange: (r: Partial<Registration>) => void;
   email: string;
   name: string;
   onPaid: () => void;
@@ -561,13 +571,29 @@ function Pay({
   const [pending, setPending] = useState(false);
   const left = useCountdown(reg.holdExpiresAt);
 
+  const free = reg.totalCents === 0;
+  // The card form is rebuilt when a code changes the total from $0 back to a price.
+  useEffect(() => {
+    if (free) setReady(false);
+  }, [free]);
+
+  async function applyCode(code: string | null) {
+    const r = await api.put<{ registration: Registration }>(`/registrations/${reg.id}/promo`, { code });
+    setError(null);
+    onChange(r.registration);
+  }
+
   async function pay() {
     setBusy(true);
     setError(null);
     try {
-      const [givenName, ...rest] = name.trim().split(/\s+/);
-      const token = await card.current!.tokenize({ amountCents: reg.totalCents, givenName: givenName ?? "", familyName: rest.join(" "), email });
-      await api.post(`/registrations/${reg.id}/pay`, { sourceId: token });
+      if (free) {
+        await api.post(`/registrations/${reg.id}/pay`, {});
+      } else {
+        const [givenName, ...rest] = name.trim().split(/\s+/);
+        const token = await card.current!.tokenize({ amountCents: reg.totalCents, givenName: givenName ?? "", familyName: rest.join(" "), email });
+        await api.post(`/registrations/${reg.id}/pay`, { sourceId: token });
+      }
       onPaid();
     } catch (err) {
       if (err instanceof ApiError && err.code === "PAYMENT_PENDING") setPending(true);
@@ -601,6 +627,12 @@ function Pay({
             </span>
             <span>{money(reg.priceCents)}</span>
           </div>
+          {!!reg.discountCents && (
+            <div className="discount">
+              <span>Promo {reg.promoCode}</span>
+              <span>−{money(reg.discountCents)}</span>
+            </div>
+          )}
           {reg.feeCents > 0 && (
             <div>
               <span>Card processing fee</span>
@@ -612,6 +644,7 @@ function Pay({
             <span>{money(reg.totalCents)}</span>
           </div>
         </div>
+        {promoCodes && <PromoField applied={reg.promoCode ?? null} onApply={applyCode} disabled={busy} />}
         {left && (
           <p className="countdown" style={{ marginTop: 12 }}>
             {left === "0:00"
@@ -625,17 +658,33 @@ function Pay({
           Cancel this registration
         </button>
       </div>
-      <div className="card">
-        <h2>Card</h2>
-        <SquareCard ref={card} applicationId={square.applicationId} locationId={square.locationId} environment={square.environment} onReady={setReady} />
-        <ErrorAlert error={error} />
-        <button className="btn" style={{ marginTop: 16 }} onClick={pay} disabled={!ready || busy}>
-          {busy ? "Processing…" : `Pay ${money(reg.totalCents)}`}
-        </button>
-        <p className="hint" style={{ marginTop: 8 }}>
-          Payments are processed securely by Square. We never see or store your card number.
-        </p>
-      </div>
+      {free ? (
+        <div className="card">
+          <h2>Nothing to pay</h2>
+          <p className="muted">Your promo code covers the full price, so no card is needed.</p>
+          <ErrorAlert error={error} />
+          <button className="btn" style={{ marginTop: 16 }} onClick={pay} disabled={busy}>
+            {busy ? "Saving…" : "Complete registration"}
+          </button>
+        </div>
+      ) : square ? (
+        <div className="card">
+          <h2>Card</h2>
+          <SquareCard ref={card} applicationId={square.applicationId} locationId={square.locationId} environment={square.environment} onReady={setReady} />
+          <ErrorAlert error={error} />
+          <button className="btn" style={{ marginTop: 16 }} onClick={pay} disabled={!ready || busy}>
+            {busy ? "Processing…" : `Pay ${money(reg.totalCents)}`}
+          </button>
+          <p className="hint" style={{ marginTop: 8 }}>
+            Payments are processed securely by Square. We never see or store your card number.
+          </p>
+        </div>
+      ) : (
+        <div className="card">
+          <h2>Card</h2>
+          <p className="muted">Online payment is temporarily unavailable. Please try again later.</p>
+        </div>
+      )}
     </section>
   );
 }
