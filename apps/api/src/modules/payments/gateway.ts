@@ -76,8 +76,13 @@ export class GatewaySetupError extends Error {}
 /** The provider isn't set up on this server. */
 export class GatewayUnavailableError extends Error {}
 
+/**
+ * Stripe when chosen and its keys are on this server. A server without Stripe
+ * keys yet (e.g. production before go-live) keeps taking payments with Square.
+ */
 export async function activeProvider(): Promise<Provider> {
-  return (await getPaymentSettings()).provider;
+  const chosen = (await getPaymentSettings()).provider;
+  return chosen === "stripe" && !stripeConfigured() ? "square" : chosen;
 }
 
 export type CheckoutConfig =
