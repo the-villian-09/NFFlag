@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorAlert } from "@/components/form";
 import { Markdown } from "@/components/markdown";
 import { PromoField } from "@/components/promo-field";
-import { SquareCard, type SquareCardHandle } from "@/components/square-card";
+import { CardForm, payWithCard, providerName, type CardFormHandle, type CheckoutConfig } from "@/components/card-form";
 import { api, ApiError } from "@/lib/api";
 import { money } from "@/lib/format";
 import { useMe } from "@/lib/use-me";
@@ -24,7 +24,7 @@ interface Options {
   divisions: { id: string; name: string }[];
   agreement: { title: string; body: string } | null;
   promoCodes?: boolean;
-  square: { applicationId: string; locationId: string; environment: "sandbox" | "production" } | null;
+  checkout: CheckoutConfig | null;
 }
 interface Application {
   id: string;
@@ -95,7 +95,7 @@ export default function CoachesStaffPage() {
       ) : paying ? (
         <PayFee
           app={paying}
-          square={opts.square}
+          checkout={opts.checkout}
           promoCodes={!!opts.promoCodes}
           onChange={(a) => setPaying({ ...paying, ...a })}
           email={me.user.email}
@@ -335,7 +335,7 @@ function ApplyForm({
 
 function PayFee({
   app,
-  square,
+  checkout,
   promoCodes,
   onChange,
   email,
@@ -343,14 +343,14 @@ function PayFee({
   onDone,
 }: {
   app: Application;
-  square: Options["square"];
+  checkout: Options["checkout"];
   promoCodes: boolean;
   onChange: (a: Partial<Application>) => void;
   email: string;
   name: string;
   onDone: () => void;
 }) {
-  const card = useRef<SquareCardHandle>(null);
+  const card = useRef<CardFormHandle>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(app.paymentError);
@@ -376,9 +376,7 @@ function PayFee({
         setDone("Thanks! Your application is submitted. The league will contact you about your background check.");
         return;
       }
-      const [givenName, ...rest] = name.trim().split(/\s+/);
-      const token = await card.current!.tokenize({ amountCents: app.totalCents, givenName: givenName ?? "", familyName: rest.join(" "), email });
-      await api.post(`/volunteer/applications/${app.id}/pay`, { sourceId: token, expectedTotalCents: app.totalCents });
+      await payWithCard(card.current!, `/volunteer/applications/${app.id}/pay`, { amountCents: app.totalCents, name, email, expectedTotalCents: app.totalCents });
       setDone("Thanks! Your application is submitted and a receipt is on its way. The league will contact you about your background check.");
     } catch (err) {
       const fresh = err instanceof ApiError ? (err.body.application as Partial<Application> | null | undefined) : undefined;
@@ -446,13 +444,16 @@ function PayFee({
               {busy ? "Saving…" : "Submit application"}
             </button>
           </>
-        ) : square ? (
+        ) : checkout ? (
           <>
-            <SquareCard ref={card} applicationId={square.applicationId} locationId={square.locationId} environment={square.environment} onReady={setReady} />
+            <CardForm ref={card} checkout={checkout} amountCents={app.totalCents} onReady={setReady} />
             <ErrorAlert error={error} />
             <button className="btn" style={{ marginTop: 16 }} onClick={pay} disabled={!ready || busy}>
               {busy ? "Processing…" : `Pay ${money(app.totalCents)}`}
             </button>
+            <p className="hint" style={{ marginTop: 8 }}>
+              Payments are processed securely by {providerName(checkout)}. We never see or store your card number.
+            </p>
           </>
         ) : (
           <div className="alert error">Online payment is temporarily unavailable. Please check back soon.</div>

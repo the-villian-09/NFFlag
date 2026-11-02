@@ -15,3 +15,7 @@ process.env.SQUARE_APPLICATION_SECRET = "sandbox-sq0csb-test";
 process.env.SQUARE_ACCESS_TOKEN = "EAAA-test-token";
 process.env.SQUARE_LOCATION_ID = "LTEST";
 process.env.SQUARE_WEBHOOK_SIGNATURE_KEY = "test-signature-key";
+// Stripe test keys (calls are mocked in tests).
+process.env.STRIPE_SECRET_KEY = "sk_test_fake";
+process.env.STRIPE_PUBLISHABLE_KEY = "pk_test_fake";
+process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";

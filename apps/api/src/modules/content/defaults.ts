@@ -176,7 +176,7 @@ This policy explains how the North Florida Flag League ("NFFL", "we") collects, 
 - **Parent or guardian account:** name, email address, phone number, password (stored encrypted) and household details.
 - **Player information you provide:** name, date of birth, division, jersey size, playing experience, emergency contacts, and health information you choose to share for your child's safety (such as allergies, medications and physician contact).
 - **Proof of age** when the league requests it.
-- **Payments** are processed by Square. We receive payment status and receipt details; we do not store card numbers.
+- **Payments** are processed by Stripe (or Square, our backup processor). We receive payment status and receipt details; we do not store card numbers.
 - **Technical information** such as IP address and browser type, used for security.
 
 ## How we use it
@@ -187,7 +187,7 @@ To run registration, eligibility, teams, schedules and communication; to keep pl
 
 - League administrators with a need to know.
 - Your child's coaches see roster and emergency information needed to coach and keep players safe.
-- Service providers acting for us: Square (payments), Resend (email), Twilio (text messages), Google Cloud and Vercel (hosting).
+- Service providers acting for us: Stripe and Square (payments), Resend (email), Twilio (text messages), Google Cloud and Vercel (hosting).
 
 We do not sell personal information.
 
@@ -222,7 +222,7 @@ You must be at least 18 and the parent or legal guardian of any player you regis
 
 ## Registration and payment
 
-Registration is complete once payment is confirmed and the league confirms eligibility. Fees are listed on this site. Payments are processed by Square.
+Registration is complete once payment is confirmed and the league confirms eligibility. Fees are listed on this site. Payments are processed by Stripe (or Square, our backup processor).
 
 ## Refunds
 

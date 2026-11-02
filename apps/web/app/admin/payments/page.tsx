@@ -9,6 +9,7 @@ import { fmtDateTime, money } from "@/lib/format";
 import { useMe } from "@/lib/use-me";
 
 interface Settings {
+  provider: "stripe" | "square";
   feeMode: "league" | "parent";
   feePercentBps: number;
   feeFixedCents: number;
@@ -18,6 +19,7 @@ interface Settings {
 }
 interface Status {
   settings: Settings;
+  stripe: { configured: boolean; environment: "test" | "live"; webhookConfigured: boolean; webhookUrl: string };
   square: {
     environment: "sandbox" | "production";
     oauthConfigured: boolean;
@@ -83,10 +85,32 @@ function Payments() {
         !error && <p className="muted">Loading…</p>
       ) : (
         <>
+          <ProviderCard status={s} canManage={canManage} onChanged={load} />
           <div className="grid" style={{ marginTop: 16 }}>
+            <StripeAccountCard status={s} />
             <SquareCard status={s} canManage={canManage} onChanged={load} />
             <FeeCard initial={s.settings} canManage={canManage} />
           </div>
+          {canManage && (
+            <section className="card" style={{ marginTop: 24 }}>
+              <h2>Stripe setup</h2>
+              <p className="muted">For the developer. The webhook must be added in the Stripe dashboard (Developers → Webhooks).</p>
+              <dl className="kv">
+                <dt>Mode</dt>
+                <dd>{s.stripe.environment === "live" ? "Live (real payments)" : "Test (no real money)"}</dd>
+                <dt>Webhook URL</dt>
+                <dd>
+                  <code>{s.stripe.webhookUrl}</code>
+                </dd>
+                <dt>Webhook events</dt>
+                <dd>payment_intent.succeeded, payment_intent.payment_failed, payment_intent.canceled, refund.created, refund.updated, refund.failed</dd>
+                <dt>API keys on server</dt>
+                <dd>{s.stripe.configured ? "Set" : "Missing"}</dd>
+                <dt>Webhook secret on server</dt>
+                <dd>{s.stripe.webhookConfigured ? "Set" : "Missing"}</dd>
+              </dl>
+            </section>
+          )}
           {canManage && (
             <section className="card" style={{ marginTop: 24 }}>
               <h2>Square app setup</h2>
@@ -117,6 +141,91 @@ function Payments() {
   );
 }
 
+const PROVIDER_TEXT = {
+  stripe: { name: "Stripe", hint: "Main payment provider. Also used to pay referees." },
+  square: { name: "Square", hint: "Backup. Use only if Stripe has a problem." },
+} as const;
+
+/** Which provider takes new card payments. Refunds always go back through the provider that took the payment. */
+function ProviderCard({ status, canManage, onChanged }: { status: Status; canManage: boolean; onChanged: () => void }) {
+  const current = status.settings.provider;
+  const [pick, setPick] = useState(current);
+  const [saved, setSaved] = useState(false);
+  const { busy, error, run } = useAction();
+  const ready = { stripe: status.stripe.configured, square: !!status.square.active };
+
+  async function save() {
+    setSaved(false);
+    if ((await run(() => api.put("/admin/league/payment-settings", { provider: pick }))) !== undefined) {
+      setSaved(true);
+      onChanged();
+    }
+  }
+
+  return (
+    <section className="card" style={{ marginTop: 16 }}>
+      <h2>Payment provider</h2>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Takes registration and coach fees. Refunds always go back through the provider that took the payment.
+      </p>
+      <ErrorAlert error={error} />
+      {saved && <div className="alert ok">Saved. New payments use {PROVIDER_TEXT[current].name} right away.</div>}
+      {!ready[current] && (
+        <div className="alert error">
+          {PROVIDER_TEXT[current].name} isn&apos;t set up, so families can&apos;t pay online right now.
+        </div>
+      )}
+      <div className="toggle-row" role="radiogroup" aria-label="Payment provider">
+        {(["stripe", "square"] as const).map((p) => (
+          <button key={p} type="button" className="choice" aria-pressed={pick === p} disabled={!canManage} onClick={() => setPick(p)}>
+            <strong>
+              {PROVIDER_TEXT[p].name}
+              {current === p ? " (in use)" : ""}
+            </strong>
+            <span className="muted">
+              {PROVIDER_TEXT[p].hint} {ready[p] ? "" : "Not set up yet."}
+            </span>
+          </button>
+        ))}
+      </div>
+      {canManage ? (
+        pick !== current && (
+          <button className="btn" style={{ marginTop: 12 }} onClick={save} disabled={busy}>
+            {busy ? "Switching…" : `Switch to ${PROVIDER_TEXT[pick].name}`}
+          </button>
+        )
+      ) : (
+        <p className="muted">View only. Only the Super Admin can change this.</p>
+      )}
+    </section>
+  );
+}
+
+function StripeAccountCard({ status }: { status: Status }) {
+  const st = status.stripe;
+  return (
+    <section className="card">
+      <h2>Stripe account</h2>
+      <p>
+        {st.configured ? <span className="status ok">Set up</span> : <span className="status bad">Not set up</span>}
+        {st.configured && st.environment === "test" && (
+          <span className="status warn" style={{ marginLeft: 8 }}>
+            Test mode
+          </span>
+        )}
+      </p>
+      {st.configured ? (
+        <p className="muted">
+          {st.environment === "test" ? "Using a Stripe test account. Payments are simulated; no money moves." : "Taking real payments into the league's Stripe account."}
+          {!st.webhookConfigured && " The webhook secret is missing, so payments finished after checkout and dashboard refunds won't show here."}
+        </p>
+      ) : (
+        <p className="muted">The Stripe keys need to be added on the server (developer setup: infra/set-stripe.sh).</p>
+      )}
+    </section>
+  );
+}
+
 function SquareCard({ status, canManage, onChanged }: { status: Status; canManage: boolean; onChanged: () => void }) {
   const { busy, error, run } = useAction();
   const [confirming, setConfirming] = useState(false);
@@ -142,7 +251,7 @@ function SquareCard({ status, canManage, onChanged }: { status: Status; canManag
 
   return (
     <section className="card">
-      <h2>Square account</h2>
+      <h2>Square account (backup)</h2>
       <ErrorAlert error={error} />
       {conn ? (
         <>
@@ -175,7 +284,7 @@ function SquareCard({ status, canManage, onChanged }: { status: Status; canManag
           <p>
             <span className="status bad">Not connected</span>
           </p>
-          <p className="muted">Families can't pay online until a Super Admin connects the league's Square account.</p>
+          <p className="muted">Only needed if the league switches to Square as the backup.</p>
         </>
       )}
 
@@ -238,7 +347,9 @@ function FeeCard({ initial, canManage }: { initial: Settings; canManage: boolean
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setSaved(false);
-    if ((await run(() => api.put("/admin/league/payment-settings", v))) !== undefined) setSaved(true);
+    // The provider is switched on its own card; leave it as it is.
+    const { provider: _provider, ...rest } = v;
+    if ((await run(() => api.put("/admin/league/payment-settings", rest))) !== undefined) setSaved(true);
   }
 
   return (
@@ -257,7 +368,7 @@ function FeeCard({ initial, canManage }: { initial: Settings; canManage: boolean
             onClick={() => setV({ ...v, feeMode: "league" })}
           >
             <strong>League pays</strong>
-            <span className="muted">Families pay the division price. Square's fee comes out of what the league receives.</span>
+            <span className="muted">Families pay the division price. The card fee comes out of what the league receives.</span>
           </button>
           <button
             type="button"
@@ -272,7 +383,7 @@ function FeeCard({ initial, canManage }: { initial: Settings; canManage: boolean
         </div>
         <div className="form-row">
           <label>
-            Square rate (%)
+            Card rate (%)
             <input
               type="number"
               step="0.01"
@@ -310,7 +421,7 @@ function FeeCard({ initial, canManage }: { initial: Settings; canManage: boolean
         </div>
         <p className="muted" style={{ margin: 0 }}>
           Example, {money(sample)} division: family pays <strong>{money(total)}</strong>
-          {v.feeMode === "parent" ? ` (includes ${money(total - sample)} fee)` : ""}. Check the rate against the league's Square pricing.
+          {v.feeMode === "parent" ? ` (includes ${money(total - sample)} fee)` : ""}. Check the rate against the league's Stripe (or Square) pricing.
         </p>
         {canManage && (
           <button className="btn" disabled={busy}>

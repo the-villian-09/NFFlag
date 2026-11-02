@@ -13,7 +13,7 @@ import { promoLimiter } from "../promo/routes.js";
 import { HttpError } from "../../http/errors.js";
 import { can } from "../platform/access.js";
 import { issueRefund } from "../registration/service.js";
-import { applyToVolunteer, decideApplication, payApplication, publicApplication, revokeApproval, ROLE_LABELS, updateScreening, volunteerOptions, withdrawApplication, type VolunteerRole } from "./service.js";
+import { applyToVolunteer, confirmApplicationPayment, decideApplication, payApplication, publicApplication, revokeApproval, ROLE_LABELS, updateScreening, volunteerOptions, withdrawApplication, type VolunteerRole } from "./service.js";
 
 const actorOf = (req: Request) => ({ userId: req.ctx.auth!.user.id, requestId: req.ctx.requestId, ip: req.ctx.ip });
 
@@ -87,6 +87,17 @@ staffRouter.post(
   handler(async (req, res) => {
     const input = payRegistrationInput.parse(req.body);
     res.json({ application: publicApplication(await payApplication(actorOf(req), String(req.params.id), input, req.ctx.auth!.user.email)) });
+  }),
+);
+
+/** After the bank's check (3-D Secure) in the browser: settle the fee payment, or cancel it so the applicant can try again. */
+staffRouter.post(
+  "/volunteer/applications/:id/pay/confirm",
+  requireAuth,
+  requireMfa,
+  payLimiter,
+  handler(async (req, res) => {
+    res.json({ application: publicApplication(await confirmApplicationPayment(actorOf(req), String(req.params.id))) });
   }),
 );
 

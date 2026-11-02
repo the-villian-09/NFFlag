@@ -453,8 +453,9 @@ adminLeagueRouter.put(
   "/payment-settings",
   requirePermission("platform.settings.manage"),
   handler(async (req, res) => {
-    const input = paymentSettingsSchema.parse(req.body);
     const before = await getPaymentSettings();
+    // Fields left out keep their current value (so an older page can't reset the provider).
+    const input = paymentSettingsSchema.parse({ ...before, ...(req.body as object) });
     await db.transaction(async (tx) => {
       await tx
         .insert(siteSettings)

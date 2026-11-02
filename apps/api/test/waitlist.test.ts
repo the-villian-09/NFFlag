@@ -6,7 +6,7 @@ import { resetFlagCache } from "../src/modules/platform/flags.js";
 import { clearSubscribers, processOutbox } from "../src/modules/platform/outbox.js";
 import { processWaitlist } from "../src/modules/registration/waitlist.js";
 import { registerSubscribers } from "../src/modules/subscribers.js";
-import { agent, mail, signUp, uniqueEmail, type Agent } from "./helpers.js";
+import { agent, mail, signUp, uniqueEmail, type Agent, useProvider } from "./helpers.js";
 
 // Square: every card charge succeeds; refunds are accepted.
 let seq = 0;
@@ -54,6 +54,7 @@ async function family(name: string) {
 }
 
 beforeAll(async () => {
+  await useProvider("square");
   const email = uniqueEmail("wl-admin");
   admin = agent();
   await signUp(admin, email, "Wendy Admin");

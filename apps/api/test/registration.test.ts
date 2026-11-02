@@ -20,7 +20,7 @@ import { resetFlagCache } from "../src/modules/platform/flags.js";
 import { expireHolds, reconcileProcessing } from "../src/modules/registration/service.js";
 import { quote } from "../src/modules/registration/settings.js";
 import { registerSubscribers } from "../src/modules/subscribers.js";
-import { agent, mail, signUp, uniqueEmail, type Agent } from "./helpers.js";
+import { agent, mail, signUp, uniqueEmail, type Agent, useProvider } from "./helpers.js";
 
 /* ---------------- fake Square ---------------- */
 
@@ -170,6 +170,7 @@ async function addPlayer(a: Agent, over: Record<string, unknown> = {}) {
 const accept = { signerName: "Pat Parent", acceptedWaivers: ["waiver-liability", "waiver-medical", "waiver-media"] };
 
 beforeAll(async () => {
+  await useProvider("square");
   await makeAdmin();
   const s = await admin.post("/api/v1/admin/league/seasons").send({
     name: "2027 Spring Season",
@@ -260,7 +261,7 @@ describe("registration and payment", () => {
     expect(res.body.divisions.map((d: { name: string }) => d.name)).toEqual(expect.arrayContaining(["Boys 8U", "Girls 10U"]));
     expect(res.body.divisions[0]).toMatchObject({ priceCents: 10000, feeCents: 0, totalCents: 10000 });
     expect(res.body.waivers).toHaveLength(3);
-    expect(res.body.square).toEqual({ applicationId: "sandbox-sq0idb-test", locationId: "LTEST", environment: "sandbox" });
+    expect(res.body.checkout).toEqual({ provider: "square", applicationId: "sandbox-sq0idb-test", locationId: "LTEST", environment: "sandbox" });
   });
 
   it("enforces waivers and eligibility", async () => {

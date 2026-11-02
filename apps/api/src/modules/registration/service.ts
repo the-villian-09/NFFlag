@@ -30,15 +30,18 @@ import { writeAudit } from "../platform/audit.js";
 import { publish } from "../platform/outbox.js";
 import { settleRegistrationCode } from "../promo/service.js";
 import { completeWithdrawal } from "./withdrawal.js";
+import { parseReference } from "../square/client.js";
 import {
-  createPayment,
-  friendlyPaymentError,
-  getCredentials,
-  parseReference,
-  refundPayment,
-  SquareError,
-  type SquarePayment,
-} from "../square/client.js";
+  abandonAction,
+  CardDeclinedError,
+  chargeCard,
+  checkoutConfig,
+  GatewaySetupError,
+  GatewayUnavailableError,
+  refundCard,
+  type GatewayPayment,
+  type PaymentRequest,
+} from "../payments/gateway.js";
 import { getPaymentSettings, quote } from "./settings.js";
 
 type Registration = typeof registrations.$inferSelect;
@@ -248,15 +251,7 @@ export function isUniqueViolation(err: unknown) {
 
 /* ---------------- pay ---------------- */
 
-/** What was sent to Square, kept until the outcome is known so the worker can re-ask with the same idempotency key. */
-export interface PaymentRequest {
-  idempotencyKey: string;
-  sourceId: string;
-  verificationToken?: string;
-  amountCents: number;
-  note: string;
-  buyerEmail?: string;
-}
+export type { PaymentRequest };
 
 export const COMPLETED = ["COMPLETED", "APPROVED"];
 
@@ -298,7 +293,7 @@ function uniqueAsConflict(err: unknown): never {
 }
 
 /**
- * Charges the card token from the Square Web Payments SDK. The registration is
+ * Charges the card (a Stripe ConfirmationToken or a Square card nonce). The registration is
  * moved to `processing` first (with the exact request, so the outcome can be
  * recovered if the connection drops) so a double-click can't charge twice.
  */
@@ -315,7 +310,7 @@ export async function payRegistration(
     .where(and(eq(registrations.id, registrationId), eq(registrations.householdId, householdId)));
   if (!peek) throw new HttpError(404, "NOT_FOUND", "Registration not found.");
   const settings = await getPaymentSettings();
-  const creds = input.sourceId ? await getCredentials().catch(() => null) : null;
+  const checkout = input.sourceId ? await checkoutConfig() : null;
   const [p] = await db.select({ firstName: players.firstName, lastName: players.lastName }).from(players).where(eq(players.id, peek.playerId));
 
   // One locked transaction decides the amount: the promo code is re-checked under its
@@ -331,8 +326,9 @@ export async function payRegistration(
       // Nothing to charge (free division or a 100% code).
       if (r.totalCents === 0) return { kind: "paid" as const, reg: await markPaid(tx, r, null, actor) };
       if (!input.sourceId) throw new HttpError(400, "VALIDATION_FAILED", "Enter your card details.");
-      if (!creds) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
+      if (!checkout) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
       const request: PaymentRequest = {
+        provider: checkout.provider,
         idempotencyKey: randomUUID(),
         sourceId: input.sourceId,
         verificationToken: input.verificationToken,
@@ -361,26 +357,37 @@ export async function payRegistration(
   return chargeAndSettle(registrationId, outcome.request, actor);
 }
 
-/** Sends the payment to Square (or re-sends it with the same key) and settles the registration. */
-async function chargeAndSettle(registrationId: string, request: PaymentRequest, actor: Actor) {
-  const creds = await getCredentials().catch(() => null);
-  if (!creds) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
-  let payment: SquarePayment;
+/** Saves a new Stripe PaymentIntent id with the request, so it's read back (not re-sent) next time. */
+async function saveIntent(registrationId: string, request: PaymentRequest, intentId: string) {
+  await db
+    .update(registrations)
+    .set({ paymentRequest: { ...request, intentId }, updatedAt: new Date() })
+    .where(and(eq(registrations.id, registrationId), eq(registrations.status, "processing")));
+}
+
+/**
+ * Sends the payment (or asks again about it with the same request) and settles
+ * the registration. `abandon`: a bank check (3-D Secure) left unfinished is
+ * cancelled so the family can try again.
+ */
+async function chargeAndSettle(registrationId: string, request: PaymentRequest, actor: Actor, opts: { abandon?: boolean } = {}) {
+  let payment: GatewayPayment;
   try {
-    payment = await createPayment(creds, { ...request, referenceId: registrationId });
+    payment = await chargeCard(request, registrationId, (intentId) => saveIntent(registrationId, request, intentId));
+    if (opts.abandon) payment = await abandonAction(payment);
   } catch (err) {
-    if (err instanceof SquareError && err.status >= 400 && err.status < 500) {
-      // Square's own reason, for the logs (no card data in it).
-      const squareErrors = err.errors.map((e) => ({ code: e.code, category: e.category, field: e.field, detail: e.detail }));
-      if (isCardProblem(err)) {
-        const message = friendlyPaymentError(err);
-        await revertToPending(registrationId, message);
-        logger.info({ registrationId, squareErrors }, "card payment declined");
-        throw new HttpError(402, "PAYMENT_FAILED", message);
-      }
-      // Our setup (token, location, app id) or request is wrong: not the family's card.
+    if (err instanceof GatewayUnavailableError) {
+      throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
+    }
+    if (err instanceof CardDeclinedError) {
+      await revertToPending(registrationId, err.message);
+      logger.info({ registrationId, provider: request.provider ?? "square" }, "card payment declined");
+      throw new HttpError(402, "PAYMENT_FAILED", err.message);
+    }
+    if (err instanceof GatewaySetupError) {
+      // Our setup (keys, account) or request is wrong: not the family's card.
       await revertToPending(registrationId, "Payment setup problem (not the card).");
-      logger.error({ registrationId, status: err.status, squareErrors }, "Square rejected the payment request: check Square settings");
+      logger.error({ registrationId, provider: request.provider ?? "square", detail: err.message }, "payment provider rejected the request: check payment settings");
       throw new HttpError(
         503,
         "PAYMENTS_UNAVAILABLE",
@@ -391,23 +398,40 @@ async function chargeAndSettle(registrationId: string, request: PaymentRequest, 
     throw new HttpError(502, "PAYMENT_PENDING", "We couldn't confirm your payment yet. Please don't pay again; check your registrations in a few minutes.");
   }
   if (COMPLETED.includes(payment.status)) {
-    const reg = await recordCompletedPayment(payment, { environment: creds.environment, merchantId: creds.merchantId }, actor);
+    const reg = await recordCompletedPayment(payment, actor);
     if (!reg || reg.status !== "paid") {
       throw new HttpError(409, "DIVISION_FULL", "The division filled up before your payment finished. Your payment is being refunded.");
     }
     return reg;
   }
-  if (payment.status === "FAILED" || payment.status === "CANCELED") {
-    await revertToPending(registrationId, "The payment didn't go through.");
-    throw new HttpError(402, "PAYMENT_FAILED", "The payment didn't go through. Please try again.");
+  if (payment.status === "ACTION_REQUIRED") {
+    throw new HttpError(402, "PAYMENT_ACTION_REQUIRED", "Your bank needs you to confirm this payment.", { clientSecret: payment.clientSecret });
   }
-  // PENDING: Square hasn't finished; the webhook or the worker settles it.
+  if (payment.status === "FAILED" || payment.status === "CANCELED") {
+    const message = payment.failureMessage ?? "The payment didn't go through. Please try again.";
+    await revertToPending(registrationId, message);
+    throw new HttpError(402, "PAYMENT_FAILED", message);
+  }
+  // PENDING: the provider hasn't finished; the webhook or the worker settles it.
   throw new HttpError(502, "PAYMENT_PENDING", "Your payment is still being confirmed. Please don't pay again; check your registrations in a few minutes.");
 }
 
-/** A decline the family can fix (card, CVV, ZIP, funds), as opposed to a problem with our Square setup. */
-function isCardProblem(err: SquareError) {
-  return err.errors.some((e) => e.category === "PAYMENT_METHOD_ERROR") || err.status === 402;
+/**
+ * After the family finishes (or abandons) their bank's check in the browser:
+ * settle the payment, or cancel it so they can try again.
+ */
+export async function confirmRegistrationPayment(actor: Actor & { userId: string }, householdId: string, registrationId: string) {
+  const [r] = await db
+    .select()
+    .from(registrations)
+    .where(and(eq(registrations.id, registrationId), eq(registrations.householdId, householdId)));
+  if (!r) throw new HttpError(404, "NOT_FOUND", "Registration not found.");
+  if (r.paidAt) return r;
+  if (r.status !== "processing" || !r.paymentRequest) {
+    if (r.paymentError) throw new HttpError(402, "PAYMENT_FAILED", r.paymentError);
+    throw new HttpError(409, "CONFLICT", "There's no payment waiting to be confirmed.");
+  }
+  return chargeAndSettle(r.id, r.paymentRequest as PaymentRequest, actor, { abandon: true });
 }
 
 /** A charge that definitely didn't happen: the family can try again. */
@@ -427,12 +451,17 @@ export async function revertToPending(registrationId: string, message: string, f
 
 /**
  * Worker: registrations stuck in `processing` (connection dropped, server
- * restarted) are re-sent to Square with the same idempotency key. Square
- * returns the original result if it charged, or an error if it never did.
+ * restarted, bank check never finished) are asked about again with the same
+ * request: the provider returns the original result if it charged, or an error
+ * if it never did. A bank check still unfinished after 30 minutes is cancelled.
  */
 export async function reconcileProcessing(olderThanMinutes = 5) {
   const stuck = await db
-    .select({ id: registrations.id, paymentRequest: registrations.paymentRequest })
+    .select({
+      id: registrations.id,
+      paymentRequest: registrations.paymentRequest,
+      abandon: sql<boolean>`${registrations.processingStartedAt} < now() - interval '30 minutes'`,
+    })
     .from(registrations)
     .where(
       and(
@@ -445,10 +474,10 @@ export async function reconcileProcessing(olderThanMinutes = 5) {
   for (const s of stuck) {
     if (!s.paymentRequest) continue;
     try {
-      await chargeAndSettle(s.id, s.paymentRequest as PaymentRequest, { userId: null });
+      await chargeAndSettle(s.id, s.paymentRequest as PaymentRequest, { userId: null }, { abandon: s.abandon });
       settled++;
     } catch (err) {
-      if (err instanceof HttpError && err.code !== "PAYMENT_PENDING" && err.code !== "PAYMENTS_UNAVAILABLE") settled++;
+      if (err instanceof HttpError && !["PAYMENT_PENDING", "PAYMENTS_UNAVAILABLE", "PAYMENT_ACTION_REQUIRED"].includes(err.code)) settled++;
       else logger.warn({ registrationId: s.id }, "payment still unconfirmed");
     }
   }
@@ -484,17 +513,13 @@ async function markPaid(tx: Tx, r: Registration, paymentId: string | null, actor
 }
 
 /**
- * Records a completed Square payment against its registration (from checkout,
+ * Records a completed card payment against its registration (from checkout,
  * the worker or the webhook; safe to repeat). Refunds it automatically when it
  * can't be kept: the spot was released (D-05) or it duplicates an earlier payment.
  */
-export async function recordCompletedPayment(
-  payment: SquarePayment,
-  source: { environment: string; merchantId: string | null },
-  actor: Actor,
-) {
+export async function recordCompletedPayment(payment: GatewayPayment, actor: Actor) {
   const outcome = await db.transaction(async (tx) => {
-    const ref = parseReference(payment.reference_id);
+    const ref = parseReference(payment.referenceId);
     if (!ref || !("registrationId" in ref)) return { reg: null, refundPaymentId: null as string | null, reason: "" };
     const [r] = await tx.select().from(registrations).where(eq(registrations.id, ref.registrationId)).for("update");
     if (!r) return { reg: null, refundPaymentId: null as string | null, reason: "" };
@@ -502,15 +527,16 @@ export async function recordCompletedPayment(
       .insert(payments)
       .values({
         registrationId: r.id,
-        providerEnvironment: source.environment,
+        provider: payment.provider,
+        providerEnvironment: payment.environment,
         providerPaymentId: payment.id,
-        merchantId: source.merchantId,
-        locationId: payment.location_id ?? null,
+        merchantId: payment.merchantId,
+        locationId: payment.locationId ?? null,
         status: payment.status,
-        amountCents: payment.amount_money?.amount ?? r.totalCents,
-        cardBrand: payment.card_details?.card?.card_brand ?? null,
-        cardLast4: payment.card_details?.card?.last_4 ?? null,
-        receiptUrl: payment.receipt_url ?? null,
+        amountCents: payment.amountCents ?? r.totalCents,
+        cardBrand: payment.cardBrand ?? null,
+        cardLast4: payment.cardLast4 ?? null,
+        receiptUrl: payment.receiptUrl ?? null,
       })
       .onConflictDoUpdate({ target: payments.providerPaymentId, set: { status: payment.status, updatedAt: new Date() } })
       .returning();
@@ -573,11 +599,10 @@ export function refundRegistration(registrationId: string, input: { amountCents?
 /**
  * Refunds part or all of what's left on a payment (the owner's most recent one
  * with money left, unless `paymentId` is given). The amount is reserved under a
- * row lock before calling Square, so two clicks can't both refund the same money.
+ * row lock before calling the provider, so two clicks can't both refund the same money.
+ * The refund goes through the provider that took the payment.
  */
 export async function issueRefund(owner: PaymentOwner, input: { amountCents?: number; reason: string; paymentId?: string }, actor: Actor) {
-  const creds = await getCredentials().catch(() => null);
-  if (!creds) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Square isn't connected, so refunds can't be issued right now.");
   const target = "registrationId" in owner
     ? { type: "registration", id: owner.registrationId, event: "registration.refunded" as const }
     : { type: "volunteer_application", id: owner.applicationId, event: "staff.application_refunded" as const };
@@ -602,9 +627,6 @@ export async function issueRefund(owner: PaymentOwner, input: { amountCents?: nu
     if (amount <= 0 || amount > remaining) {
       throw new HttpError(400, "VALIDATION_FAILED", `You can refund up to $${(remaining / 100).toFixed(2)}.`);
     }
-    if (p.providerEnvironment !== creds.environment) {
-      throw new HttpError(409, "CONFLICT", "This payment was taken in a different Square environment.");
-    }
     await tx
       .update(payments)
       .set({ refundedCents: sql`${payments.refundedCents} + ${amount}`, updatedAt: new Date() })
@@ -619,10 +641,20 @@ export async function issueRefund(owner: PaymentOwner, input: { amountCents?: nu
 
   let refund: { id: string; status: string };
   try {
-    refund = await refundPayment(creds, { paymentId: p.providerPaymentId, amountCents: amount, idempotencyKey: randomUUID(), reason: input.reason });
+    refund = await refundCard({
+      provider: p.provider,
+      environment: p.providerEnvironment,
+      paymentId: p.providerPaymentId,
+      amountCents: amount,
+      idempotencyKey: randomUUID(),
+      reason: input.reason,
+    });
   } catch (err) {
     await release();
-    throw new HttpError(502, "PAYMENT_FAILED", `Square refused the refund: ${err instanceof Error ? err.message : "unknown error"}`);
+    if (err instanceof GatewayUnavailableError) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", err.message);
+    if (err instanceof GatewaySetupError) throw new HttpError(409, "CONFLICT", err.message);
+    const provider = p.provider === "stripe" ? "Stripe" : "Square";
+    throw new HttpError(502, "PAYMENT_FAILED", `${provider} refused the refund: ${err instanceof Error ? err.message : "unknown error"}`);
   }
 
   await db.transaction(async (tx) => {

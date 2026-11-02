@@ -179,7 +179,7 @@ export default function AdminPage() {
           <div className="card">
             <h2>Payments</h2>
             <p className="muted">
-              Connect or disconnect Square, and choose who pays the card fee.
+              Stripe and Square setup, and who pays the card fee.
             </p>
             <Link className="btn small" href="/admin/payments">
               Payment settings

@@ -9,11 +9,13 @@ import { db, type DbOrTx } from "../../db/client.js";
 import { siteSettings } from "../../db/schema/index.js";
 
 export const paymentSettingsSchema = z.object({
-  /** "league": families pay the division price and the league absorbs Square's fee. "parent": a processing fee is added at checkout. */
+  /** Who takes card payments: Stripe (main) or Square (backup). Only a Super Admin changes it. */
+  provider: z.enum(["stripe", "square"]).default("stripe"),
+  /** "league": families pay the division price and the league absorbs the card fee. "parent": a processing fee is added at checkout. */
   feeMode: z.enum(["league", "parent"]),
-  /** Square's online card rate, in basis points (290 = 2.9%). Only used when feeMode = "parent". */
+  /** The provider's online card rate, in basis points (290 = 2.9%). Only used when feeMode = "parent". */
   feePercentBps: z.number().int().min(0).max(1000),
-  /** Square's fixed per-payment fee in cents (30 = $0.30). */
+  /** The provider's fixed per-payment fee in cents (30 = $0.30). */
   feeFixedCents: z.number().int().min(0).max(500),
   /** Minutes a spot is held while a family pays (D-04). */
   holdMinutes: z.number().int().min(5).max(120),
@@ -31,6 +33,7 @@ export const paymentSettingsSchema = z.object({
 export type PaymentSettings = z.infer<typeof paymentSettingsSchema>;
 
 export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
+  provider: "stripe",
   feeMode: "league",
   feePercentBps: 290,
   feeFixedCents: 30,
@@ -51,7 +54,7 @@ export async function seedPaymentSettings(conn: DbOrTx = db) {
 
 /**
  * Price breakdown for one registration. When families pay the fee, the total is
- * grossed up so that after Square's percentage + fixed fee the league still
+ * grossed up so that after the card percentage + fixed fee the league still
  * receives the full division price.
  */
 export function quote(priceCents: number, s: Pick<PaymentSettings, "feeMode" | "feePercentBps" | "feeFixedCents">) {

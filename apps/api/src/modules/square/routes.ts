@@ -12,7 +12,7 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { env } from "../../config.js";
 import { db } from "../../db/client.js";
-import { payments, refunds, squareConnection, squareOauthStates, squareWebhookEvents, user } from "../../db/schema/index.js";
+import { payments, squareConnection, squareOauthStates, squareWebhookEvents, user } from "../../db/schema/index.js";
 import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission } from "../../http/context.js";
 import { HttpError } from "../../http/errors.js";
 import { encryptSecret } from "../../lib/crypto.js";
@@ -23,6 +23,9 @@ import { publish } from "../platform/outbox.js";
 import { recordCompletedPayment, revertToPending } from "../registration/service.js";
 import { failApplicationPayment, recordApplicationPayment } from "../staff/service.js";
 import { getPaymentSettings } from "../registration/settings.js";
+import { fromSquare, stripeSetup } from "../payments/gateway.js";
+import { applyRefundEvent } from "../payments/refund-events.js";
+import { stripeWebhookUrl } from "../stripe/client.js";
 import {
   authorizeUrl,
   exchangeCode,
@@ -65,6 +68,7 @@ adminPaymentsRouter.get(
     const creds = await getCredentials().catch(() => null);
     res.json({
       settings: await getPaymentSettings(),
+      stripe: { ...stripeSetup(), webhookUrl: stripeWebhookUrl() },
       square: {
         environment: env.SQUARE_ENVIRONMENT,
         oauthConfigured: oauthConfigured(),
@@ -268,16 +272,16 @@ async function handleEvent(event: WebhookEvent) {
     const p = event.data?.object?.payment;
     if (!p?.reference_id) return;
     const isApplication = p.reference_id.startsWith("app:");
-    const source = { environment: env.SQUARE_ENVIRONMENT, merchantId: event.merchant_id ?? null };
+    const payment = fromSquare(p, { environment: env.SQUARE_ENVIRONMENT, merchantId: event.merchant_id ?? null });
     if (p.status === "COMPLETED" || p.status === "APPROVED") {
-      if (isApplication) await recordApplicationPayment(p, source, { userId: null });
-      else await recordCompletedPayment(p, source, { userId: null });
+      if (isApplication) await recordApplicationPayment(payment, { userId: null });
+      else await recordCompletedPayment(payment, { userId: null });
     } else {
       await db.update(payments).set({ status: p.status, updatedAt: new Date() }).where(eq(payments.providerPaymentId, p.id));
       // A charge that definitely failed frees the registration / application waiting on it.
       // Only when Square says when it was created, so an older declined card can't undo a newer attempt.
       if ((p.status === "FAILED" || p.status === "CANCELED") && p.created_at) {
-        if (isApplication) await failApplicationPayment(p);
+        if (isApplication) await failApplicationPayment(payment);
         else if (parseReference(p.reference_id)) await revertToPending(p.reference_id, "The payment didn't go through.", new Date(p.created_at));
       }
     }
@@ -287,36 +291,6 @@ async function handleEvent(event: WebhookEvent) {
   if (event.type === "refund.created" || event.type === "refund.updated") {
     const r = event.data?.object?.refund;
     if (!r) return;
-    const failed = (s: string) => s === "FAILED" || s === "REJECTED";
-    await db.transaction(async (tx) => {
-      const [row] = await tx.select().from(refunds).where(eq(refunds.providerRefundId, r.id)).for("update");
-      if (!row) {
-        // Not (yet) recorded by the app: made in the Square Dashboard, or this event beat our own insert.
-        const [p] = await tx.select().from(payments).where(eq(payments.providerPaymentId, r.payment_id)).for("update");
-        const amount = r.amount_money?.amount ?? 0;
-        if (!p || amount <= 0) return;
-        const [ins] = await tx
-          .insert(refunds)
-          .values({ paymentId: p.id, providerRefundId: r.id, status: r.status, amountCents: amount, reason: "Refund reported by Square" })
-          .onConflictDoNothing()
-          .returning();
-        if (ins && !failed(r.status)) {
-          await tx
-            .update(payments)
-            .set({ refundedCents: sql`least(${payments.amountCents}, ${payments.refundedCents} + ${amount})`, updatedAt: new Date() })
-            .where(eq(payments.id, p.id));
-        }
-        return;
-      }
-      if (row.status === r.status) return;
-      await tx.update(refunds).set({ status: r.status, updatedAt: new Date() }).where(eq(refunds.id, row.id));
-      // A refund Square couldn't complete gives the money back to the payment's refundable balance.
-      if (failed(r.status) && !failed(row.status)) {
-        await tx
-          .update(payments)
-          .set({ refundedCents: sql`greatest(0, ${payments.refundedCents} - ${row.amountCents})`, updatedAt: new Date() })
-          .where(eq(payments.id, row.paymentId));
-      }
-    });
+    await applyRefundEvent({ id: r.id, paymentId: r.payment_id, status: r.status, amountCents: r.amount_money?.amount ?? 0, externalReason: "Refund reported by Square" });
   }
 }

@@ -99,13 +99,13 @@ export const templates = {
   },
 
   squareDisconnected(to: string, d: { by: string | null; merchantName: string | null; reason: string | null; adminUrl: string }): EmailMessage {
-    return message(to, "admin.square_disconnected", "Square was disconnected: online payments are paused", {
-      preheader: "Families can't pay online until Square is reconnected.",
+    return message(to, "admin.square_disconnected", "Square was disconnected", {
+      preheader: "Square (the backup payment provider) is no longer connected.",
       heading: "Online payments are paused",
       paragraphs: [
         `The league's Square account${d.merchantName ? ` (${d.merchantName})` : ""} was disconnected ${d.by ? `by ${d.by}` : "from the Square dashboard"}.`,
         ...(d.reason ? [`Reason: ${d.reason}`] : []),
-        "Families can't pay online until a Super Admin reconnects Square.",
+        "If the league has switched to Square as its payment provider, families can't pay online until a Super Admin reconnects it. Refunds of Square payments also need it connected.",
       ],
       button: { label: "Open payment settings", url: d.adminUrl },
     });

@@ -94,3 +94,12 @@ export async function enrollTotp(a: Agent) {
   if (verify.status !== 200) throw new Error(`verify-totp failed: ${verify.status} ${JSON.stringify(verify.body)}`);
   return { uri, backupCodes };
 }
+
+/** Switch the card payment provider (Admin → Payments) for the tests that follow. */
+export async function useProvider(provider: "stripe" | "square") {
+  const { db } = await import("../src/db/client.js");
+  const { siteSettings } = await import("../src/db/schema/index.js");
+  const { getPaymentSettings } = await import("../src/modules/registration/settings.js");
+  const value = { ...(await getPaymentSettings()), provider };
+  await db.insert(siteSettings).values({ key: "payments", value }).onConflictDoUpdate({ target: siteSettings.key, set: { value } });
+}

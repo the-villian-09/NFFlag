@@ -18,6 +18,7 @@ import { platformRouter } from "./modules/platform/routes.js";
 import { adminLeagueRouter } from "./modules/registration/admin-routes.js";
 import { registrationRouter } from "./modules/registration/routes.js";
 import { adminPaymentsRouter, squareCallbackRouter, squareWebhook } from "./modules/square/routes.js";
+import { stripeWebhook } from "./modules/stripe/routes.js";
 import { adminStaffRouter, staffRouter } from "./modules/staff/routes.js";
 import { adminTeamsRouter, myTeamsRouter } from "./modules/teams/routes.js";
 import { adminScheduleRouter, scheduleRouter } from "./modules/schedule/routes.js";
@@ -48,6 +49,7 @@ export function createApp() {
 
   // Webhooks that need the raw body mount here, before express.json().
   app.post("/api/v1/webhooks/square", ...squareWebhook);
+  app.post("/api/v1/webhooks/stripe", ...stripeWebhook);
 
   app.use(express.json({ limit: "100kb" }));
   app.use(loadSession);

@@ -39,6 +39,15 @@ const envSchema = z.object({
   SQUARE_LOCATION_ID: z.string().optional(),
   /** Signature key of the webhook subscription in the Square developer dashboard. */
   SQUARE_WEBHOOK_SIGNATURE_KEY: z.string().optional(),
+
+  /* Stripe (main payment provider; Square is the backup). Test keys (sk_test_/pk_test_)
+     on staging, the league's live keys in production. */
+  /** Secret key (sk_test_… / sk_live_…, or a restricted rk_ key). */
+  STRIPE_SECRET_KEY: z.string().optional(),
+  /** Publishable key for the card form in the browser (pk_test_… / pk_live_…). */
+  STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+  /** Signing secret of the webhook endpoint in the Stripe dashboard (whsec_…). */
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -4,13 +4,12 @@
  * Apply (with the code of conduct) → pay the coaching badge / team mom fee →
  * submitted → admin records the background check → approved (role granted for
  * the season) or rejected (fee refunded). Payments reuse the registration
- * safeguards: a `processing` state with the exact Square request stored, so
+ * safeguards: a `processing` state with the exact payment request stored, so
  * the worker can re-send it with the same idempotency key if the response is
  * lost; refunds go through the shared race-safe issueRefund.
  */
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
-import { env } from "../../config.js";
 import { db } from "../../db/client.js";
 import { contentPages, divisions, householdMembers, payments, players, promoCodes, refunds, seasons, userRoleAssignments, volunteerApplications } from "../../db/schema/index.js";
 import { HttpError } from "../../http/errors.js";
@@ -22,7 +21,16 @@ import { COMPLETED, isUniqueViolation, issueRefund, refundAll, type Actor, type 
 import { PROMO_FLAG, settleApplicationCode, submitFreeApplication } from "../promo/service.js";
 import { removeFromSeasonTeams } from "../teams/service.js";
 import { getPaymentSettings, quote } from "../registration/settings.js";
-import { createPayment, friendlyPaymentError, getCredentials, parseReference, SquareError, type SquarePayment } from "../square/client.js";
+import { parseReference } from "../square/client.js";
+import {
+  abandonAction,
+  CardDeclinedError,
+  chargeCard,
+  checkoutConfig,
+  GatewaySetupError,
+  GatewayUnavailableError,
+  type GatewayPayment,
+} from "../payments/gateway.js";
 
 export const STAFF_FLAG = "r2.staff_applications";
 export const VOLUNTEER_ROLES = ["head_coach", "assistant_coach", "team_manager"] as const;
@@ -35,7 +43,7 @@ export const ROLE_LABELS: Record<VolunteerRole, string> = {
 /** What the fee is called (the flyer's wording). */
 export const feeLabel = (role: string) => (role === "team_manager" ? "Team mom fee" : "Coaching badge fee");
 const AGREEMENT_SLUG = "volunteer-agreement";
-/** Square reference_id for an application payment (max 40 chars). */
+/** Payment reference for an application payment (max 40 chars). */
 export const appReference = (id: string) => `app:${id}`;
 
 type Application = typeof volunteerApplications.$inferSelect;
@@ -50,7 +58,7 @@ export async function volunteerOptions() {
   const season = await currentSeason();
   const settings = await getPaymentSettings();
   const [agreement] = await db.select().from(contentPages).where(eq(contentPages.slug, AGREEMENT_SLUG));
-  const creds = await getCredentials().catch(() => null);
+  const checkout = await checkoutConfig();
   const divs = season
     ? await db
         .select({ id: divisions.id, name: divisions.name })
@@ -65,8 +73,8 @@ export async function volunteerOptions() {
     divisions: divs,
     promoCodes: await isEnabled(PROMO_FLAG),
     agreement: agreement ? { slug: agreement.slug, title: agreement.title, body: agreement.body, isPlaceholder: agreement.isPlaceholder } : null,
-    // Public values for the Square card form; null = payments unavailable right now.
-    square: creds && env.SQUARE_APPLICATION_ID ? { applicationId: env.SQUARE_APPLICATION_ID, locationId: creds.locationId, environment: creds.environment } : null,
+    // Public values for the card form; null = payments unavailable right now.
+    checkout,
   };
 }
 
@@ -164,7 +172,7 @@ export async function payApplication(
   input: { sourceId?: string; verificationToken?: string; expectedTotalCents?: number },
   buyerEmail: string,
 ) {
-  const creds = input.sourceId ? await getCredentials().catch(() => null) : null;
+  const checkout = input.sourceId ? await checkoutConfig() : null;
   // One locked transaction decides the amount: the promo code is re-checked under its
   // lock, and what's charged must match what the applicant was shown.
   const outcome = await db.transaction(async (tx) => {
@@ -184,8 +192,9 @@ export async function payApplication(
     // Fee fully covered by a promo code: submit without a card.
     if (a.totalCents === 0) return { kind: "done" as const, app: await submitFreeApplication(tx, a, actor) };
     if (!input.sourceId) throw new HttpError(400, "VALIDATION_FAILED", "Enter your card details.");
-    if (!creds) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
+    if (!checkout) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
     const request: PaymentRequest = {
+      provider: checkout.provider,
       idempotencyKey: randomUUID(),
       sourceId: input.sourceId,
       verificationToken: input.verificationToken,
@@ -225,34 +234,61 @@ async function revertApplication(applicationId: string, message: string, failedP
     );
 }
 
-async function chargeApplication(applicationId: string, request: PaymentRequest, actor: Actor) {
-  const creds = await getCredentials().catch(() => null);
-  if (!creds) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
-  let payment: SquarePayment;
+async function chargeApplication(applicationId: string, request: PaymentRequest, actor: Actor, opts: { abandon?: boolean } = {}) {
+  let payment: GatewayPayment;
   try {
-    payment = await createPayment(creds, { ...request, referenceId: appReference(applicationId) });
+    payment = await chargeCard(request, appReference(applicationId), async (intentId) => {
+      await db
+        .update(volunteerApplications)
+        .set({ paymentRequest: { ...request, intentId }, updatedAt: new Date() })
+        .where(and(eq(volunteerApplications.id, applicationId), eq(volunteerApplications.status, "processing")));
+    });
+    if (opts.abandon) payment = await abandonAction(payment);
   } catch (err) {
-    if (err instanceof SquareError && err.status >= 400 && err.status < 500) {
-      const card = err.errors.some((e) => e.category === "PAYMENT_METHOD_ERROR") || err.status === 402;
-      const message = card ? friendlyPaymentError(err) : "Payment setup problem (not the card).";
-      await revertApplication(applicationId, message);
-      if (card) throw new HttpError(402, "PAYMENT_FAILED", message);
-      logger.error({ applicationId, squareErrors: err.errors }, "Square rejected the volunteer fee request: check Square settings");
+    if (err instanceof GatewayUnavailableError) {
+      throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Online payment is temporarily unavailable. Please try again later.");
+    }
+    if (err instanceof CardDeclinedError) {
+      await revertApplication(applicationId, err.message);
+      throw new HttpError(402, "PAYMENT_FAILED", err.message);
+    }
+    if (err instanceof GatewaySetupError) {
+      await revertApplication(applicationId, "Payment setup problem (not the card).");
+      logger.error({ applicationId, provider: request.provider ?? "square", detail: err.message }, "payment provider rejected the volunteer fee request: check payment settings");
       throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "We couldn't process payments just now because of a problem on our side. Your card was not charged.");
     }
     logger.error({ applicationId, err: err instanceof Error ? err.message : String(err) }, "volunteer fee outcome unknown");
     throw new HttpError(502, "PAYMENT_PENDING", "We couldn't confirm your payment yet. Please don't pay again; check back in a few minutes.");
   }
   if (COMPLETED.includes(payment.status)) {
-    const app = await recordApplicationPayment(payment, { environment: creds.environment, merchantId: creds.merchantId }, actor);
+    const app = await recordApplicationPayment(payment, actor);
     if (!app || app.status !== "submitted") throw new HttpError(409, "CONFLICT", "This application was closed before your payment finished. It's being refunded.");
     return app;
   }
+  if (payment.status === "ACTION_REQUIRED") {
+    throw new HttpError(402, "PAYMENT_ACTION_REQUIRED", "Your bank needs you to confirm this payment.", { clientSecret: payment.clientSecret });
+  }
   if (payment.status === "FAILED" || payment.status === "CANCELED") {
-    await revertApplication(applicationId, "The payment didn't go through.");
-    throw new HttpError(402, "PAYMENT_FAILED", "The payment didn't go through. Please try again.");
+    const message = payment.failureMessage ?? "The payment didn't go through. Please try again.";
+    await revertApplication(applicationId, message);
+    throw new HttpError(402, "PAYMENT_FAILED", message);
   }
   throw new HttpError(502, "PAYMENT_PENDING", "Your payment is still being confirmed. Please don't pay again; check back in a few minutes.");
+}
+
+/** After the applicant finishes (or abandons) their bank's check: settle the payment, or cancel it so they can try again. */
+export async function confirmApplicationPayment(actor: Actor & { userId: string }, applicationId: string) {
+  const [a] = await db
+    .select()
+    .from(volunteerApplications)
+    .where(and(eq(volunteerApplications.id, applicationId), eq(volunteerApplications.userId, actor.userId)));
+  if (!a) throw new HttpError(404, "NOT_FOUND", "Application not found.");
+  if (a.paidAt) return a;
+  if (a.status !== "processing" || !a.paymentRequest) {
+    if (a.paymentError) throw new HttpError(402, "PAYMENT_FAILED", a.paymentError);
+    throw new HttpError(409, "CONFLICT", "There's no payment waiting to be confirmed.");
+  }
+  return chargeApplication(a.id, a.paymentRequest as PaymentRequest, actor, { abandon: true });
 }
 
 /**
@@ -260,8 +296,8 @@ async function chargeApplication(applicationId: string, request: PaymentRequest,
  * Refunds it automatically if the application was withdrawn or rejected
  * meanwhile, or if it duplicates an earlier payment.
  */
-export async function recordApplicationPayment(payment: SquarePayment, source: { environment: string; merchantId: string | null }, actor: Actor) {
-  const ref = parseReference(payment.reference_id);
+export async function recordApplicationPayment(payment: GatewayPayment, actor: Actor) {
+  const ref = parseReference(payment.referenceId);
   if (!ref || !("applicationId" in ref)) return null;
   const id = ref.applicationId;
   const outcome = await db.transaction(async (tx) => {
@@ -271,15 +307,16 @@ export async function recordApplicationPayment(payment: SquarePayment, source: {
       .insert(payments)
       .values({
         applicationId: a.id,
-        providerEnvironment: source.environment,
+        provider: payment.provider,
+        providerEnvironment: payment.environment,
         providerPaymentId: payment.id,
-        merchantId: source.merchantId,
-        locationId: payment.location_id ?? null,
+        merchantId: payment.merchantId,
+        locationId: payment.locationId ?? null,
         status: payment.status,
-        amountCents: payment.amount_money?.amount ?? a.totalCents,
-        cardBrand: payment.card_details?.card?.card_brand ?? null,
-        cardLast4: payment.card_details?.card?.last_4 ?? null,
-        receiptUrl: payment.receipt_url ?? null,
+        amountCents: payment.amountCents ?? a.totalCents,
+        cardBrand: payment.cardBrand ?? null,
+        cardLast4: payment.cardLast4 ?? null,
+        receiptUrl: payment.receiptUrl ?? null,
       })
       .onConflictDoUpdate({ target: payments.providerPaymentId, set: { status: payment.status, updatedAt: new Date() } })
       .returning();
@@ -309,7 +346,7 @@ export async function recordApplicationPayment(payment: SquarePayment, source: {
       action: "staff.application.paid",
       targetType: "volunteer_application",
       targetId: a.id,
-      after: { paymentId: payment.id, amountCents: payment.amount_money?.amount },
+      after: { paymentId: payment.id, amountCents: payment.amountCents },
       requestId: actor.requestId,
       ipAddress: actor.ip,
     });
@@ -327,10 +364,10 @@ export async function recordApplicationPayment(payment: SquarePayment, source: {
 }
 
 /** Webhook: a FAILED/CANCELED fee payment frees the application to try again (only for the current attempt). */
-export async function failApplicationPayment(payment: SquarePayment) {
-  const ref = parseReference(payment.reference_id);
-  if (!ref || !("applicationId" in ref) || !payment.created_at) return;
-  await revertApplication(ref.applicationId, "The payment didn't go through.", new Date(payment.created_at));
+export async function failApplicationPayment(payment: GatewayPayment) {
+  const ref = parseReference(payment.referenceId);
+  if (!ref || !("applicationId" in ref) || !payment.createdAt) return;
+  await revertApplication(ref.applicationId, payment.failureMessage ?? "The payment didn't go through.", payment.createdAt);
 }
 
 /** What an applicant may see about their own application (no screening notes or admin fields). */
@@ -350,10 +387,14 @@ export function publicApplication(a: Application) {
   };
 }
 
-/** Worker: re-send stuck fee payments with the same idempotency key to learn the outcome. */
+/** Worker: ask again about stuck fee payments (same request) to learn the outcome; cancel a bank check left unfinished for 30 minutes. */
 export async function reconcileApplications(olderThanMinutes = 5) {
   const stuck = await db
-    .select({ id: volunteerApplications.id, paymentRequest: volunteerApplications.paymentRequest })
+    .select({
+      id: volunteerApplications.id,
+      paymentRequest: volunteerApplications.paymentRequest,
+      abandon: sql<boolean>`${volunteerApplications.processingStartedAt} < now() - interval '30 minutes'`,
+    })
     .from(volunteerApplications)
     .where(and(eq(volunteerApplications.status, "processing"), sql`${volunteerApplications.processingStartedAt} < now() - make_interval(mins => ${olderThanMinutes})`))
     .limit(25);
@@ -361,10 +402,10 @@ export async function reconcileApplications(olderThanMinutes = 5) {
   for (const s of stuck) {
     if (!s.paymentRequest) continue;
     try {
-      await chargeApplication(s.id, s.paymentRequest as PaymentRequest, { userId: null });
+      await chargeApplication(s.id, s.paymentRequest as PaymentRequest, { userId: null }, { abandon: s.abandon });
       settled++;
     } catch (err) {
-      if (err instanceof HttpError && err.code !== "PAYMENT_PENDING" && err.code !== "PAYMENTS_UNAVAILABLE") settled++;
+      if (err instanceof HttpError && !["PAYMENT_PENDING", "PAYMENTS_UNAVAILABLE", "PAYMENT_ACTION_REQUIRED"].includes(err.code)) settled++;
     }
   }
   return settled;

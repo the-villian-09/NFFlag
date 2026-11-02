@@ -101,7 +101,7 @@ export default function AdminsPage() {
       <p className="muted" style={{ maxWidth: 720 }}>
         <strong>Admins</strong> can run the league: seasons, registrations,
         refunds, waitlist, coaches & staff, teams, the draft and site content.
-        Only the <strong>Super Admin</strong> can connect Square, change
+        Only the <strong>Super Admin</strong> can choose the payment provider (Stripe or Square), change
         checkout settings (card fee, holds, staff fees) and add or remove
         admins.
       </p>

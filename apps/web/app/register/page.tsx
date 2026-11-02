@@ -6,7 +6,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { ErrorAlert } from "@/components/form";
 import { Markdown } from "@/components/markdown";
 import { PromoField } from "@/components/promo-field";
-import { SquareCard, type SquareCardHandle } from "@/components/square-card";
+import { CardForm, payWithCard, providerName, type CardFormHandle, type CheckoutConfig } from "@/components/card-form";
 import { api, ApiError } from "@/lib/api";
 import { fmtDate, fmtDateTime, GENDER_POLICY, money } from "@/lib/format";
 import { useMe } from "@/lib/use-me";
@@ -34,7 +34,7 @@ interface Options {
   offerHours?: number;
   divisions: Division[];
   waivers: { slug: string; title: string; body: string; isPlaceholder: boolean }[];
-  square: { applicationId: string; locationId: string; environment: "sandbox" | "production" } | null;
+  checkout: CheckoutConfig | null;
 }
 interface Player {
   id: string;
@@ -216,7 +216,7 @@ function Register() {
               ))}
             </ol>
           )}
-          {!options.square && step !== "done" && (
+          {!options.checkout && step !== "done" && (
             <div className="alert error" style={{ marginBottom: 16 }}>
               Online payment is temporarily unavailable. You can still add your players; please check back soon to register.
             </div>
@@ -339,11 +339,11 @@ function Register() {
             />
           )}
 
-          {step === "pay" && reg && player && (options.square || reg.totalCents === 0) && (
+          {step === "pay" && reg && player && (options.checkout || reg.totalCents === 0) && (
             <Pay
               reg={reg}
               player={player}
-              square={options.square}
+              checkout={options.checkout}
               promoCodes={!!options.promoCodes}
               onChange={(r) => setReg({ ...reg, ...r })}
               email={me.user.email}
@@ -511,7 +511,7 @@ function Waivers({
       </label>
       <ErrorAlert error={error} />
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <button className="btn" disabled={busy || !all || !options.square}>
+        <button className="btn" disabled={busy || !all || !options.checkout}>
           {busy ? "Saving…" : "Continue to payment"}
         </button>
         <button type="button" className="link-btn" onClick={onBack}>
@@ -546,7 +546,7 @@ function useCountdown(until: string | null) {
 function Pay({
   reg,
   player,
-  square,
+  checkout,
   promoCodes,
   onChange,
   email,
@@ -556,7 +556,7 @@ function Pay({
 }: {
   reg: Registration;
   player: Player;
-  square: Options["square"];
+  checkout: Options["checkout"];
   promoCodes: boolean;
   onChange: (r: Partial<Registration>) => void;
   email: string;
@@ -564,7 +564,7 @@ function Pay({
   onPaid: () => void;
   onCancel: () => void;
 }) {
-  const card = useRef<SquareCardHandle>(null);
+  const card = useRef<CardFormHandle>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(reg.paymentError ?? null);
@@ -590,9 +590,7 @@ function Pay({
       if (free) {
         await api.post(`/registrations/${reg.id}/pay`, { expectedTotalCents: 0 });
       } else {
-        const [givenName, ...rest] = name.trim().split(/\s+/);
-        const token = await card.current!.tokenize({ amountCents: reg.totalCents, givenName: givenName ?? "", familyName: rest.join(" "), email });
-        await api.post(`/registrations/${reg.id}/pay`, { sourceId: token, expectedTotalCents: reg.totalCents });
+        await payWithCard(card.current!, `/registrations/${reg.id}/pay`, { amountCents: reg.totalCents, name, email, expectedTotalCents: reg.totalCents });
       }
       onPaid();
     } catch (err) {
@@ -670,16 +668,16 @@ function Pay({
             {busy ? "Saving…" : "Complete registration"}
           </button>
         </div>
-      ) : square ? (
+      ) : checkout ? (
         <div className="card">
           <h2>Card</h2>
-          <SquareCard ref={card} applicationId={square.applicationId} locationId={square.locationId} environment={square.environment} onReady={setReady} />
+          <CardForm ref={card} checkout={checkout} amountCents={reg.totalCents} onReady={setReady} />
           <ErrorAlert error={error} />
           <button className="btn" style={{ marginTop: 16 }} onClick={pay} disabled={!ready || busy}>
             {busy ? "Processing…" : `Pay ${money(reg.totalCents)}`}
           </button>
           <p className="hint" style={{ marginTop: 8 }}>
-            Payments are processed securely by Square. We never see or store your card number.
+            Payments are processed securely by {providerName(checkout)}. We never see or store your card number.
           </p>
         </div>
       ) : (

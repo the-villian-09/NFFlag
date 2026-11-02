@@ -7,7 +7,7 @@ import { resetFlagCache } from "../src/modules/platform/flags.js";
 import { clearSubscribers, processOutbox } from "../src/modules/platform/outbox.js";
 import { reconcileApplications } from "../src/modules/staff/service.js";
 import { registerSubscribers } from "../src/modules/subscribers.js";
-import { agent, mail, signUp, uniqueEmail, type Agent } from "./helpers.js";
+import { agent, mail, signUp, uniqueEmail, type Agent, useProvider } from "./helpers.js";
 
 const calls: { path: string; body: Record<string, unknown> }[] = [];
 const byKey = new Map<string, unknown>();
@@ -56,6 +56,7 @@ async function volunteer(prefix: string) {
 const form = { phone: "904-555-0111", experience: "Coached 3 seasons", signerName: "Val Volunteer", acceptAgreement: true };
 
 beforeAll(async () => {
+  await useProvider("square");
   const email = uniqueEmail("staff-admin");
   admin = agent();
   await signUp(admin, email);

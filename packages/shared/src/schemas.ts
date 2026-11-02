@@ -96,7 +96,7 @@ export const volunteerApplicationInput = z.object({
 });
 
 export const payRegistrationInput = z.object({
-  /** Card token (nonce) from the Square Web Payments SDK. Left out when the total is $0 (e.g. a 100% promo code). */
+  /** Stripe ConfirmationToken id (ctoken_…) or Square card nonce. Left out when the total is $0 (e.g. a 100% promo code). */
   sourceId: z.string().min(1).max(500).optional(),
   verificationToken: z.string().max(2000).optional(),
   /** The total the family saw. If it no longer matches, nothing is charged and the new total is returned. */

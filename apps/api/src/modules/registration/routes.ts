@@ -33,12 +33,13 @@ import { FLAG, isEnabled } from "../platform/flags.js";
 import { applyToRegistration, PROMO_FLAG } from "../promo/service.js";
 import { promoLimiter } from "../promo/routes.js";
 import { latestWithdrawals, requestWithdrawal, takeBackWithdrawal } from "./withdrawal.js";
-import { getCredentials } from "../square/client.js";
+import { checkoutConfig } from "../payments/gateway.js";
 import {
   cancelRegistration,
   currentWaivers,
   ineligibleReason,
   payRegistration,
+  confirmRegistrationPayment,
   registrationWindow,
   spotsTaken,
   startRegistration,
@@ -209,7 +210,7 @@ registrationRouter.get(
     const enabled = await isEnabled("r1b.registration");
     const [season] = await db.select().from(seasons).where(eq(seasons.isCurrent, "current")).limit(1);
     if (!enabled || !season) {
-      res.json({ enabled, season: null, window: { open: false, reason: "Registration isn't open yet." }, divisions: [], waivers: [], square: null });
+      res.json({ enabled, season: null, window: { open: false, reason: "Registration isn't open yet." }, divisions: [], waivers: [], checkout: null });
       return;
     }
     const settings = await getPaymentSettings();
@@ -231,7 +232,7 @@ registrationRouter.get(
         ...quote(d.priceCents, settings),
       })),
     );
-    const creds = await getCredentials().catch(() => null);
+    const checkout = await checkoutConfig();
     const waivers = await currentWaivers();
     res.json({
       enabled,
@@ -244,11 +245,8 @@ registrationRouter.get(
       offerHours: settings.offerHours,
       divisions: withSpots,
       waivers: waivers.map((w) => ({ slug: w.slug, title: w.title, body: w.body, isPlaceholder: w.isPlaceholder })),
-      // Public values for the Square card form. null = payments unavailable right now.
-      square:
-        creds && env.SQUARE_APPLICATION_ID
-          ? { applicationId: env.SQUARE_APPLICATION_ID, locationId: creds.locationId, environment: creds.environment }
-          : null,
+      // Public values for the card form (Stripe or Square). null = payments unavailable right now.
+      checkout,
     });
   }),
 );
@@ -400,6 +398,19 @@ registrationRouter.post(
     const householdId = await householdOf(req.ctx.auth!.user.id);
     const reg = await payRegistration(actorOf(req), householdId, String(req.params.id), input, req.ctx.auth!.user.email);
     res.json({ registration: reg });
+  }),
+);
+
+/** After the bank's check (3-D Secure) in the browser: settle the payment, or cancel it so the family can try again. */
+registrationRouter.post(
+  "/registrations/:id/pay/confirm",
+  requireAuth,
+  requireMfa,
+  registrationOn,
+  payLimiter,
+  handler(async (req, res) => {
+    const householdId = await householdOf(req.ctx.auth!.user.id);
+    res.json({ registration: await confirmRegistrationPayment(actorOf(req), householdId, String(req.params.id)) });
   }),
 );
 

@@ -185,6 +185,24 @@ The developer's own Square app serves both environments. Nobody needs the league
 
 Disconnect: Admin → Payments → Disconnect Square (type DISCONNECT). Checkout stops at once and Super Admins are emailed.
 
+### Stripe (main payment provider)
+
+Stripe takes registration and coach fees; Square (above) is the backup a Super Admin can switch to in Admin → Payments.
+Refunds always go back through the provider that took the payment.
+
+| | Staging (`staging.nfflag.com`) | Production (`nfflag.com`) |
+| --- | --- | --- |
+| Stripe mode | Test mode / sandbox (test cards, no money moves) | Live, in the **league's own** Stripe account |
+
+1. In the Stripe dashboard (test mode or the sandbox for staging): **Developers → Webhooks → Add endpoint**
+   `https://staging.nfflag.com/api/v1/webhooks/stripe` (or `https://nfflag.com/...`) with events `payment_intent.succeeded`,
+   `payment_intent.payment_failed`, `payment_intent.canceled`, `refund.created`, `refund.updated`, `refund.failed`. Copy its **signing secret**.
+2. In Cloud Shell, from the `infra` folder: `bash set-stripe.sh staging nffl-staging-513215` (or `prod nffl-production`). It asks for the
+   publishable key, the secret key and the webhook signing secret (the last two at hidden prompts).
+3. In Admin → Payments, check **Payment provider** shows Stripe and **Stripe account** shows Set up.
+
+Test cards: `4242 4242 4242 4242` (succeeds), `4000 0025 0000 3155` (asks for the bank check), `4000 0000 0000 9995` (declined).
+
 ## 9. Backups and restore drill (required before Dec 1)
 
 Automated daily backups and point-in-time recovery are on (section 2). Rehearse a restore into a
