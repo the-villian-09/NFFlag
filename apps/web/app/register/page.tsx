@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PlayerDocuments } from "@/components/doc-upload";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorAlert } from "@/components/form";
@@ -35,6 +36,8 @@ interface Options {
   divisions: Division[];
   waivers: { slug: string; title: string; body: string; isPlaceholder: boolean }[];
   checkout: CheckoutConfig | null;
+  /** Birth certificate, insurance card and headshot required before paying. */
+  documents?: boolean;
 }
 interface Player {
   id: string;
@@ -67,13 +70,17 @@ interface WaitlistItem {
   position: number | null;
 }
 
-type Step = "player" | "division" | "waivers" | "pay" | "done" | "waitlist";
-const STEPS: { key: Step; label: string }[] = [
-  { key: "player", label: "1 Player" },
-  { key: "division", label: "2 Division" },
-  { key: "waivers", label: "3 Waivers" },
-  { key: "pay", label: "4 Payment" },
-];
+type Step = "player" | "division" | "documents" | "waivers" | "pay" | "done" | "waitlist";
+const stepsFor = (documents: boolean): { key: Step; label: string }[] =>
+  (
+    [
+      ["player", "Player"],
+      ["division", "Division"],
+      ...(documents ? [["documents", "Documents"]] : []),
+      ["waivers", "Waivers"],
+      ["pay", "Payment"],
+    ] as [Step, string][]
+  ).map(([key, label], i) => ({ key, label: `${i + 1} ${label}` }));
 
 function Register() {
   const router = useRouter();
@@ -155,7 +162,7 @@ function Register() {
     setOfferId(w.id);
     setPlayer(p);
     setDivision(d);
-    setStep("waivers");
+    setStep(options?.documents ? "documents" : "waivers");
   }
 
   async function choosePlayer(p: Player) {
@@ -209,7 +216,7 @@ function Register() {
         <>
           {step !== "done" && (
             <ol className="steps">
-              {STEPS.map((s) => (
+              {stepsFor(!!options.documents).map((s) => (
                 <li key={s.key} aria-current={s.key === step ? "step" : undefined}>
                   {s.label}
                 </li>
@@ -283,7 +290,7 @@ function Register() {
                       aria-pressed={division?.id === d.id}
                       onClick={() => {
                         setDivision(d);
-                        setStep(d.full ? "waitlist" : "waivers");
+                        setStep(d.full ? "waitlist" : options.documents ? "documents" : "waivers");
                       }}
                     >
                       <strong>{d.name}</strong>
@@ -324,6 +331,10 @@ function Register() {
             />
           )}
 
+          {step === "documents" && player && division && (
+            <DocumentsStep player={player} onBack={() => setStep(offerId ? "player" : "division")} onNext={() => setStep("waivers")} />
+          )}
+
           {step === "waivers" && player && division && (
             <Waivers
               offerId={offerId}
@@ -331,7 +342,7 @@ function Register() {
               player={player}
               division={division}
               defaultSigner={me.user.name}
-              onBack={() => setStep("division")}
+              onBack={() => setStep(options.documents ? "documents" : "division")}
               onStarted={(r) => {
                 setReg(r);
                 setStep("pay");
@@ -344,6 +355,7 @@ function Register() {
               reg={reg}
               player={player}
               checkout={options.checkout}
+              documents={!!options.documents}
               promoCodes={!!options.promoCodes}
               onChange={(r) => setReg({ ...reg, ...r })}
               email={me.user.email}
@@ -547,6 +559,7 @@ function Pay({
   reg,
   player,
   checkout,
+  documents,
   promoCodes,
   onChange,
   email,
@@ -557,6 +570,7 @@ function Pay({
   reg: Registration;
   player: Player;
   checkout: Options["checkout"];
+  documents: boolean;
   promoCodes: boolean;
   onChange: (r: Partial<Registration>) => void;
   email: string;
@@ -566,6 +580,8 @@ function Pay({
 }) {
   const card = useRef<CardFormHandle>(null);
   const [ready, setReady] = useState(false);
+  // Resuming a payment: the child's files may still be missing.
+  const [docsDone, setDocsDone] = useState(!documents);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(reg.paymentError ?? null);
   const [pending, setPending] = useState(false);
@@ -613,6 +629,16 @@ function Pay({
           Go to my account
         </Link>
       </div>
+    );
+  }
+
+  if (!docsDone) {
+    return (
+      <section className="card">
+        <h2>Documents for {player.firstName}</h2>
+        <p className="muted">Upload these before paying.</p>
+        <PlayerDocuments playerId={player.id} onChange={setDocsDone} />
+      </section>
     );
   }
 
@@ -695,5 +721,31 @@ export default function RegisterPage() {
     <Suspense fallback={<main className="page muted">Loading…</main>}>
       <Register />
     </Suspense>
+  );
+}
+
+/** Birth certificate, insurance card and headshot, before the waivers and payment. */
+function DocumentsStep({ player, onBack, onNext }: { player: Player; onBack: () => void; onNext: () => void }) {
+  const [complete, setComplete] = useState(false);
+  return (
+    <section className="card">
+      <h2>Documents for {player.firstName}</h2>
+      <p className="muted">
+        The league needs these for every player. You can take a photo with your phone or upload a file. Only league admins see the
+        birth certificate and insurance card; your child&apos;s coaches see the headshot.
+      </p>
+      <PlayerDocuments playerId={player.id} onChange={setComplete} />
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginTop: 20 }}>
+        <button className="btn" onClick={onNext} disabled={!complete}>
+          Continue
+        </button>
+        {!complete && <span className="hint">Add all three to continue.</span>}
+      </div>
+      <p style={{ marginTop: 16 }}>
+        <button className="link-btn" onClick={onBack}>
+          ← Back
+        </button>
+      </p>
+    </section>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { MyPhoto } from "@/components/doc-upload";
 import { useCallback, useEffect, useState } from "react";
 import { EventRow } from "@/components/event-row";
 import { ErrorAlert, useAction } from "@/components/form";
@@ -114,6 +115,8 @@ export default function RefereesPage() {
 
 function SignUp({ home, name, onDone }: { home: Home; name: string; onDone: () => void }) {
   const { busy, error, run } = useAction();
+  const [photo, setPhoto] = useState({ required: false, done: false });
+  const needsPhoto = photo.required && !photo.done;
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -138,6 +141,7 @@ function SignUp({ home, name, onDone }: { home: Home; name: string; onDone: () =
           <li>At least {home.minAge} years old</li>
           <li>A current referee certification</li>
           <li>A background check (the league contacts you about it)</li>
+          {photo.required && <li>A headshot (a clear photo of your face)</li>}
         </ul>
         <p className="muted">
           Once you&apos;re approved, you set up payouts with Stripe here on the site, then sign up for open games. The league can also assign
@@ -170,9 +174,11 @@ function SignUp({ home, name, onDone }: { home: Home; name: string; onDone: () =
           Experience (optional)
           <textarea id="ref-exp" name="experience" rows={3} maxLength={2000} placeholder="Leagues, ages and seasons you've refereed" />
         </label>
-        <button className="btn" disabled={busy}>
+        <MyPhoto onChange={setPhoto} />
+        <button className="btn" disabled={busy || needsPhoto}>
           {busy ? "Sending…" : "Sign up to referee"}
         </button>
+        {needsPhoto && <p className="hint" style={{ margin: 0 }}>Add your headshot to sign up.</p>}
       </form>
     </section>
   );

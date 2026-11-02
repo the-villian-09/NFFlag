@@ -1,4 +1,5 @@
 /** Teams and the draft (admin), and "My team" for coaches and team moms. */
+import { playerPhotoIds } from "../documents/service.js";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { Router, type Request } from "express";
 import { z } from "zod";
@@ -306,11 +307,19 @@ myTeamsRouter.get(
         ipAddress: req.ctx.ip,
       });
     }
+    // Headshots for game-day check-in (this team's season).
+    const [{ seasonId } = { seasonId: null as string | null }] = await db.select({ seasonId: teams.seasonId }).from(teams).where(eq(teams.id, teamId));
+    const photos = seasonId ? await playerPhotoIds(roster.map((r) => r.playerId), seasonId) : new Map<string, string>();
     res.set("cache-control", "no-store");
     res.json({
       team: { id: t.id, name: t.name, divisionName: t.divisionName },
       staff,
-      roster: roster.map(({ householdId, ...r }) => ({ ...r, guardians: guardians.filter((g) => g.householdId === householdId).map(({ name, email }) => ({ name, email })), medical: medical[r.playerId] ?? null })),
+      roster: roster.map(({ householdId, ...r }) => ({
+        ...r,
+        photoUrl: photos.has(r.playerId) ? `/api/v1/documents/${photos.get(r.playerId)}/file` : null,
+        guardians: guardians.filter((g) => g.householdId === householdId).map(({ name, email }) => ({ name, email })),
+        medical: medical[r.playerId] ?? null,
+      })),
       canSeeMedical: canMedical,
     });
   }),

@@ -22,6 +22,7 @@ import { PROMO_FLAG, settleApplicationCode, submitFreeApplication } from "../pro
 import { removeFromSeasonTeams } from "../teams/service.js";
 import { getPaymentSettings, quote } from "../registration/settings.js";
 import { parseReference } from "../square/client.js";
+import { documentsRequired, requireStaffPhoto } from "../documents/service.js";
 import {
   abandonAction,
   CardDeclinedError,
@@ -75,6 +76,8 @@ export async function volunteerOptions() {
     agreement: agreement ? { slug: agreement.slug, title: agreement.title, body: agreement.body, isPlaceholder: agreement.isPlaceholder } : null,
     // Public values for the card form; null = payments unavailable right now.
     checkout,
+    // A headshot is required before paying.
+    photoRequired: await documentsRequired(),
   };
 }
 
@@ -172,6 +175,12 @@ export async function payApplication(
   input: { sourceId?: string; verificationToken?: string; expectedTotalCents?: number },
   buyerEmail: string,
 ) {
+  const [own] = await db
+    .select({ seasonId: volunteerApplications.seasonId })
+    .from(volunteerApplications)
+    .where(and(eq(volunteerApplications.id, applicationId), eq(volunteerApplications.userId, actor.userId)));
+  if (!own) throw new HttpError(404, "NOT_FOUND", "Application not found.");
+  await requireStaffPhoto(actor.userId, own.seasonId, "paying the fee");
   const checkout = input.sourceId ? await checkoutConfig() : null;
   // One locked transaction decides the amount: the promo code is re-checked under its
   // lock, and what's charged must match what the applicant was shown.

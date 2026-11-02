@@ -216,6 +216,16 @@ The league approves pay in Admin → Referees → Pay referees; each payment is 
    available immediately.
 4. **1099s:** Stripe dashboard → Connect → Tax forms (live mode). The pay page also has a yearly CSV for the accountant.
 
+### Uploads (birth certificates, insurance cards, headshots)
+
+Files go to a private Cloud Storage bucket that only the API's service account can read; the site checks who may see each file
+(family, admins with documents.read, and a child's coaches for headshots only). Admin views of birth certificates and insurance
+cards are recorded in the audit log. Photos are re-saved without hidden data (camera, GPS).
+
+1. In Cloud Shell, from the `infra` folder: `bash set-uploads.sh staging nffl-staging-513215` (or `prod nffl-production`).
+2. Turn on **r6.documents** in Admin → Release switches to require the uploads (registration Documents step; headshot before the
+   coach/team mom fee and referee sign-up). Without the bucket, uploads show "not available right now".
+
 ## 9. Backups and restore drill (required before Dec 1)
 
 Automated daily backups and point-in-time recovery are on (section 2). Rehearse a restore into a

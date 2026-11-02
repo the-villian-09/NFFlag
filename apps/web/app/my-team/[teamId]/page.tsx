@@ -33,6 +33,7 @@ interface Row {
   householdPhone: string | null;
   guardians: { name: string; email: string }[];
   medical: Medical | null;
+  photoUrl?: string | null;
 }
 interface TeamView {
   team: { id: string; name: string; divisionName: string };
@@ -189,15 +190,29 @@ export default function MyTeamPage() {
             {v.roster.map((r) => (
               <tr key={r.entryId}>
                 <td data-label="Player">
-                  <strong>
-                    {r.firstName} {r.lastName}
-                  </strong>
-                  {r.preferredName ? ` “${r.preferredName}”` : ""}
-                  <br />
-                  <span className="muted">
-                    Born {fmtDate(r.birthDate)}
-                    {r.shirtSize ? ` · Shirt ${r.shirtSize}` : ""}
-                  </span>
+                  <div className="player-cell">
+                    {r.photoUrl ? (
+                      <a href={r.photoUrl} target="_blank" rel="noreferrer" className="player-photo">
+                        <img src={r.photoUrl} alt={`${r.firstName} ${r.lastName}`} loading="lazy" />
+                      </a>
+                    ) : (
+                      <span className="player-photo empty" aria-hidden="true">
+                        {r.firstName[0]}
+                        {r.lastName[0]}
+                      </span>
+                    )}
+                    <span>
+                      <strong>
+                        {r.firstName} {r.lastName}
+                      </strong>
+                      {r.preferredName ? ` “${r.preferredName}”` : ""}
+                      <br />
+                      <span className="muted">
+                        Born {fmtDate(r.birthDate)}
+                        {r.shirtSize ? ` · Shirt ${r.shirtSize}` : ""}
+                      </span>
+                    </span>
+                  </div>
                 </td>
                 <td data-label="Parents">
                   <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>

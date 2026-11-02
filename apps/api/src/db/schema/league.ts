@@ -792,3 +792,42 @@ export const gameOfficials = pgTable(
     check("game_officials_rate", sql`${t.rateCents} >= 0`),
   ],
 );
+
+/* ------------------------------------------------------- Documents ---- */
+
+/**
+ * Uploaded files. Children: birth certificate (kept for later seasons),
+ * insurance card and headshot (each season). Coaches, team moms and referees:
+ * a headshot each season. The file itself is in private storage (Cloud
+ * Storage in production); only the API reads it, after a permission check.
+ * Replacing a file marks the old row replaced (kept for the audit trail).
+ */
+export const documents = pgTable(
+  "documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** birth_certificate | insurance_card | player_photo | staff_photo */
+    kind: text("kind").notNull(),
+    playerId: uuid("player_id").references(() => players.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    /** The season it's for; null for a birth certificate (good for every season). */
+    seasonId: uuid("season_id").references(() => seasons.id),
+    storageKey: text("storage_key").notNull().unique(),
+    contentType: text("content_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    uploadedBy: text("uploaded_by").references(() => user.id, { onDelete: "set null" }),
+    replacedAt: timestamp("replaced_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("documents_player_idx").on(t.playerId, t.kind),
+    index("documents_user_idx").on(t.userId, t.kind),
+    check("documents_kind", sql`${t.kind} in ('birth_certificate','insurance_card','player_photo','staff_photo')`),
+    check("documents_owner", sql`(${t.kind} = 'staff_photo' and ${t.userId} is not null and ${t.playerId} is null) or (${t.kind} <> 'staff_photo' and ${t.playerId} is not null and ${t.userId} is null)`),
+    check("documents_season", sql`(${t.kind} = 'birth_certificate') = (${t.seasonId} is null)`),
+    // One current file per child/person, kind and season.
+    uniqueIndex("documents_one_current")
+      .on(t.kind, sql`coalesce(${t.playerId}::text, ${t.userId})`, sql`coalesce(${t.seasonId}::text, '')`)
+      .where(sql`${t.replacedAt} is null`),
+  ],
+);

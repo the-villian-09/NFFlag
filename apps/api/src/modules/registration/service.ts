@@ -31,6 +31,7 @@ import { publish } from "../platform/outbox.js";
 import { settleRegistrationCode } from "../promo/service.js";
 import { completeWithdrawal } from "./withdrawal.js";
 import { parseReference } from "../square/client.js";
+import { requirePlayerDocs } from "../documents/service.js";
 import {
   abandonAction,
   CardDeclinedError,
@@ -305,10 +306,12 @@ export async function payRegistration(
   buyerEmail: string,
 ) {
   const [peek] = await db
-    .select({ divisionId: registrations.divisionId, playerId: registrations.playerId })
+    .select({ divisionId: registrations.divisionId, playerId: registrations.playerId, seasonId: registrations.seasonId })
     .from(registrations)
     .where(and(eq(registrations.id, registrationId), eq(registrations.householdId, householdId)));
   if (!peek) throw new HttpError(404, "NOT_FOUND", "Registration not found.");
+  // Birth certificate, insurance card and headshot first (while that switch is on).
+  await requirePlayerDocs(peek.playerId, peek.seasonId);
   const settings = await getPaymentSettings();
   const checkout = input.sourceId ? await checkoutConfig() : null;
   const [p] = await db.select({ firstName: players.firstName, lastName: players.lastName }).from(players).where(eq(players.id, peek.playerId));

@@ -48,6 +48,12 @@ const envSchema = z.object({
   STRIPE_PUBLISHABLE_KEY: z.string().optional(),
   /** Signing secret of the webhook endpoint in the Stripe dashboard (whsec_…). */
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+
+  /* Uploaded documents and photos. Staging/production: a private Cloud Storage
+     bucket (the API's service account reads and writes it). Local dev and
+     tests: a folder on disk. */
+  UPLOADS_BUCKET: z.string().optional(),
+  UPLOADS_DIR: z.string().default(".uploads"),
 });
 
 export type Env = z.infer<typeof envSchema>;

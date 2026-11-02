@@ -25,6 +25,7 @@ import { adminScheduleRouter, scheduleRouter } from "./modules/schedule/routes.j
 import { adminPromoRouter } from "./modules/promo/routes.js";
 import { adminRefereeRouter, refereeRouter } from "./modules/referees/routes.js";
 import { adminPortalRouter } from "./modules/admin/portal.js";
+import { documentsRouter } from "./modules/documents/routes.js";
 
 export function createApp() {
   const app = express();
@@ -68,6 +69,7 @@ export function createApp() {
   app.use("/api/v1/admin/teams", adminTeamsRouter);
   app.use("/api/v1", scheduleRouter);
   app.use("/api/v1", refereeRouter);
+  app.use("/api/v1", documentsRouter);
   app.use("/api/v1/admin/referees", adminRefereeRouter);
   app.use("/api/v1/admin/schedule", adminScheduleRouter);
   app.use("/api/v1/admin/promo-codes", adminPromoRouter);

@@ -2,6 +2,7 @@
  * Admin portal: season and division setup, registrations (review, refund,
  * cancel, export) and payment settings. Mounted at /api/v1/admin/league.
  */
+import { adminPlayerDocuments } from "../documents/service.js";
 import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { Router } from "express";
 import { z } from "zod";
@@ -390,6 +391,8 @@ adminLeagueRouter.get(
       refunds: refs,
       medical: medical ?? null,
       canSeeMedical: canMedical,
+      // Birth certificate, insurance card and headshot (null when this admin can't see uploads).
+      documents: can(req.ctx.access!, "documents.read") ? await adminPlayerDocuments(r.playerId, r.seasonId) : null,
     });
   }),
 );

@@ -36,6 +36,7 @@ interface Detail {
   refunds: { id: string; amountCents: number; status: string; reason: string; createdAt: string }[];
   medical: Record<string, string | null> | null;
   canSeeMedical: boolean;
+  documents: { kind: string; label: string; document: { id: string; contentType: string; uploadedAt: string; url: string } | null }[] | null;
 }
 
 const MEDICAL_LABELS: [string, string][] = [
@@ -185,6 +186,40 @@ export default function AdminRegistrationPage() {
               )}
               {d.canSeeMedical && <p className="hint">Viewing medical details is recorded in the audit log.</p>}
             </section>
+
+            {d.documents && (
+              <section className="card">
+                <h2>Documents</h2>
+                <ul className="admin-docs">
+                  {d.documents.map((x) => (
+                    <li key={x.kind}>
+                      {x.document?.contentType.startsWith("image/") ? (
+                        <a href={x.document.url} target="_blank" rel="noreferrer" className="admin-doc-thumb">
+                          <img src={x.document.url} alt={x.label} />
+                        </a>
+                      ) : (
+                        <span className="admin-doc-thumb">{x.document ? "PDF" : "—"}</span>
+                      )}
+                      <span>
+                        <strong>{x.label}</strong>
+                        <br />
+                        {x.document ? (
+                          <>
+                            <a href={x.document.url} target="_blank" rel="noreferrer">
+                              Open
+                            </a>
+                            <span className="muted"> · uploaded {fmtDate(x.document.uploadedAt)}</span>
+                          </>
+                        ) : (
+                          <span className="status warn">Missing</span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="hint">Opening the birth certificate or insurance card is recorded in the audit log.</p>
+              </section>
+            )}
           </div>
 
           <div className="grid" style={{ marginTop: 24 }}>

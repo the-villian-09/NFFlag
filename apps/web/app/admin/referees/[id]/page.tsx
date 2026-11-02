@@ -36,6 +36,7 @@ interface App {
   decidedAt: string | null;
   payoutSetup: string;
   createdAt: string;
+  photo: { url: string } | null;
 }
 
 export default function AdminRefereePage() {
@@ -87,6 +88,13 @@ export default function AdminRefereePage() {
           <div className="grid" style={{ marginTop: 16, alignItems: "start" }}>
             <section className="card">
               <h2>Sign-up</h2>
+              {a.photo ? (
+                <a href={a.photo.url} target="_blank" rel="noreferrer" className="staff-photo">
+                  <img src={a.photo.url} alt="Headshot" />
+                </a>
+              ) : (
+                <p className="muted">No headshot uploaded for this season.</p>
+              )}
               <dl className="kv">
                 <dt>Email</dt>
                 <dd>{a.email}</dd>

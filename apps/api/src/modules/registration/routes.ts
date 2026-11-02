@@ -4,6 +4,7 @@
  * Registration itself is behind the `r1b.registration` release switch;
  * managing children is always available.
  */
+import { documentsRequired } from "../documents/service.js";
 import { acceptOfferInput, joinWaitlistInput, payRegistrationInput, playerInput, startRegistrationInput } from "@nffl/shared";
 import { and, asc, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import { z } from "zod";
@@ -210,7 +211,7 @@ registrationRouter.get(
     const enabled = await isEnabled("r1b.registration");
     const [season] = await db.select().from(seasons).where(eq(seasons.isCurrent, "current")).limit(1);
     if (!enabled || !season) {
-      res.json({ enabled, season: null, window: { open: false, reason: "Registration isn't open yet." }, divisions: [], waivers: [], checkout: null });
+      res.json({ enabled, season: null, window: { open: false, reason: "Registration isn't open yet." }, divisions: [], waivers: [], checkout: null, documents: false });
       return;
     }
     const settings = await getPaymentSettings();
@@ -247,6 +248,8 @@ registrationRouter.get(
       waivers: waivers.map((w) => ({ slug: w.slug, title: w.title, body: w.body, isPlaceholder: w.isPlaceholder })),
       // Public values for the card form (Stripe or Square). null = payments unavailable right now.
       checkout,
+      // Birth certificate, insurance card and headshot are required before paying.
+      documents: await documentsRequired(),
     });
   }),
 );

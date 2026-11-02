@@ -38,6 +38,7 @@ interface Detail {
   season: { name: string } | null;
   payments: { id: string; amountCents: number; refundedCents: number; status: string; cardBrand: string | null; cardLast4: string | null; providerEnvironment: string; receiptUrl: string | null }[];
   refunds: { id: string; amountCents: number; status: string; reason: string; createdAt: string }[];
+  photo: { url: string } | null;
 }
 
 export default function AdminStaffApplicationPage() {
@@ -89,6 +90,7 @@ export default function AdminStaffApplicationPage() {
           <div className="grid" style={{ marginTop: 16 }}>
             <section className="card">
               <h2>Application</h2>
+              <HeadshotLine photo={d.photo} />
               <dl className="kv">
                 <dt>Email</dt>
                 <dd>
@@ -374,5 +376,15 @@ function AfterDecision({ detail, refundable, canRefund, onDone }: { detail: Deta
         </>
       )}
     </section>
+  );
+}
+
+function HeadshotLine({ photo }: { photo: { url: string } | null }) {
+  return photo ? (
+    <a href={photo.url} target="_blank" rel="noreferrer" className="staff-photo">
+      <img src={photo.url} alt="Headshot" />
+    </a>
+  ) : (
+    <p className="muted">No headshot uploaded for this season.</p>
   );
 }

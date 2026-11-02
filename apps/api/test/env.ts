@@ -19,3 +19,5 @@ process.env.SQUARE_WEBHOOK_SIGNATURE_KEY = "test-signature-key";
 process.env.STRIPE_SECRET_KEY = "sk_test_fake";
 process.env.STRIPE_PUBLISHABLE_KEY = "pk_test_fake";
 process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";
+// Uploads go to a throwaway folder.
+process.env.UPLOADS_DIR = `/tmp/nffl-test-uploads-${process.pid}`;

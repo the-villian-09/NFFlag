@@ -478,3 +478,27 @@ input:disabled, select:disabled, textarea:disabled { background: #1a2633; color:
   .portal-head h1 { font-size: 40px; }
   .admin-search { flex-basis: 100%; }
 }
+
+/* ---------- Uploads (birth certificate, insurance card, headshots) ---------- */
+.doc-list { display: grid; gap: 12px; margin-top: 12px; }
+.doc-upload { display: flex; gap: 14px; align-items: flex-start; background: var(--navy); padding: 12px; border-left: 4px solid var(--gold); }
+.doc-upload.done { border-left-color: var(--lime); }
+.doc-thumb { flex: none; width: 72px; height: 72px; display: grid; place-items: center; background: var(--navy-3); color: var(--ink-muted); font-family: var(--font-display); font-weight: 700; font-size: 26px; overflow: hidden; }
+.doc-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.doc-body { display: grid; gap: 4px; min-width: 0; }
+.doc-body .hint { margin: 0; }
+.doc-actions { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.doc-actions label.btn { cursor: pointer; }
+.doc-actions label[aria-disabled="true"] { opacity: 0.6; pointer-events: none; }
+.doc-actions input:focus-visible + label { outline: 3px solid var(--gold); outline-offset: 2px; }
+.doc-error { color: var(--danger); font-weight: 700; }
+.link-small { font-weight: 700; }
+.admin-docs { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.admin-docs li { display: flex; gap: 12px; align-items: center; }
+.admin-doc-thumb { flex: none; width: 56px; height: 56px; display: grid; place-items: center; background: var(--navy-3); color: var(--ink-muted); font-weight: 800; overflow: hidden; }
+.admin-doc-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.staff-photo { display: inline-block; width: 96px; height: 96px; overflow: hidden; margin-bottom: 12px; background: var(--navy-3); }
+.staff-photo img { width: 100%; height: 100%; object-fit: cover; }
+.player-cell { display: flex; gap: 12px; align-items: center; }
+.player-photo { flex: none; width: 52px; height: 52px; overflow: hidden; background: var(--navy-3); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 22px; color: var(--ink-muted); text-decoration: none; }
+.player-photo img { width: 100%; height: 100%; object-fit: cover; }

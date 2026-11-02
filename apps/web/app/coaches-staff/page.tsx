@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { MyPhoto } from "@/components/doc-upload";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorAlert } from "@/components/form";
 import { Markdown } from "@/components/markdown";
@@ -354,6 +355,9 @@ function PayFee({
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(app.paymentError);
+  // A headshot is required before paying (while uploads are switched on).
+  const [photo, setPhoto] = useState({ required: false, done: false });
+  const needsPhoto = photo.required && !photo.done;
   const [done, setDone] = useState<string | null>(null);
 
   const free = app.totalCents === 0;
@@ -435,12 +439,14 @@ function PayFee({
         </button>
       </div>
       <div className="card">
-        <h2>{free ? "Nothing to pay" : "Card"}</h2>
+        <MyPhoto onChange={setPhoto} />
+        {needsPhoto && <p className="hint">Add your headshot first; the league uses it for your coaching badge.</p>}
+        <h2 style={photo.required ? { marginTop: 20 } : undefined}>{free ? "Nothing to pay" : "Card"}</h2>
         {free ? (
           <>
             <p className="muted">Your promo code covers the full fee, so no card is needed.</p>
             <ErrorAlert error={error} />
-            <button className="btn" style={{ marginTop: 16 }} onClick={pay} disabled={busy}>
+            <button className="btn" style={{ marginTop: 16 }} onClick={pay} disabled={busy || needsPhoto}>
               {busy ? "Saving…" : "Submit application"}
             </button>
           </>
@@ -448,7 +454,7 @@ function PayFee({
           <>
             <CardForm ref={card} checkout={checkout} amountCents={app.totalCents} onReady={setReady} />
             <ErrorAlert error={error} />
-            <button className="btn" style={{ marginTop: 16 }} onClick={pay} disabled={!ready || busy}>
+            <button className="btn" style={{ marginTop: 16 }} onClick={pay} disabled={!ready || busy || needsPhoto}>
               {busy ? "Processing…" : `Pay ${money(app.totalCents)}`}
             </button>
             <p className="hint" style={{ marginTop: 8 }}>

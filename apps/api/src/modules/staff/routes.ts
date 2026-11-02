@@ -1,4 +1,5 @@
 /** Coach and team staff applications (Head Coach, Assistant Coach, Team Mom): applicant routes and admin review. */
+import { adminStaffPhoto } from "../documents/service.js";
 import { payRegistrationInput, volunteerApplicationInput } from "@nffl/shared";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { Router, type Request } from "express";
@@ -184,6 +185,7 @@ adminStaffRouter.get(
       season: season ?? null,
       payments: pays,
       refunds: refs,
+      photo: await adminStaffPhoto(a.userId, a.seasonId),
     });
   }),
 );

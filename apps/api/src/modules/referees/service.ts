@@ -45,6 +45,7 @@ import {
   type ConnectedAccount,
 } from "../stripe/client.js";
 import { env } from "../../config.js";
+import { adminStaffPhoto, requireStaffPhoto } from "../documents/service.js";
 
 export const REFEREE_FLAG = "r5.referees";
 
@@ -189,6 +190,7 @@ export async function applyAsReferee(actor: Actor & { userId: string }, input: z
   if (input.certificationExpiresOn && input.certificationExpiresOn < today()) {
     throw new HttpError(400, "VALIDATION_FAILED", "That certification has expired. Renew it, then sign up with the new expiration date.");
   }
+  await requireStaffPhoto(actor.userId, season.id, "signing up");
   const [closed] = await db
     .select({ status: refereeApplications.status })
     .from(refereeApplications)
@@ -470,7 +472,7 @@ export async function getApplication(id: string) {
     .where(eq(refereeApplications.id, id));
   if (!r) throw new HttpError(404, "NOT_FOUND", "Application not found.");
   const { minAge } = await getRefereeSettings();
-  return { ...adminView(r.a, minAge), name: r.name, email: r.email, payoutSetup: payoutSetup(r.acct), minAge };
+  return { ...adminView(r.a, minAge), name: r.name, email: r.email, payoutSetup: payoutSetup(r.acct), minAge, photo: await adminStaffPhoto(r.a.userId, r.a.seasonId) };
 }
 
 export const screeningInput = z.object({
