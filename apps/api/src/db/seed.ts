@@ -36,7 +36,7 @@ export const FEATURE_FLAGS: { key: string; description: string }[] = [
   { key: "r2.promo_codes", description: "Promo codes: families see 'Have a promo code?' at checkout. Admins can create codes while it's off" },
   { key: "r5.referees", description: "Referees: sign-up, game assignments and pay through Stripe. Admins can set up and test while it's off" },
   { key: "r6.documents", description: "Required uploads: each child's birth certificate, insurance card and headshot before paying; a headshot for coaches, team moms and referees. Needs the uploads bucket (infra/set-uploads.sh)" },
-  { key: "r4.sms", description: "Text messages through Twilio (not built yet; needs A2P approval; no effect)" },
+  { key: "r4.sms", description: "Text messages through Twilio: sending is built after carrier (A2P 10DLC) approval, so this has no effect yet. The Text alerts sign-up in My account already works and does not need this switch" },
   { key: "r5.playoffs", description: "Playoffs and brackets (not built yet; no effect)" },
   { key: "auth.google", description: "Sign in with Google (not built yet; no effect)" },
   { key: "auth.microsoft", description: "Sign in with Microsoft (not built yet; no effect)" },
