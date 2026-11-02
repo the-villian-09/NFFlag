@@ -234,6 +234,17 @@ export async function withdrawRefereeApplication(actor: Actor & { userId: string
 
 /** Creates (once) the referee's Stripe account and returns a session for the embedded components. */
 export async function payoutSession(u: { id: string; email: string }) {
+  try {
+    return await startPayoutSession(u);
+  } catch (err) {
+    if (!(err instanceof StripeError)) throw err;
+    // Stripe's own reason (usually a dashboard setting), so it can be fixed.
+    logger.error({ userId: u.id, status: err.status, type: err.type, code: err.code, message: err.message }, "Stripe refused payout setup");
+    throw new HttpError(503, "PAYMENTS_UNAVAILABLE", `Payout setup isn't available right now. Stripe said: ${err.message}`);
+  }
+}
+
+async function startPayoutSession(u: { id: string; email: string }) {
   if (!stripeConfigured()) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Payout setup isn't available right now. Please try again later.");
   const season = await currentSeason();
   // Approved referees set up payouts; anyone else only while the league still owes them money.
