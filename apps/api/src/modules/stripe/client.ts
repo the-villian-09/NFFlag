@@ -3,14 +3,15 @@
  * a ConfirmationToken made by the Payment Element, refunds and webhook
  * signatures. Card details never reach our servers.
  */
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../../config.js";
 
 const BASE = "https://api.stripe.com";
 /** Pinned so Stripe's response shapes don't change under us. */
 export const STRIPE_VERSION = "2025-03-31.basil";
 
-export const stripeWebhookUrl = () => `${env.APP_BASE_URL.replace(/\/$/, "")}/api/v1/webhooks/stripe`;
+export const stripeWebhookUrl = () =>
+  `${env.APP_BASE_URL.replace(/\/$/, "")}/api/v1/webhooks/stripe`;
 
 export function stripeConfigured() {
   return !!(env.STRIPE_SECRET_KEY && env.STRIPE_PUBLISHABLE_KEY);
@@ -34,26 +35,44 @@ export class StripeError extends Error {
 }
 
 /** Stripe's form encoding: nested objects as a[b]=c, arrays as a[0]=c. */
-export function formEncode(params: Record<string, unknown>, prefix = "", out = new URLSearchParams()) {
+export function formEncode(
+  params: Record<string, unknown>,
+  prefix = "",
+  out = new URLSearchParams(),
+) {
   for (const [k, v] of Object.entries(params)) {
     if (v === undefined || v === null) continue;
     const key = prefix ? `${prefix}[${k}]` : k;
-    if (Array.isArray(v)) v.forEach((item, i) => (typeof item === "object" ? formEncode(item as Record<string, unknown>, `${key}[${i}]`, out) : out.append(`${key}[${i}]`, String(item))));
-    else if (typeof v === "object") formEncode(v as Record<string, unknown>, key, out);
+    if (Array.isArray(v))
+      v.forEach((item, i) =>
+        typeof item === "object"
+          ? formEncode(item as Record<string, unknown>, `${key}[${i}]`, out)
+          : out.append(`${key}[${i}]`, String(item)),
+      );
+    else if (typeof v === "object")
+      formEncode(v as Record<string, unknown>, key, out);
     else out.append(key, String(v));
   }
   return out;
 }
 
-async function call<T>(method: "GET" | "POST", path: string, params?: Record<string, unknown>, idempotencyKey?: string) {
+async function call<T>(
+  method: "GET" | "POST",
+  path: string,
+  params?: Record<string, unknown>,
+  idempotencyKey?: string,
+) {
   const body = params ? formEncode(params).toString() : "";
-  const url = method === "GET" && body ? `${BASE}${path}?${body}` : `${BASE}${path}`;
+  const url =
+    method === "GET" && body ? `${BASE}${path}?${body}` : `${BASE}${path}`;
   const res = await fetch(url, {
     method,
     headers: {
       authorization: `Bearer ${(env.STRIPE_SECRET_KEY ?? "").trim()}`,
       "stripe-version": STRIPE_VERSION,
-      ...(method === "POST" ? { "content-type": "application/x-www-form-urlencoded" } : {}),
+      ...(method === "POST"
+        ? { "content-type": "application/x-www-form-urlencoded" }
+        : {}),
       ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
     },
     body: method === "POST" ? body : undefined,
@@ -62,10 +81,24 @@ async function call<T>(method: "GET" | "POST", path: string, params?: Record<str
   const text = await res.text();
   const data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
   if (!res.ok) {
-    const e = (data.error ?? {}) as { type?: string; code?: string; decline_code?: string; message?: string };
-    throw new StripeError(res.status, e.type ?? "api_error", e.code, e.decline_code, e.message ?? "");
+    const e = (data.error ?? {}) as {
+      type?: string;
+      code?: string;
+      decline_code?: string;
+      message?: string;
+    };
+    throw new StripeError(
+      res.status,
+      e.type ?? "api_error",
+      e.code,
+      e.decline_code,
+      e.message ?? "",
+    );
   }
-  return { data: data as T, replayed: res.headers.get("idempotent-replayed") === "true" };
+  return {
+    data: data as T,
+    replayed: res.headers.get("idempotent-replayed") === "true",
+  };
 }
 
 /* ---------------- payment intents ---------------- */
@@ -85,7 +118,11 @@ export interface PaymentIntent {
   client_secret?: string | null;
   metadata?: Record<string, string>;
   latest_charge?: StripeCharge | string | null;
-  last_payment_error?: { code?: string; decline_code?: string; message?: string } | null;
+  last_payment_error?: {
+    code?: string;
+    decline_code?: string;
+    message?: string;
+  } | null;
 }
 
 const EXPAND = ["latest_charge"];
@@ -122,11 +159,23 @@ export async function createConfirmedIntent(p: {
 }
 
 export async function retrieveIntent(id: string) {
-  return (await call<PaymentIntent>("GET", `/v1/payment_intents/${encodeURIComponent(id)}`, { expand: EXPAND })).data;
+  return (
+    await call<PaymentIntent>(
+      "GET",
+      `/v1/payment_intents/${encodeURIComponent(id)}`,
+      { expand: EXPAND },
+    )
+  ).data;
 }
 
 export async function cancelIntent(id: string) {
-  return (await call<PaymentIntent>("POST", `/v1/payment_intents/${encodeURIComponent(id)}/cancel`, { expand: EXPAND })).data;
+  return (
+    await call<PaymentIntent>(
+      "POST",
+      `/v1/payment_intents/${encodeURIComponent(id)}/cancel`,
+      { expand: EXPAND },
+    )
+  ).data;
 }
 
 /* ---------------- refunds ---------------- */
@@ -139,12 +188,21 @@ export interface StripeRefund {
   payment_intent?: string | null;
 }
 
-export async function createRefund(p: { paymentIntentId: string; amountCents: number; note: string; idempotencyKey: string }) {
+export async function createRefund(p: {
+  paymentIntentId: string;
+  amountCents: number;
+  note: string;
+  idempotencyKey: string;
+}) {
   return (
     await call<StripeRefund>(
       "POST",
       "/v1/refunds",
-      { payment_intent: p.paymentIntentId, amount: p.amountCents, metadata: { note: p.note.slice(0, 450) } },
+      {
+        payment_intent: p.paymentIntentId,
+        amount: p.amountCents,
+        metadata: { note: p.note.slice(0, 450) },
+      },
       p.idempotencyKey,
     )
   ).data;
@@ -164,14 +222,21 @@ export function refundStatus(s: string) {
  * Stripe-Signature: t=<unix>,v1=<hex hmac of "t.rawBody">. Rejects stale
  * signatures (5 minutes) so a captured event can't be replayed later.
  */
-export function verifyStripeSignature(rawBody: string, header: string | undefined, now = Date.now()): boolean {
+export function verifyStripeSignature(
+  rawBody: string,
+  header: string | undefined,
+  now = Date.now(),
+): boolean {
   const secret = env.STRIPE_WEBHOOK_SECRET;
   if (!secret || !header) return false;
   const parts = header.split(",").map((p) => p.split("=") as [string, string]);
   const t = parts.find(([k]) => k === "t")?.[1];
   const sigs = parts.filter(([k]) => k === "v1").map(([, v]) => v);
-  if (!t || !sigs.length || Math.abs(now / 1000 - Number(t)) > 300) return false;
-  const expected = Buffer.from(createHmac("sha256", secret).update(`${t}.${rawBody}`).digest("hex"));
+  if (!t || !sigs.length || Math.abs(now / 1000 - Number(t)) > 300)
+    return false;
+  const expected = Buffer.from(
+    createHmac("sha256", secret).update(`${t}.${rawBody}`).digest("hex"),
+  );
   return sigs.some((s) => {
     const b = Buffer.from(s);
     return b.length === expected.length && timingSafeEqual(b, expected);
@@ -186,7 +251,10 @@ export function isCardProblem(err: StripeError) {
 }
 
 /** Plain-English message for a card error the family can act on. */
-export function friendlyStripeError(code?: string, declineCode?: string): string {
+export function friendlyStripeError(
+  code?: string,
+  declineCode?: string,
+): string {
   switch (declineCode ?? code) {
     case "insufficient_funds":
       return "The card was declined for insufficient funds.";
@@ -222,7 +290,11 @@ export interface ConnectedAccount {
   details_submitted?: boolean;
   payouts_enabled?: boolean;
   capabilities?: { transfers?: string };
-  requirements?: { currently_due?: string[]; past_due?: string[]; disabled_reason?: string | null };
+  requirements?: {
+    currently_due?: string[];
+    past_due?: string[];
+    disabled_reason?: string | null;
+  };
 }
 
 /**
@@ -230,32 +302,51 @@ export interface ConnectedAccount {
  * fees, losses and keeping their details current (as in the platform profile), and the referee manages everything through Stripe's
  * embedded components on our site (no Stripe dashboard of their own).
  */
-export async function createConnectedAccount(p: { email: string; userId: string; idempotencyKey: string }) {
+export async function createConnectedAccount(p: {
+  email: string;
+  userId: string;
+  idempotencyKey: string;
+}) {
+  const params = {
+    country: "US",
+    email: p.email,
+    business_type: "individual",
+    controller: {
+      fees: { payer: "application" },
+      losses: { payments: "application" },
+      stripe_dashboard: { type: "none" },
+      requirement_collection: "application",
+    },
+    capabilities: { transfers: { requested: true } },
+    business_profile: {
+      mcc: "7941",
+      product_description:
+        "Youth flag football referee paid by the North Florida Flag League",
+    },
+    metadata: { user_id: p.userId },
+  };
+  // The key includes a fingerprint of the settings, so changing them later never reuses an old key.
+  const fingerprint = createHash("sha256")
+    .update(JSON.stringify(params))
+    .digest("hex")
+    .slice(0, 12);
   return (
     await call<ConnectedAccount>(
       "POST",
       "/v1/accounts",
-      {
-        country: "US",
-        email: p.email,
-        business_type: "individual",
-        controller: {
-          fees: { payer: "application" },
-          losses: { payments: "application" },
-          stripe_dashboard: { type: "none" },
-          requirement_collection: "application",
-        },
-        capabilities: { transfers: { requested: true } },
-        business_profile: { mcc: "7941", product_description: "Youth flag football referee paid by the North Florida Flag League" },
-        metadata: { user_id: p.userId },
-      },
-      p.idempotencyKey,
+      params,
+      `${p.idempotencyKey}:${fingerprint}`,
     )
   ).data;
 }
 
 export async function retrieveAccount(id: string) {
-  return (await call<ConnectedAccount>("GET", `/v1/accounts/${encodeURIComponent(id)}`)).data;
+  return (
+    await call<ConnectedAccount>(
+      "GET",
+      `/v1/accounts/${encodeURIComponent(id)}`,
+    )
+  ).data;
 }
 
 /** Short-lived secret for Stripe's embedded components (onboarding, payouts, tax forms). */
@@ -264,10 +355,27 @@ export async function createAccountSession(accountId: string) {
     await call<{ client_secret: string }>("POST", "/v1/account_sessions", {
       account: accountId,
       components: {
-        account_onboarding: { enabled: true, features: { external_account_collection: true } },
-        account_management: { enabled: true, features: { external_account_collection: true } },
-        notification_banner: { enabled: true, features: { external_account_collection: true } },
-        payouts: { enabled: true, features: { instant_payouts: true, standard_payouts: true, edit_payout_schedule: false, external_account_collection: true } },
+        account_onboarding: {
+          enabled: true,
+          features: { external_account_collection: true },
+        },
+        account_management: {
+          enabled: true,
+          features: { external_account_collection: true },
+        },
+        notification_banner: {
+          enabled: true,
+          features: { external_account_collection: true },
+        },
+        payouts: {
+          enabled: true,
+          features: {
+            instant_payouts: true,
+            standard_payouts: true,
+            edit_payout_schedule: false,
+            external_account_collection: true,
+          },
+        },
         documents: { enabled: true },
       },
     })
@@ -314,7 +422,12 @@ export async function createTransfer(p: {
 
 /** A transfer already made for this payout (looked up by transfer group), if any. */
 export async function findTransfer(transferGroup: string) {
-  const r = (await call<{ data: StripeTransfer[] }>("GET", "/v1/transfers", { transfer_group: transferGroup, limit: 3 })).data;
+  const r = (
+    await call<{ data: StripeTransfer[] }>("GET", "/v1/transfers", {
+      transfer_group: transferGroup,
+      limit: 3,
+    })
+  ).data;
   return r.data[0] ?? null;
 }
 
@@ -323,21 +436,48 @@ export async function findTransfer(transferGroup: string) {
  * the money came from: card payments vs. bank top-ups), and still settling.
  */
 export async function retrieveBalance() {
-  type Part = { amount: number; currency: string; source_types?: Record<string, number> };
-  const b = (await call<{ available: Part[]; pending: Part[] }>("GET", "/v1/balance")).data;
+  type Part = {
+    amount: number;
+    currency: string;
+    source_types?: Record<string, number>;
+  };
+  const b = (
+    await call<{ available: Part[]; pending: Part[] }>("GET", "/v1/balance")
+  ).data;
   const usd = (l: Part[]) => l.filter((x) => x.currency === "usd");
   const sum = (l: Part[]) => usd(l).reduce((n, x) => n + x.amount, 0);
-  const source = (k: string) => usd(b.available).reduce((n, x) => n + (x.source_types?.[k] ?? 0), 0);
-  return { availableCents: sum(b.available), pendingCents: sum(b.pending), availableBySource: { card: source("card"), bank_account: source("bank_account") } };
+  const source = (k: string) =>
+    usd(b.available).reduce((n, x) => n + (x.source_types?.[k] ?? 0), 0);
+  return {
+    availableCents: sum(b.available),
+    pendingCents: sum(b.pending),
+    availableBySource: {
+      card: source("card"),
+      bank_account: source("bank_account"),
+    },
+  };
 }
 
 /** Pulls money from the league's verified bank account into its Stripe balance (takes a few business days). */
-export async function createTopup(p: { amountCents: number; idempotencyKey: string }) {
+export async function createTopup(p: {
+  amountCents: number;
+  idempotencyKey: string;
+}) {
   return (
-    await call<{ id: string; status: string; amount: number; expected_availability_date?: number | null }>(
+    await call<{
+      id: string;
+      status: string;
+      amount: number;
+      expected_availability_date?: number | null;
+    }>(
       "POST",
       "/v1/topups",
-      { amount: p.amountCents, currency: "usd", description: "Referee pay", statement_descriptor: "NFFL REF PAY" },
+      {
+        amount: p.amountCents,
+        currency: "usd",
+        description: "Referee pay",
+        statement_descriptor: "NFFL REF PAY",
+      },
       p.idempotencyKey,
     )
   ).data;
