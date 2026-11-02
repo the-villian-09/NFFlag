@@ -214,3 +214,131 @@ export function friendlyStripeError(code?: string, declineCode?: string): string
       return "The payment didn't go through. Please check your card details and try again.";
   }
 }
+
+/* ---------------- Connect: referee accounts and pay ---------------- */
+
+export interface ConnectedAccount {
+  id: string;
+  details_submitted?: boolean;
+  payouts_enabled?: boolean;
+  capabilities?: { transfers?: string };
+  requirements?: { currently_due?: string[]; past_due?: string[]; disabled_reason?: string | null };
+}
+
+/**
+ * A connected account for a referee. The league (platform) is responsible for
+ * fees and losses, and the referee manages everything through Stripe's
+ * embedded components on our site (no Stripe dashboard of their own).
+ */
+export async function createConnectedAccount(p: { email: string; userId: string; idempotencyKey: string }) {
+  return (
+    await call<ConnectedAccount>(
+      "POST",
+      "/v1/accounts",
+      {
+        country: "US",
+        email: p.email,
+        business_type: "individual",
+        controller: {
+          fees: { payer: "application" },
+          losses: { payments: "application" },
+          stripe_dashboard: { type: "none" },
+          requirement_collection: "stripe",
+        },
+        capabilities: { transfers: { requested: true } },
+        business_profile: { mcc: "7941", product_description: "Youth flag football referee paid by the North Florida Flag League" },
+        metadata: { user_id: p.userId },
+      },
+      p.idempotencyKey,
+    )
+  ).data;
+}
+
+export async function retrieveAccount(id: string) {
+  return (await call<ConnectedAccount>("GET", `/v1/accounts/${encodeURIComponent(id)}`)).data;
+}
+
+/** Short-lived secret for Stripe's embedded components (onboarding, payouts, tax forms). */
+export async function createAccountSession(accountId: string) {
+  return (
+    await call<{ client_secret: string }>("POST", "/v1/account_sessions", {
+      account: accountId,
+      components: {
+        account_onboarding: { enabled: true, features: { external_account_collection: true } },
+        account_management: { enabled: true, features: { external_account_collection: true } },
+        notification_banner: { enabled: true, features: { external_account_collection: true } },
+        payouts: { enabled: true, features: { instant_payouts: true, standard_payouts: true, edit_payout_schedule: false, external_account_collection: true } },
+        documents: { enabled: true },
+      },
+    })
+  ).data.client_secret;
+}
+
+export interface StripeTransfer {
+  id: string;
+  amount: number;
+  destination: string;
+}
+
+/**
+ * Moves money from the league's Stripe balance into a referee's account.
+ * `transferGroup` is our payout id, so a transfer whose response was lost can
+ * be found again (findTransfer) before anything is re-sent.
+ */
+export async function createTransfer(p: {
+  amountCents: number;
+  destination: string;
+  description: string;
+  idempotencyKey: string;
+  transferGroup: string;
+  sourceType?: "card" | "bank_account";
+  metadata: Record<string, string>;
+}) {
+  return (
+    await call<StripeTransfer>(
+      "POST",
+      "/v1/transfers",
+      {
+        amount: p.amountCents,
+        currency: "usd",
+        destination: p.destination,
+        description: p.description.slice(0, 500),
+        transfer_group: p.transferGroup,
+        source_type: p.sourceType,
+        metadata: p.metadata,
+      },
+      p.idempotencyKey,
+    )
+  ).data;
+}
+
+/** A transfer already made for this payout (looked up by transfer group), if any. */
+export async function findTransfer(transferGroup: string) {
+  const r = (await call<{ data: StripeTransfer[] }>("GET", "/v1/transfers", { transfer_group: transferGroup, limit: 3 })).data;
+  return r.data[0] ?? null;
+}
+
+/**
+ * The league's Stripe balance in cents: available now (in total and by where
+ * the money came from: card payments vs. bank top-ups), and still settling.
+ */
+export async function retrieveBalance() {
+  type Part = { amount: number; currency: string; source_types?: Record<string, number> };
+  const b = (await call<{ available: Part[]; pending: Part[] }>("GET", "/v1/balance")).data;
+  const usd = (l: Part[]) => l.filter((x) => x.currency === "usd");
+  const sum = (l: Part[]) => usd(l).reduce((n, x) => n + x.amount, 0);
+  const source = (k: string) => usd(b.available).reduce((n, x) => n + (x.source_types?.[k] ?? 0), 0);
+  return { availableCents: sum(b.available), pendingCents: sum(b.pending), availableBySource: { card: source("card"), bank_account: source("bank_account") } };
+}
+
+/** Pulls money from the league's verified bank account into its Stripe balance (takes a few business days). */
+export async function createTopup(p: { amountCents: number; idempotencyKey: string }) {
+  return (
+    await call<{ id: string; status: string; amount: number; expected_availability_date?: number | null }>(
+      "POST",
+      "/v1/topups",
+      { amount: p.amountCents, currency: "usd", description: "Referee pay", statement_descriptor: "NFFL REF PAY" },
+      p.idempotencyKey,
+    )
+  ).data;
+}

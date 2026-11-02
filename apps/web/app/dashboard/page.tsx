@@ -166,6 +166,7 @@ export default function DashboardPage() {
         {household && <RegistrationsCard />}
         {household && <WaitlistCard />}
         <StaffCard />
+        <RefereeCard />
         <SecurityCard
           enabled={me.mfa.enabled}
           required={me.mfa.required === "totp"}
@@ -305,6 +306,34 @@ const APP_LINE: Record<string, string> = {
 };
 
 /** Coaches & team staff: application status, team assignment, and the roster once it's published. */
+/** Referee sign-up or status, when the Referees switch is on. */
+function RefereeCard() {
+  const [home, setHome] = useState<{ application: { status: string } | null; approved: boolean; payouts: { setup: string } } | null | undefined>(undefined);
+  useEffect(() => {
+    api
+      .get<{ application: { status: string } | null; approved: boolean; payouts: { setup: string } }>("/referees/me")
+      .then(setHome)
+      .catch(() => setHome(null));
+  }, []);
+  if (!home) return null;
+  const line = home.approved
+    ? home.payouts.setup === "ready"
+      ? "Approved referee. Pick games and see your pay."
+      : "Approved referee. Set up payouts so the league can pay you."
+    : home.application?.status === "submitted"
+      ? "Your referee sign-up is being reviewed."
+      : "Referee NFFL games and get paid by direct deposit.";
+  return (
+    <section className="card">
+      <h2>Referee</h2>
+      <p className="muted">{line}</p>
+      <Link className="btn ghost small" href="/referees">
+        {home.approved ? "My referee page" : home.application?.status === "submitted" ? "View sign-up" : "Sign up to referee"}
+      </Link>
+    </section>
+  );
+}
+
 function StaffCard() {
   const [teams, setTeams] = useState<MyTeam[] | null>(null);
   const [apps, setApps] = useState<MyApplication[] | null>(null);

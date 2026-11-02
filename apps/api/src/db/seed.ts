@@ -34,6 +34,7 @@ export const FEATURE_FLAGS: { key: string; description: string }[] = [
   { key: "r4.games", description: "Games: public schedule and standings, games on family and coach pages. Admins can enter games while it's off" },
   { key: "r4.announcements", description: "Announcements: coaches email their team. Admins can send while it's off" },
   { key: "r2.promo_codes", description: "Promo codes: families see 'Have a promo code?' at checkout. Admins can create codes while it's off" },
+  { key: "r5.referees", description: "Referees: sign-up, game assignments and pay through Stripe. Admins can set up and test while it's off" },
   { key: "r4.sms", description: "Text messages through Twilio (not built yet; needs A2P approval; no effect)" },
   { key: "r4.tixflo_widget", description: "TixFlo ticket widget (not built yet; no effect)" },
   { key: "r5.playoffs", description: "Playoffs and brackets (not built yet; no effect)" },

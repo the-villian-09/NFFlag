@@ -23,6 +23,7 @@ import { adminStaffRouter, staffRouter } from "./modules/staff/routes.js";
 import { adminTeamsRouter, myTeamsRouter } from "./modules/teams/routes.js";
 import { adminScheduleRouter, scheduleRouter } from "./modules/schedule/routes.js";
 import { adminPromoRouter } from "./modules/promo/routes.js";
+import { adminRefereeRouter, refereeRouter } from "./modules/referees/routes.js";
 
 export function createApp() {
   const app = express();
@@ -65,6 +66,8 @@ export function createApp() {
   app.use("/api/v1", myTeamsRouter);
   app.use("/api/v1/admin/teams", adminTeamsRouter);
   app.use("/api/v1", scheduleRouter);
+  app.use("/api/v1", refereeRouter);
+  app.use("/api/v1/admin/referees", adminRefereeRouter);
   app.use("/api/v1/admin/schedule", adminScheduleRouter);
   app.use("/api/v1/admin/promo-codes", adminPromoRouter);
   app.use("/api/v1/admin/content", adminContentRouter);

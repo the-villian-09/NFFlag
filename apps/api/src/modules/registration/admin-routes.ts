@@ -68,6 +68,8 @@ const divisionInput = z.object({
   eligibilityNotes: z.string().trim().max(500).optional().transform((v) => v || null),
   capacity: z.number().int().min(0).max(5000),
   priceCents: z.number().int().min(0).max(100_000),
+  /** Referee pay per game in this division (R5). Left out = unchanged. */
+  refereeRateCents: z.number().int().min(0).max(100_000).optional(),
   status: z.enum(["draft", "open", "full", "closed"]),
   sortOrder: z.number().int().min(0).max(1000).default(0),
 });

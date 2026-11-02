@@ -50,6 +50,10 @@ export const PERMISSIONS = [
 
   // Communications (R4)
   "announcements.send",
+
+  // Referees (R5)
+  "referees.manage",
+  "referees.pay",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -106,6 +110,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, readonly Permission[]> = 
     "games.manage",
     "scores.enter",
     "announcements.send",
+    "referees.manage",
+    "referees.pay",
     "platform.audit.read",
   ],
   // Head coaches see their own team's medical and emergency details (team-scoped grant; every view is audited).

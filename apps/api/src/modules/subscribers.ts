@@ -15,6 +15,8 @@ import { getEmailSender } from "../lib/email.js";
 import { templates } from "../lib/email-templates.js";
 import { logger } from "../lib/logger.js";
 import { publish, subscribe } from "./platform/outbox.js";
+import { divisions as divisionsTable, gameOfficials, games, refereeApplications, refereePayouts } from "../db/schema/index.js";
+import { inArray } from "drizzle-orm";
 
 const base = () => env.APP_BASE_URL.replace(/\/$/, "");
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -83,7 +85,98 @@ async function applicationContext(id: string) {
   return a ? { ...a, role: ROLE_LABELS[a.roleKey as VolunteerRole], fee: feeLabel(a.roleKey) } : null;
 }
 
+async function officialContext(id: string) {
+  const [o] = await db
+    .select({
+      status: gameOfficials.status,
+      rateCents: gameOfficials.rateCents,
+      email: user.email,
+      startsAt: games.startsAt,
+      location: games.location,
+      division: divisionsTable.name,
+      homeTeamId: games.homeTeamId,
+      awayTeamId: games.awayTeamId,
+    })
+    .from(gameOfficials)
+    .innerJoin(user, eq(user.id, gameOfficials.userId))
+    .innerJoin(games, eq(games.id, gameOfficials.gameId))
+    .innerJoin(divisionsTable, eq(divisionsTable.id, games.divisionId))
+    .where(eq(gameOfficials.id, id));
+  if (!o) return null;
+  const ts = await db.select({ id: teams.id, name: teams.name }).from(teams).where(inArray(teams.id, [o.homeTeamId, o.awayTeamId]));
+  const name = (tid: string) => ts.find((t) => t.id === tid)?.name ?? "TBD";
+  return { ...o, matchup: `${name(o.homeTeamId)} vs ${name(o.awayTeamId)}`, when: fmtDeadline(o.startsAt) };
+}
+
 export function registerSubscribers() {
+  /* ---------------- referees (R5) ---------------- */
+  subscribe("referee.application_submitted", async (e) => {
+    const [a] = await db
+      .select({ name: user.name })
+      .from(refereeApplications)
+      .innerJoin(user, eq(user.id, refereeApplications.userId))
+      .where(eq(refereeApplications.id, e.aggregateId));
+    if (!a) return;
+    const contact = await getSetting("contact");
+    if (contact.inboxEmail) await getEmailSender().send(templates.refereeSignupLeague(contact.inboxEmail, { name: a.name, adminUrl: `${base()}/admin/referees` }));
+    else logger.warn({ applicationId: e.aggregateId }, "referee sign-up saved; no inbox email set in Site content");
+  });
+
+  subscribe("referee.application_decided", async (e) => {
+    const [a] = await db
+      .select({ email: user.email, season: seasons.name })
+      .from(refereeApplications)
+      .innerJoin(user, eq(user.id, refereeApplications.userId))
+      .innerJoin(seasons, eq(seasons.id, refereeApplications.seasonId))
+      .where(eq(refereeApplications.id, e.aggregateId));
+    if (!a) return;
+    const p = e.payload as { decision: "approved" | "rejected" | "revoked"; reason?: string | null };
+    await getEmailSender().send(templates.refereeDecision(a.email, { decision: p.decision, season: a.season, reason: p.reason ?? null, url: `${base()}/referees` }));
+  });
+
+  subscribe("referee.assigned", async (e) => {
+    const o = await officialContext(e.aggregateId);
+    if (!o || o.status !== "assigned") return; // removed since
+    await getEmailSender().send(
+      templates.refereeAssigned(o.email, { matchup: o.matchup, when: o.when, where: o.location, division: o.division, pay: money(o.rateCents), url: `${base()}/referees` }),
+    );
+  });
+
+  subscribe("referee.unassigned", async (e) => {
+    const o = await officialContext(e.aggregateId);
+    if (!o || o.status !== "removed") return; // put back since
+    await getEmailSender().send(templates.refereeUnassigned(o.email, { matchup: o.matchup, when: o.when, url: `${base()}/referees` }));
+  });
+
+  subscribe("referee.game_changed", async (e) => {
+    const o = await officialContext(e.aggregateId);
+    if (!o || o.status !== "assigned") return;
+    const p = e.payload as { subject: string; body: string };
+    await getEmailSender().send(templates.refereeGameChanged(o.email, { subject: p.subject, body: p.body, url: `${base()}/referees` }));
+  });
+
+  subscribe("referee.paid", async (e) => {
+    const [p] = await db
+      .select({ amountCents: refereePayouts.amountCents, email: user.email })
+      .from(refereePayouts)
+      .innerJoin(user, eq(user.id, refereePayouts.userId))
+      .where(eq(refereePayouts.id, e.aggregateId));
+    if (!p) return;
+    const items = await db
+      .select({ startsAt: games.startsAt, homeTeamId: games.homeTeamId, awayTeamId: games.awayTeamId, rateCents: gameOfficials.rateCents })
+      .from(gameOfficials)
+      .innerJoin(games, eq(games.id, gameOfficials.gameId))
+      .where(eq(gameOfficials.payoutId, e.aggregateId));
+    const ts = items.length
+      ? await db.select({ id: teams.id, name: teams.name }).from(teams).where(inArray(teams.id, items.flatMap((i) => [i.homeTeamId, i.awayTeamId])))
+      : [];
+    const name = (tid: string) => ts.find((t) => t.id === tid)?.name ?? "TBD";
+    const lines: [string, string][] = items
+      .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())
+      .map((i) => [`${i.startsAt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}: ${name(i.homeTeamId)} vs ${name(i.awayTeamId)}`, money(i.rateCents)]);
+    await getEmailSender().send(templates.refereePaid(p.email, { amount: money(p.amountCents), games: lines, url: `${base()}/referees` }));
+  });
+
   // Fan out: one event per guardian, so a failed send retries only that email.
   subscribe("roster.published", async (e) => {
     const [r] = await db

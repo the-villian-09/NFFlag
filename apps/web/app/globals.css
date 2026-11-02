@@ -403,3 +403,20 @@ input:disabled, select:disabled, textarea:disabled { background: #1a2633; color:
   .ev-bar-time .status { font-family: var(--font-body); font-size: 12px; line-height: 1.4; }
   .ev-action { margin-top: 12px; }
 }
+
+/* Referees (R5) */
+.ticks { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 6px; }
+.ticks li { position: relative; padding-left: 22px; }
+.ticks li::before { content: ""; position: absolute; left: 0; top: 7px; width: 10px; height: 10px; background: var(--lime); transform: skewX(-14deg); }
+.plain-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
+.connect-box { background: #fff; color: #011322; padding: 12px; margin: 12px 0; min-height: 60px; }
+.connect-box:empty { display: none; }
+.owed-ref { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+.owed-ref:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
+.owed-game { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 6px 0; }
+.owed-game .grow { flex: 1 1 220px; min-width: 0; }
+.owed-game input[type=number] { width: 90px; }
+.official-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip { display: inline-flex; gap: 6px; align-items: center; background: var(--navy-3); padding: 4px 10px; font-weight: 700; }
+.chip button { background: none; border: 0; color: var(--ink-muted); cursor: pointer; font: inherit; padding: 0 2px; }
+.chip button:hover { color: var(--danger); }

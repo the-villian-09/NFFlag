@@ -287,4 +287,87 @@ export const templates = {
       button: { label: "My account", url: d.dashboardUrl },
     });
   },
+
+  refereeSignupLeague(to: string, d: { name: string; adminUrl: string }): EmailMessage {
+    return message(to, "referee.application_league", `New referee sign-up: ${d.name}`, {
+      preheader: `${d.name} signed up to referee.`,
+      heading: "New referee sign-up",
+      paragraphs: [`${d.name} signed up to referee this season.`, "Record their background check and verify their certification, then approve or reject them."],
+      button: { label: "Review referees", url: d.adminUrl },
+    });
+  },
+
+  refereeDecision(to: string, d: { decision: "approved" | "rejected" | "revoked"; season: string; reason: string | null; url: string }): EmailMessage {
+    if (d.decision === "approved") {
+      return message(to, "referee.approved", "You're approved to referee", {
+        preheader: "Set up payouts and pick your games.",
+        heading: "You're approved to referee!",
+        paragraphs: [
+          `You're approved as a referee for ${d.season}. Thank you!`,
+          "Next: set up payouts on your referee page so we can pay you by direct deposit, then sign up for open games. The league may also assign you to games.",
+        ],
+        button: { label: "Open my referee page", url: d.url },
+      });
+    }
+    return message(to, `referee.${d.decision}`, d.decision === "revoked" ? "Your referee approval was removed" : "Update on your referee sign-up", {
+      preheader: "An update on your referee status.",
+      heading: d.decision === "revoked" ? "Referee approval removed" : "Referee sign-up not approved",
+      paragraphs: [
+        d.decision === "revoked"
+          ? "The league removed your approval to referee. You've been taken off your upcoming games. Pay for games you already worked will still be sent."
+          : "We weren't able to approve you to referee this season.",
+        ...(d.reason ? [`Reason: ${d.reason}`] : []),
+        "Reply to this email with any questions.",
+      ],
+      button: { label: "Open my referee page", url: d.url },
+    });
+  },
+
+  refereeAssigned(to: string, d: { matchup: string; when: string; where: string; division: string; pay: string; url: string }): EmailMessage {
+    return message(to, "referee.assigned", `You're refereeing: ${d.matchup}`, {
+      preheader: `${d.when} · ${d.where}`,
+      heading: "You've been assigned a game",
+      paragraphs: ["The league assigned you to referee this game."],
+      details: [
+        ["Game", d.matchup],
+        ["Division", d.division],
+        ["When", d.when],
+        ["Where", d.where],
+        ["Pay", d.pay],
+      ],
+      button: { label: "See my games", url: d.url },
+      footnote: "Can't make it? Contact the league as soon as possible so they can find a replacement.",
+    });
+  },
+
+  refereeUnassigned(to: string, d: { matchup: string; when: string; url: string }): EmailMessage {
+    return message(to, "referee.unassigned", `Removed from a game: ${d.matchup}`, {
+      preheader: `You're no longer refereeing ${d.matchup}.`,
+      heading: "Removed from a game",
+      paragraphs: [`The league took you off ${d.matchup} on ${d.when}. You don't need to be there.`],
+      button: { label: "See my games", url: d.url },
+    });
+  },
+
+  refereeGameChanged(to: string, d: { subject: string; body: string; url: string }): EmailMessage {
+    return message(to, "referee.game_changed", d.subject, {
+      preheader: d.subject,
+      heading: d.subject,
+      paragraphs: d.body.split("\n\n"),
+      button: { label: "See my games", url: d.url },
+    });
+  },
+
+  refereePaid(to: string, d: { amount: string; games: [string, string][]; url: string }): EmailMessage {
+    return message(to, "referee.paid", `You've been paid ${d.amount}`, {
+      preheader: `${d.amount} for ${d.games.length} game${d.games.length === 1 ? "" : "s"}.`,
+      heading: "Referee pay sent",
+      paragraphs: [
+        `We sent ${d.amount} to your payout account. It usually reaches your bank in about 2 business days.`,
+        "Need it sooner? Use Instant payout on your referee page; Stripe shows the fee before you confirm.",
+      ],
+      details: [...d.games, ["Total", d.amount]],
+      button: { label: "Open my referee page", url: d.url },
+    });
+  },
 };

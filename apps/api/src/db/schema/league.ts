@@ -83,6 +83,8 @@ export const divisions = pgTable(
     /** draft | open | full | closed */
     status: text("status").notNull().default("draft"),
     sortOrder: integer("sort_order").notNull().default(0),
+    /** What a referee is paid per game in this division, in cents (R5). */
+    refereeRateCents: integer("referee_rate_cents").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -508,6 +510,8 @@ export const games = pgTable(
     awayScore: integer("away_score"),
     /** Where to buy tickets for this game (shown as a "Buy tickets" button). */
     ticketUrl: text("ticket_url"),
+    /** How many referees this game needs (R5). */
+    refereeSlots: integer("referee_slots").notNull().default(2),
     notes: text("notes"),
     createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -642,5 +646,149 @@ export const withdrawalRequests = pgTable(
     uniqueIndex("withdrawal_one_open").on(t.registrationId).where(sql`${t.status} = 'open'`),
     index("withdrawal_status_idx").on(t.status, t.createdAt),
     check("withdrawal_status", sql`${t.status} in ('open','withdrawn','declined','completed')`),
+  ],
+);
+
+/* ---------------------------------------------------------------- R5 ---- */
+
+/**
+ * Referee sign-up for a season. Approval needs a cleared background check, a
+ * verified certification that hasn't expired, and the league's minimum age.
+ *
+ * submitted → approved | rejected; withdrawn; approved → revoked.
+ */
+export const refereeApplications = pgTable(
+  "referee_applications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seasonId: uuid("season_id")
+      .notNull()
+      .references(() => seasons.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    phone: text("phone").notNull(),
+    birthDate: date("birth_date").notNull(),
+    experience: text("experience"),
+    /** e.g. "NFL FLAG Official", "FHSAA" */
+    certification: text("certification").notNull(),
+    certificationExpiresOn: date("certification_expires_on"),
+    certificationVerifiedBy: text("certification_verified_by").references(() => user.id, { onDelete: "set null" }),
+    certificationVerifiedAt: timestamp("certification_verified_at", { withTimezone: true }),
+    /** submitted | approved | rejected | withdrawn | revoked */
+    status: text("status").notNull().default("submitted"),
+    /** not_started | pending | cleared | not_cleared */
+    screeningStatus: text("screening_status").notNull().default("not_started"),
+    screeningProvider: text("screening_provider"),
+    screeningCompletedOn: date("screening_completed_on"),
+    screeningExpiresOn: date("screening_expires_on"),
+    screeningNotes: text("screening_notes"),
+    screeningUpdatedBy: text("screening_updated_by").references(() => user.id, { onDelete: "set null" }),
+    screeningUpdatedAt: timestamp("screening_updated_at", { withTimezone: true }),
+    decisionReason: text("decision_reason"),
+    decidedBy: text("decided_by").references(() => user.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("ref_app_season_status_idx").on(t.seasonId, t.status),
+    uniqueIndex("ref_app_one_active").on(t.seasonId, t.userId).where(sql`${t.status} in ('submitted','approved')`),
+    check("ref_app_status", sql`${t.status} in ('submitted','approved','rejected','withdrawn','revoked')`),
+  ],
+);
+
+/**
+ * A referee's Stripe connected account (Express-style, managed through
+ * embedded components on our site). Stripe holds their tax ID and bank
+ * details; we keep only the account id and its status.
+ */
+export const refereeAccounts = pgTable("referee_accounts", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  stripeAccountId: text("stripe_account_id").notNull().unique(),
+  /** test | live */
+  environment: text("environment").notNull(),
+  detailsSubmitted: boolean("details_submitted").notNull().default(false),
+  /** Stripe's "transfers" capability is active: we can send them money. */
+  transfersActive: boolean("transfers_active").notNull().default(false),
+  payoutsEnabled: boolean("payouts_enabled").notNull().default(false),
+  /** Number of items Stripe still needs from them. */
+  requirementsDue: integer("requirements_due").notNull().default(0),
+  disabledReason: text("disabled_reason"),
+  checkedAt: timestamp("checked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * One payout to one referee: the money for a set of games, sent as a Stripe
+ * transfer into their connected account (their bank gets it on Stripe's
+ * payout schedule, or right away with an instant payout they start).
+ *
+ * pending (not sent yet: account not ready, or outcome being confirmed) → paid | failed (Stripe refused; retry)
+ * → void (cancelled by an admin; its games are owed again).
+ */
+export const refereePayouts = pgTable(
+  "referee_payouts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id),
+    amountCents: integer("amount_cents").notNull(),
+    /** pending | paid | failed | void */
+    status: text("status").notNull().default("pending"),
+    environment: text("environment").notNull(),
+    stripeTransferId: text("stripe_transfer_id").unique(),
+    /** Same key on every attempt, so a retry can never send the money twice. */
+    idempotencyKey: text("idempotency_key").notNull(),
+    lastError: text("last_error"),
+    attempts: integer("attempts").notNull().default(0),
+    approvedBy: text("approved_by").references(() => user.id, { onDelete: "set null" }),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("ref_payouts_user_idx").on(t.userId, t.createdAt),
+    index("ref_payouts_status_idx").on(t.status),
+    check("ref_payouts_status", sql`${t.status} in ('pending','paid','failed','void')`),
+    check("ref_payouts_amount", sql`${t.amountCents} > 0`),
+  ],
+);
+
+/**
+ * A referee on a game: assigned by an admin or claimed by the referee.
+ * assigned → worked (paid through a payout) | no_show; removed.
+ */
+export const gameOfficials = pgTable(
+  "game_officials",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id),
+    /** assigned | worked | no_show | removed */
+    status: text("status").notNull().default("assigned"),
+    /** assigned (by an admin) | claimed (by the referee) */
+    source: text("source").notNull().default("assigned"),
+    /** Pay for this game; starts at the division's rate. */
+    rateCents: integer("rate_cents").notNull(),
+    payoutId: uuid("payout_id").references(() => refereePayouts.id),
+    assignedBy: text("assigned_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("game_officials_one").on(t.gameId, t.userId).where(sql`${t.status} <> 'removed'`),
+    index("game_officials_user_idx").on(t.userId),
+    index("game_officials_payout_idx").on(t.payoutId),
+    check("game_officials_status", sql`${t.status} in ('assigned','worked','no_show','removed')`),
+    check("game_officials_rate", sql`${t.rateCents} >= 0`),
   ],
 );

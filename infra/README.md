@@ -203,6 +203,19 @@ Refunds always go back through the provider that took the payment.
 
 Test cards: `4242 4242 4242 4242` (succeeds), `4000 0025 0000 3155` (asks for the bank check), `4000 0000 0000 9995` (declined).
 
+### Referee pay (Stripe Connect)
+
+Referees get a Stripe connected account through embedded components on `/referees` (Stripe holds their tax ID and bank details).
+The league approves pay in Admin → Referees → Pay referees; each payment is a Stripe transfer from the league's balance.
+
+1. Stripe dashboard → **Connect** must be on (done for the test sandbox). No extra webhook is needed; the site re-checks referee accounts itself.
+2. **Instant payouts:** Stripe charges the platform (the league) for them. To pass the fee to referees, set it in Stripe dashboard →
+   Connect → **Platform pricing** → Instant Payouts (e.g. 1%). Otherwise the league pays it.
+3. **Funding:** transfers use the available balance. Registration payments become available after about 2 business days; Admin →
+   Referees → Pay referees → **Add funds** pulls from the league's verified bank account. In test mode, card `4000 0000 0000 0077` is
+   available immediately.
+4. **1099s:** Stripe dashboard → Connect → Tax forms (live mode). The pay page also has a yearly CSV for the accountant.
+
 ## 9. Backups and restore drill (required before Dec 1)
 
 Automated daily backups and point-in-time recovery are on (section 2). Rehearse a restore into a

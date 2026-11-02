@@ -17,6 +17,7 @@ interface Division {
   eligibilityNotes: string | null;
   capacity: number;
   priceCents: number;
+  refereeRateCents: number;
   status: "draft" | "open" | "full" | "closed";
   sortOrder: number;
   taken: number;
@@ -299,6 +300,7 @@ function DivisionForm({ seasonId, division, onDone, onCancel }: { seasonId: stri
       eligibilityNotes: String(f.get("eligibilityNotes") ?? ""),
       capacity: Number(f.get("capacity")),
       priceCents: Math.round(Number(f.get("price")) * 100),
+      refereeRateCents: Math.round(Number(f.get("refereeRate") || 0) * 100),
       status: String(f.get("status")),
       sortOrder: Number(f.get("sortOrder") || 0),
     };
@@ -350,6 +352,10 @@ function DivisionForm({ seasonId, division, onDone, onCancel }: { seasonId: stri
         <label>
           Price ($)
           <input type="number" name="price" required min={0} step="0.01" defaultValue={division ? (division.priceCents / 100).toFixed(2) : "100.00"} />
+        </label>
+        <label>
+          Referee pay per game ($)
+          <input type="number" name="refereeRate" min={0} step="0.01" defaultValue={division ? ((division.refereeRateCents ?? 0) / 100).toFixed(2) : "0.00"} />
         </label>
       </div>
       <div className="form-row">

@@ -13,6 +13,7 @@ import { expireHolds, reconcileProcessing } from "./modules/registration/service
 import { processWaitlist } from "./modules/registration/waitlist.js";
 import { reconcileApplications } from "./modules/staff/service.js";
 import { refreshConnection } from "./modules/square/client.js";
+import { processRefereePayouts } from "./modules/referees/service.js";
 import { db } from "./db/client.js";
 import { squareConnection } from "./db/schema/index.js";
 import { eq } from "drizzle-orm";
@@ -44,6 +45,10 @@ async function housekeeping() {
   await step("waitlist", async () => {
     const wl = await processWaitlist();
     if (wl.offered || wl.expired) logger.info(wl, "waitlist offers sent / expired");
+  });
+  await step("referee pay", async () => {
+    const n = await processRefereePayouts();
+    if (n) logger.info({ sent: n }, "sent referee payouts that were waiting");
   });
   await step("square token", async () => {
     const [conn] = await db

@@ -135,6 +135,12 @@ export const DOMAIN_EVENTS = [
   "roster.published",
   "roster.notify",
   "announcement.sent",
+  "referee.application_submitted",
+  "referee.application_decided",
+  "referee.assigned",
+  "referee.unassigned",
+  "referee.paid",
+  "referee.game_changed",
   "square.disconnected",
 ] as const;
 export type DomainEventName = (typeof DOMAIN_EVENTS)[number];

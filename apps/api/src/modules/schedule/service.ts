@@ -6,6 +6,7 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, or, sql } from "drizzle-or
 import { randomUUID } from "node:crypto";
 import { db, type DbOrTx } from "../../db/client.js";
 import {
+  gameOfficials,
   announcements,
   divisions,
   drafts,
@@ -25,6 +26,7 @@ import { parseCsv } from "../../lib/csv.js";
 import { leagueLabel, leagueLocalToUtc, utcToLeagueLocal } from "../../lib/league-time.js";
 import { writeAudit } from "../platform/audit.js";
 import { publish } from "../platform/outbox.js";
+import { getRefereeSettings } from "../referees/service.js";
 
 export interface Actor {
   userId: string;
@@ -75,6 +77,7 @@ export interface GameInput {
 
 export async function createGame(actor: Actor, input: GameInput) {
   const startsAt = when(input.startsAt);
+  const { defaultSlots } = await getRefereeSettings();
   return db.transaction(async (tx) => {
     const seasonId = await teamsInDivision(tx, input.divisionId, input.homeTeamId, input.awayTeamId);
     const [g] = await tx
@@ -88,6 +91,7 @@ export async function createGame(actor: Actor, input: GameInput) {
         location: input.location,
         notes: input.notes || null,
         ticketUrl: input.ticketUrl || null,
+        refereeSlots: defaultSlots,
         createdBy: actor.userId,
       })
       .returning();
@@ -152,6 +156,18 @@ async function notifyGameChange(actor: Actor, before: typeof games.$inferSelect,
   for (const teamId of teamIds) {
     await sendAnnouncement(actor, { audience: "team", teamId, subject, body: lines.join("\n\n") }, { skipRateLimit: true });
   }
+  // The game's referees get the same news.
+  const officials = await db
+    .select({ id: gameOfficials.id })
+    .from(gameOfficials)
+    .where(and(eq(gameOfficials.gameId, g.id), inArray(gameOfficials.status, ["assigned"])));
+  if (officials.length) {
+    await db.transaction(async (tx) => {
+      for (const o of officials) {
+        await publish(tx, { name: "referee.game_changed", aggregateType: "game_official", aggregateId: o.id, payload: { subject, body: lines.join("\n\n") } });
+      }
+    });
+  }
 }
 
 export async function recordScore(actor: Actor, id: string, homeScore: number, awayScore: number) {
@@ -177,6 +193,18 @@ export async function clearScore(actor: Actor, id: string) {
 
 export async function deleteGame(actor: Actor, id: string) {
   await db.transaction(async (tx) => {
+    const [g] = await tx.select({ status: games.status, startsAt: games.startsAt }).from(games).where(eq(games.id, id)).for("update");
+    const officials = await tx
+      .select({ id: gameOfficials.id, paid: gameOfficials.payoutId, status: gameOfficials.status })
+      .from(gameOfficials)
+      .where(eq(gameOfficials.gameId, id))
+      .for("update");
+    if (officials.some((o) => o.paid)) throw new HttpError(409, "CONFLICT", "Referees were paid for this game, so it can't be deleted. Mark it cancelled instead.");
+    // A game already played with referees on it: they're owed, so keep the record.
+    if (g && (g.status === "final" || g.startsAt <= new Date()) && officials.some((o) => o.status !== "removed")) {
+      throw new HttpError(409, "CONFLICT", "Referees worked this game and are owed pay, so it can't be deleted. Mark it cancelled instead, or remove the referees first.");
+    }
+    if (officials.length) await tx.delete(gameOfficials).where(eq(gameOfficials.gameId, id));
     const [before] = await tx.delete(games).where(eq(games.id, id)).returning();
     if (!before) throw new HttpError(404, "NOT_FOUND", "Game not found.");
     await writeAudit(tx, { actorUserId: actor.userId, action: "game.delete", targetType: "game", targetId: id, before, requestId: actor.requestId, ipAddress: actor.ip });
@@ -356,8 +384,9 @@ export async function importGames(actor: Actor, seasonId: string, csv: string, d
   const toAdd = rows.filter((r) => r.values);
   let added = 0;
   if (!dryRun && errors === 0 && toAdd.length) {
+    const { defaultSlots } = await getRefereeSettings();
     await db.transaction(async (tx) => {
-      await tx.insert(games).values(toAdd.map((r) => r.values!));
+      await tx.insert(games).values(toAdd.map((r) => ({ ...r.values!, refereeSlots: defaultSlots })));
       await writeAudit(tx, {
         actorUserId: actor.userId,
         action: "game.import",

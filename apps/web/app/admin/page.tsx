@@ -109,6 +109,19 @@ export default function AdminPage() {
             </Link>
           </div>
         )}
+        {me.permissions.includes("referees.manage") && (
+          <div className="card">
+            <h2>Referees</h2>
+            <p className="muted">
+              Referee sign-ups and approvals, game assignments, and pay through
+              Stripe.
+            </p>
+            <OffNote flags={flags} k="r5.referees" what="Referee pages" />
+            <Link className="btn small" href="/admin/referees">
+              Referees
+            </Link>
+          </div>
+        )}
         {me.permissions.includes("platform.admins.manage") && (
           <div className="card">
             <h2>Admins</h2>
