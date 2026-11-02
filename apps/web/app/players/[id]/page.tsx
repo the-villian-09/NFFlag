@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PlayerDocuments } from "@/components/doc-upload";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
@@ -49,10 +50,35 @@ export default function EditPlayerPage() {
       <h1>Edit player</h1>
       <ErrorAlert error={loadError} />
       {initial ? (
-        <PlayerForm initial={initial} onSubmit={onSubmit} busy={busy} error={error} submitLabel="Save changes" lockIdentity={locked} />
+        <>
+          <PlayerForm initial={initial} onSubmit={onSubmit} busy={busy} error={error} submitLabel="Save changes" lockIdentity={locked} />
+          <PlayerDocsCard playerId={id} />
+        </>
       ) : (
         !loadError && <p className="muted">Loading…</p>
       )}
     </main>
+  );
+}
+
+/** The child's documents, shown while uploads are switched on. */
+function PlayerDocsCard({ playerId }: { playerId: string }) {
+  const [on, setOn] = useState<boolean | null>(null);
+  useEffect(() => {
+    api
+      .get<{ required: boolean }>(`/players/${playerId}/documents`)
+      .then((r) => setOn(r.required))
+      .catch(() => setOn(false));
+  }, [playerId]);
+  if (!on) return null;
+  return (
+    <section className="card" style={{ marginTop: 24 }}>
+      <h2>Documents</h2>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Birth certificate, medical insurance card and headshot. Once the league accepts a registration, only the insurance card can be
+        changed here; contact the league for anything else.
+      </p>
+      <PlayerDocuments playerId={playerId} />
+    </section>
   );
 }

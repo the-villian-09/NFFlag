@@ -6,7 +6,7 @@ import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { env } from "../src/config.js";
 import { db } from "../src/db/client.js";
-import { auditLogs, documents, featureFlags, rosterEntries, seasons, teams, user, userRoleAssignments } from "../src/db/schema/index.js";
+import { auditLogs, documents, featureFlags, registrations, rosterEntries, seasons, teams, user, userRoleAssignments } from "../src/db/schema/index.js";
 import { resetFlagCache } from "../src/modules/platform/flags.js";
 import { agent, signUp, uniqueEmail, type Agent } from "./helpers.js";
 
@@ -175,6 +175,35 @@ describe("children's documents", () => {
       ["insurance_card", false],
       ["player_photo", true],
     ]);
+  });
+});
+
+describe("after the league accepts the registration", () => {
+  it("the family can only change the insurance card; admins can change anything", async () => {
+    const f = await family("Locked");
+    // Uploaded ahead of time, from Add a player, before registering.
+    await put(f.a, `/players/${f.playerId}/documents/birth_certificate`, pdf, "application/pdf");
+    await put(f.a, `/players/${f.playerId}/documents/insurance_card`, pdf, "application/pdf");
+    await put(f.a, `/players/${f.playerId}/documents/player_photo`, await phonePhoto(), "image/jpeg");
+    const r = await f.a.post("/api/v1/registrations").send({ playerId: f.playerId, divisionId, ...accept });
+    expect((await f.a.post(`/api/v1/registrations/${r.body.registration.id}/pay`).send({ expectedTotalCents: 0 })).status).toBe(200);
+    // Before approval everything can still be replaced.
+    expect((await put(f.a, `/players/${f.playerId}/documents/player_photo`, await phonePhoto(), "image/jpeg")).status).toBe(200);
+
+    await db.update(registrations).set({ status: "approved" }).where(eq(registrations.id, r.body.registration.id));
+    const items = (await f.a.get(`/api/v1/players/${f.playerId}/documents`)).body.items as { kind: string; locked: boolean }[];
+    expect(Object.fromEntries(items.map((i) => [i.kind, i.locked]))).toEqual({ birth_certificate: true, insurance_card: false, player_photo: true });
+    const bc = await put(f.a, `/players/${f.playerId}/documents/birth_certificate`, pdf, "application/pdf");
+    expect(bc.status).toBe(409);
+    expect(bc.body.error.message).toMatch(/can only be changed by the league/);
+    expect((await put(f.a, `/players/${f.playerId}/documents/player_photo`, await phonePhoto(), "image/jpeg")).status).toBe(409);
+    expect((await put(f.a, `/players/${f.playerId}/documents/insurance_card`, await phonePhoto(), "image/jpeg")).status).toBe(200);
+
+    const byAdmin = await put(admin, `/admin/league/registrations/${r.body.registration.id}/documents/birth_certificate`, pdf, "application/pdf");
+    expect(byAdmin.status).toBe(200);
+    const [row] = await db.select().from(documents).where(eq(documents.id, byAdmin.body.document.id));
+    expect(row).toMatchObject({ playerId: f.playerId, seasonId: null, uploadedBy: adminId });
+    expect((await put(f.a, `/admin/league/registrations/${r.body.registration.id}/documents/player_photo`, await phonePhoto(), "image/jpeg")).status).toBe(403);
   });
 });
 

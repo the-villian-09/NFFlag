@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AdminReplace } from "@/components/doc-upload";
 import { useParams, useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
@@ -76,6 +77,7 @@ export default function AdminRegistrationPage() {
 
   if (loading || !me) return <main className="page muted">Loading…</main>;
   const can = (p: string) => me.permissions.includes(p);
+  const canManageDocs = can("registrations.manage") && can("documents.read");
   const paid = d?.payments.find((p) => p.status === "COMPLETED" || p.status === "APPROVED");
   const refundable = paid ? paid.amountCents - paid.refundedCents : 0;
 
@@ -208,16 +210,27 @@ export default function AdminRegistrationPage() {
                             <a href={x.document.url} target="_blank" rel="noreferrer">
                               Open
                             </a>
-                            <span className="muted"> · uploaded {fmtDate(x.document.uploadedAt)}</span>
+                            <span className="muted"> · uploaded {fmtDate(x.document.uploadedAt)} · </span>
                           </>
                         ) : (
                           <span className="status warn">Missing</span>
+                        )}{" "}
+                        {canManageDocs && (
+                          <AdminReplace
+                            path={`/admin/league/registrations/${id}/documents/${x.kind}`}
+                            photoOnly={x.kind === "player_photo"}
+                            label={x.label}
+                            onUploaded={(doc) => setD((cur) => (cur ? { ...cur, documents: cur.documents?.map((y) => (y.kind === x.kind ? { ...y, document: doc } : y)) ?? null } : cur))}
+                          />
                         )}
                       </span>
                     </li>
                   ))}
                 </ul>
-                <p className="hint">Opening the birth certificate or insurance card is recorded in the audit log.</p>
+                <p className="hint">
+                  Opening the birth certificate or insurance card is recorded in the audit log. Once a registration is accepted, families
+                  can only change the insurance card; replace anything else here.
+                </p>
               </section>
             )}
           </div>

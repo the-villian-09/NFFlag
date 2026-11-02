@@ -9,8 +9,8 @@ import express, { Router, type Request } from "express";
 import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import { env } from "../../config.js";
-import { handler, requireAuth, requireMfa } from "../../http/context.js";
-import { familyDocuments, MAX_UPLOAD_BYTES, myPhoto, PLAYER_KINDS, readDocument, uploadMyPhoto, uploadPlayerDocument } from "./service.js";
+import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission } from "../../http/context.js";
+import { adminUploadPlayerDocument, familyDocuments, MAX_UPLOAD_BYTES, myPhoto, PLAYER_KINDS, readDocument, uploadMyPhoto, uploadPlayerDocument } from "./service.js";
 
 export const documentsRouter = Router();
 
@@ -42,6 +42,22 @@ documentsRouter.put(
   handler(async (req, res) => {
     const kind = z.enum(PLAYER_KINDS as [string, ...string[]]).parse(req.params.kind) as (typeof PLAYER_KINDS)[number];
     res.json({ document: await uploadPlayerDocument(req.ctx.auth!.user.id, z.uuid().parse(req.params.id), kind, body(req)) });
+  }),
+);
+
+/** Admins: replace a child's file from the registration page (works after the family is locked out). */
+documentsRouter.put(
+  "/admin/league/registrations/:id/documents/:kind",
+  requireAuth,
+  requireMfa,
+  adminIdleTimeout,
+  requirePermission("registrations.manage"),
+  requirePermission("documents.read"),
+  uploadLimiter,
+  raw,
+  handler(async (req, res) => {
+    const kind = z.enum(PLAYER_KINDS as [string, ...string[]]).parse(req.params.kind) as (typeof PLAYER_KINDS)[number];
+    res.json({ document: await adminUploadPlayerDocument(req.ctx.auth!.user.id, z.uuid().parse(req.params.id), kind, body(req)) });
   }),
 );
 

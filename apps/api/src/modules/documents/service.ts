@@ -13,7 +13,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { db } from "../../db/client.js";
-import { documents, householdMembers, players, rosterEntries, seasons, teams } from "../../db/schema/index.js";
+import { documents, householdMembers, players, registrations, rosterEntries, seasons, teams } from "../../db/schema/index.js";
 import { HttpError } from "../../http/errors.js";
 import { fileStore } from "../../lib/storage.js";
 import { logger } from "../../lib/logger.js";
@@ -166,14 +166,39 @@ const listOf = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, 
 
 const docView = (d: Doc | undefined) => (d ? { id: d.id, contentType: d.contentType, uploadedAt: d.createdAt, url: `/api/v1/documents/${d.id}/file` } : null);
 
-/** What a family sees for one child: each required file and whether it's in for the current season. */
+/**
+ * Files the family can no longer change themselves, once the league has
+ * accepted the child: the birth certificate (after any accepted registration)
+ * and that season's headshot. The insurance card can always be updated.
+ * Admins change locked files from the registration page.
+ */
+export async function lockedKinds(playerId: string, seasonId: string | null): Promise<Set<PlayerKind>> {
+  const approved = await db
+    .select({ seasonId: registrations.seasonId })
+    .from(registrations)
+    .where(and(eq(registrations.playerId, playerId), eq(registrations.status, "approved")));
+  const locked = new Set<PlayerKind>();
+  if (approved.length) locked.add("birth_certificate");
+  if (seasonId && approved.some((r) => r.seasonId === seasonId)) locked.add("player_photo");
+  return locked;
+}
+
+/** What a family sees for one child: each required file, whether it's in for the current season, and whether they can still change it. */
 export async function familyDocuments(userId: string, playerId: string) {
   await assertFamily(userId, playerId);
   const seasonId = await currentSeasonId();
   const docs = await playerDocs(playerId, seasonId);
+  const locked = await lockedKinds(playerId, seasonId);
   return {
     required: await documentsRequired(),
-    items: PLAYER_KINDS.map((k) => ({ kind: k, label: KIND_INFO[k].label, perSeason: KIND_INFO[k].perSeason, document: docView(docs[k]) })),
+    items: PLAYER_KINDS.map((k) => ({
+      kind: k,
+      label: KIND_INFO[k].label,
+      perSeason: KIND_INFO[k].perSeason,
+      // Locked only once there's something on file (a missing file can still be added).
+      locked: locked.has(k) && !!docs[k],
+      document: docView(docs[k]),
+    })),
   };
 }
 
@@ -181,7 +206,17 @@ export async function uploadPlayerDocument(userId: string, playerId: string, kin
   await assertFamily(userId, playerId);
   const seasonId = KIND_INFO[kind].perSeason ? await currentSeasonId() : null;
   if (KIND_INFO[kind].perSeason && !seasonId) throw new HttpError(409, "CONFLICT", "Uploads open when the season is set up.");
+  if ((await lockedKinds(playerId, seasonId)).has(kind) && (await playerDocs(playerId, seasonId))[kind]) {
+    throw new HttpError(409, "CONFLICT", `The league has accepted this registration, so the ${KIND_INFO[kind].label.toLowerCase()} can only be changed by the league. Contact the league to update it.`);
+  }
   return docView(await saveDocument({ playerId }, kind, seasonId, buf, userId));
+}
+
+/** Admins can replace any of a child's files, for the registration's season. */
+export async function adminUploadPlayerDocument(actorUserId: string, registrationId: string, kind: PlayerKind, buf: Buffer) {
+  const [r] = await db.select({ playerId: registrations.playerId, seasonId: registrations.seasonId }).from(registrations).where(eq(registrations.id, registrationId));
+  if (!r) throw new HttpError(404, "NOT_FOUND", "Registration not found.");
+  return docView(await saveDocument({ playerId: r.playerId }, kind, KIND_INFO[kind].perSeason ? r.seasonId : null, buf, actorUserId));
 }
 
 /* ---------------- staff and referee headshots ---------------- */

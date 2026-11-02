@@ -18,6 +18,8 @@ interface PlayerDocItem {
   kind: "birth_certificate" | "insurance_card" | "player_photo";
   label: string;
   perSeason: boolean;
+  /** Accepted by the league: only an admin can change it now. */
+  locked?: boolean;
   document: DocView | null;
 }
 
@@ -68,6 +70,7 @@ export function DocUpload({
   current,
   path,
   photoOnly,
+  locked,
   onUploaded,
 }: {
   kind: string;
@@ -75,6 +78,7 @@ export function DocUpload({
   current: DocView | null;
   path: string;
   photoOnly: boolean;
+  locked?: boolean;
   onUploaded: (d: DocView) => void;
 }) {
   const id = useId();
@@ -108,7 +112,7 @@ export function DocUpload({
       </div>
       <div className="doc-body">
         <strong>
-          {label} {current && <span className="status ok">Uploaded</span>}
+          {label} {current && <span className="status ok">{locked ? "Accepted" : "Uploaded"}</span>}
         </strong>
         <span className="hint">{HINT[kind]}</span>
         {error && (
@@ -116,7 +120,10 @@ export function DocUpload({
             {error}
           </span>
         )}
+        {locked && <span className="hint">The league has accepted this registration. To change this file, contact the league.</span>}
         <span className="doc-actions">
+          {!locked && (
+            <>
           <input
             id={id}
             type="file"
@@ -128,6 +135,8 @@ export function DocUpload({
           <label htmlFor={id} className={`btn small${current ? " ghost" : ""}`} aria-disabled={busy}>
             {busy ? "Uploading…" : current ? "Replace" : photoOnly ? "Add photo" : "Add photo or PDF"}
           </label>
+            </>
+          )}
           {current && (
             <a href={current.url} target="_blank" rel="noreferrer" className="link-small">
               View
@@ -140,8 +149,9 @@ export function DocUpload({
 }
 
 /** A child's three required files. `onChange(complete)` reports whether all are in. */
-export function PlayerDocuments({ playerId, onChange }: { playerId: string; onChange?: (complete: boolean) => void }) {
+export function PlayerDocuments({ playerId, onChange, onlyWhenRequired }: { playerId: string; onChange?: (complete: boolean) => void; onlyWhenRequired?: boolean }) {
   const [items, setItems] = useState<PlayerDocItem[] | null>(null);
+  const [required, setRequired] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -150,7 +160,10 @@ export function PlayerDocuments({ playerId, onChange }: { playerId: string; onCh
         if (!r.ok) throw new Error("Couldn't load this child's documents.");
         return r.json();
       })
-      .then((d: { items: PlayerDocItem[] }) => setItems(d.items))
+      .then((d: { items: PlayerDocItem[]; required: boolean }) => {
+        setItems(d.items);
+        setRequired(d.required);
+      })
       .catch((err: Error) => setError(err.message));
   }, [playerId]);
   useEffect(load, [load]);
@@ -161,6 +174,7 @@ export function PlayerDocuments({ playerId, onChange }: { playerId: string; onCh
 
   if (error) return <div className="alert error">{error}</div>;
   if (!items) return <p className="muted">Loading…</p>;
+  if (onlyWhenRequired && !required) return null;
   return (
     <div className="doc-list">
       {items.map((i) => (
@@ -171,6 +185,7 @@ export function PlayerDocuments({ playerId, onChange }: { playerId: string; onCh
           current={i.document}
           path={`/players/${playerId}/documents/${i.kind}`}
           photoOnly={i.kind === "player_photo"}
+          locked={i.locked}
           onUploaded={(d) => setItems((list) => list?.map((x) => (x.kind === i.kind ? { ...x, document: d } : x)) ?? null)}
         />
       ))}
@@ -201,5 +216,37 @@ export function MyPhoto({ onChange }: { onChange?: (state: { required: boolean; 
       photoOnly
       onUploaded={(d) => setState({ required: true, document: d })}
     />
+  );
+}
+
+/** Admins: replace a file (e.g. after the family is locked out). Reports the new file. */
+export function AdminReplace({ path, photoOnly, label, onUploaded }: { path: string; photoOnly: boolean; label: string; onUploaded: (d: DocView) => void }) {
+  const id = useId();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(null);
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    if (isPdf && photoOnly) return setError("This needs to be a photo, not a PDF.");
+    setBusy(true);
+    try {
+      onUploaded(await upload(path, isPdf ? file : await shrink(file, photoOnly ? 1600 : 2400)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The upload didn't work.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <span className="doc-actions">
+      <input id={id} type="file" className="sr-only" accept={photoOnly ? "image/*" : "image/*,application/pdf"} disabled={busy} onChange={pick} />
+      <label htmlFor={id} className="link-btn" aria-disabled={busy} aria-label={`Replace ${label}`}>
+        {busy ? "Uploading…" : "Replace"}
+      </label>
+      {error && <span className="doc-error">{error}</span>}
+    </span>
   );
 }
