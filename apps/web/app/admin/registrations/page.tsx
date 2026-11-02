@@ -55,12 +55,19 @@ function RegistrationsList() {
   const [seasonId, setSeasonId] = useState("");
   const [divisionId, setDivisionId] = useState("");
   // ?show=withdrawal opens straight to withdrawal requests (link from the admin home).
-  const [status, setStatus] = useState(params.get("show") === "withdrawal" ? "withdrawal" : "paid");
+  const ALL = "paid,approved,rejected,processing,pending_payment";
+  // ?q= (from the admin search) shows every active registration matching the name.
+  const [status, setStatus] = useState(params.get("show") === "withdrawal" ? "withdrawal" : params.get("q") ? ALL : "paid");
   // Arriving again from a link (e.g. the admin home) switches the filter.
   useEffect(() => {
     if (params.get("show") === "withdrawal") setStatus("withdrawal");
+    const fromSearch = params.get("q");
+    if (fromSearch) {
+      setQ(fromSearch);
+      setStatus(ALL);
+    }
   }, [params]);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(params.get("q") ?? "");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ items: Row[]; total: number; pageSize: number } | null>(null);
   const [error, setError] = useState<string | null>(null);

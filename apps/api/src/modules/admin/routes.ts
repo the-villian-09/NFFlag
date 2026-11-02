@@ -46,8 +46,17 @@ adminRouter.get(
       q.targetId ? eq(auditLogs.targetId, q.targetId) : undefined,
       q.before ? lt(auditLogs.createdAt, new Date(q.before)) : undefined,
     );
-    const rows = await db.select().from(auditLogs).where(where).orderBy(desc(auditLogs.createdAt)).limit(q.limit);
-    res.json({ items: rows, nextCursor: rows.length === q.limit ? rows.at(-1)!.createdAt.toISOString() : null });
+    const rows = await db
+      .select({ a: auditLogs, actorName: user.name, actorEmail: user.email })
+      .from(auditLogs)
+      .leftJoin(user, eq(user.id, auditLogs.actorUserId))
+      .where(where)
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(q.limit);
+    res.json({
+      items: rows.map((r) => ({ ...r.a, actorName: r.actorName, actorEmail: r.actorEmail })),
+      nextCursor: rows.length === q.limit ? rows.at(-1)!.a.createdAt.toISOString() : null,
+    });
   }),
 );
 

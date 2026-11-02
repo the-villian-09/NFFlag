@@ -24,6 +24,7 @@ import { adminTeamsRouter, myTeamsRouter } from "./modules/teams/routes.js";
 import { adminScheduleRouter, scheduleRouter } from "./modules/schedule/routes.js";
 import { adminPromoRouter } from "./modules/promo/routes.js";
 import { adminRefereeRouter, refereeRouter } from "./modules/referees/routes.js";
+import { adminPortalRouter } from "./modules/admin/portal.js";
 
 export function createApp() {
   const app = express();
@@ -74,6 +75,7 @@ export function createApp() {
   app.use("/api/v1/admin/league", adminLeagueRouter);
   app.use("/api/v1/admin/payments", adminPaymentsRouter);
   app.use("/api/v1/admin", adminRouter);
+  app.use("/api/v1/admin", adminPortalRouter);
 
   app.use((_req, _res, next) => next(new HttpError(404, "NOT_FOUND", "Not found.")));
   app.use(errorHandler);

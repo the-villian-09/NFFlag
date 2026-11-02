@@ -420,3 +420,61 @@ input:disabled, select:disabled, textarea:disabled { background: #1a2633; color:
 .chip { display: inline-flex; gap: 6px; align-items: center; background: var(--navy-3); padding: 4px 10px; font-weight: 700; }
 .chip button { background: none; border: 0; color: var(--ink-muted); cursor: pointer; font: inherit; padding: 0 2px; }
 .chip button:hover { color: var(--danger); }
+
+/* ---------- Admin portal: needs attention, grouped tiles, side menu, search ---------- */
+.portal-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px 24px; flex-wrap: wrap; margin-bottom: 24px; }
+.portal-head h1 { font-size: 56px; color: #fff; margin: 0; }
+.admin-search { position: relative; flex: 0 1 380px; min-width: 0; }
+.admin-search input { width: 100%; }
+.admin-search-results { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; list-style: none; margin: 0; padding: 6px 0; background: var(--navy-2); border: 2px solid var(--line); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); max-height: 420px; overflow-y: auto; }
+.admin-search-results li { display: flex; gap: 12px; align-items: center; padding: 8px 12px; cursor: pointer; }
+.admin-search-results li.on { background: var(--navy-3); }
+.admin-search-results li.empty { color: var(--ink-muted); cursor: default; }
+.admin-search-results .type { flex: none; width: 64px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--lime); }
+.admin-search-results .what { display: grid; min-width: 0; }
+.admin-search-results .what span { color: var(--ink-muted); font-size: 15px; }
+
+.attention { background: var(--navy-2); border-top: 4px solid var(--gold); padding: 18px 22px; margin-bottom: 28px; }
+.attention h2 { color: var(--gold); font-size: 28px; margin: 0 0 12px; }
+.attention ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 10px; }
+.attention a { display: flex; gap: 12px; align-items: center; background: var(--navy); padding: 10px 12px; color: var(--ink); text-decoration: none; font-weight: 700; height: 100%; }
+.attention a:hover { outline: 2px solid var(--lime); }
+.attention .go { margin-left: auto; color: var(--lime); }
+.attention-n { flex: none; white-space: nowrap; font-family: var(--font-display); font-weight: 700; font-size: 30px; line-height: 1; min-width: 38px; text-align: center; padding: 4px 6px 0; background: var(--gold); color: var(--navy); }
+.attention-n.bad { background: var(--danger); }
+.all-clear { margin: 0 0 24px; }
+
+.portal-group { margin-bottom: 26px; }
+.portal-group h3 { font-family: var(--font-display); font-weight: 600; font-size: 22px; letter-spacing: 0.08em; color: var(--ink-muted); text-transform: uppercase; margin: 0 0 10px; display: flex; gap: 10px; align-items: center; }
+.portal-group h3::after { content: ""; flex: 1; height: 2px; background: var(--line); }
+.portal-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 12px; }
+.portal-tile { display: block; position: relative; background: var(--navy-2); border-left: 4px solid var(--lime); padding: 14px 16px; color: var(--ink); text-decoration: none; }
+.portal-tile:hover { background: var(--navy-3); color: var(--ink); }
+.portal-tile strong { display: block; font-family: var(--font-display); font-weight: 700; font-size: 26px; line-height: 1; text-transform: uppercase; padding-right: 56px; }
+.portal-tile > span:not(.admin-badge):not(.tile-off) { color: var(--ink-muted); font-size: 15px; }
+.portal-tile .admin-badge, .portal-tile .tile-off { position: absolute; right: 12px; top: 12px; }
+.admin-badge { font-family: var(--font-display); font-weight: 700; font-size: 20px; line-height: 1; background: var(--gold); color: var(--navy); padding: 3px 7px 0; white-space: nowrap; }
+.admin-badge.bad { background: var(--danger); }
+.tile-off { font-size: 12px; font-weight: 800; letter-spacing: 0.06em; background: #3a2f00; color: var(--gold); padding: 2px 6px; text-transform: uppercase; }
+
+.admin-shell { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 32px; max-width: 1248px; margin: 0 auto; padding: 40px 24px 72px; }
+.admin-shell main.page { max-width: none; margin: 0; padding: 0; }
+.admin-side { position: sticky; top: 12px; align-self: start; max-height: calc(100vh - 24px); overflow-y: auto; background: var(--navy-2); padding: 14px 0; }
+.admin-nav-home { display: block; font-family: var(--font-display); font-weight: 700; font-size: 22px; text-transform: uppercase; color: var(--ink); text-decoration: none; padding: 0 18px 10px; border-bottom: 2px solid var(--line); margin-bottom: 6px; }
+.admin-side h4, .admin-menu-panel h4 { font-family: var(--font-display); font-weight: 600; font-size: 17px; letter-spacing: 0.1em; color: var(--ink-muted); margin: 12px 18px 4px; text-transform: uppercase; }
+.admin-nav-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 18px; color: var(--ink); text-decoration: none; font-weight: 700; border-left: 4px solid transparent; }
+.admin-nav-item:hover { background: var(--navy-3); color: var(--ink); }
+.admin-nav-item.on { border-left-color: var(--lime); background: var(--navy-3); color: var(--lime); }
+.admin-nav-item .admin-badge { font-size: 17px; padding: 2px 6px 0; }
+.admin-menubar, .admin-menu-panel { display: none; }
+@media (max-width: 900px) {
+  .admin-shell { grid-template-columns: 1fr; gap: 0; padding: 16px 16px 56px; }
+  .admin-side { display: none; }
+  .admin-menubar { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: var(--navy-2); padding: 10px 14px; margin-bottom: 16px; font-weight: 800; }
+  .admin-menubar button { background: none; border: 0; color: var(--lime); font-family: var(--font-display); font-weight: 700; font-size: 22px; cursor: pointer; padding: 0; }
+  .admin-menu-panel { display: block; background: var(--navy-2); padding: 8px 0 12px; margin: -12px 0 16px; }
+}
+@media (max-width: 600px) {
+  .portal-head h1 { font-size: 40px; }
+  .admin-search { flex-basis: 100%; }
+}

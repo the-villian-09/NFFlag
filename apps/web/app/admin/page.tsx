@@ -3,31 +3,19 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ErrorAlert, useAction } from "@/components/form";
-import { api, ApiError } from "@/lib/api";
+import { AdminSearch } from "@/components/admin-search";
+import { useAttention } from "@/components/admin-shell";
+import { api } from "@/lib/api";
+import { attentionFigure, badgeFor, visibleGroups } from "@/lib/admin-nav";
 import { isAdmin, useMe } from "@/lib/use-me";
 
-interface Flag {
-  key: string;
-  enabled: boolean;
-  description: string | null;
-}
-
-/** Admin portal home: links to each admin area the user has permission for, plus release switches. */
+/** Admin portal home: what needs attention, then every admin area grouped by what it's for. */
 export default function AdminPage() {
   const router = useRouter();
   const { me, loading } = useMe();
-  const [flags, setFlags] = useState<Flag[] | null>(null);
-  const { error, setError, run } = useAction();
-  const canFlags = me?.permissions.includes("platform.flags.manage");
-  const [withdrawals, setWithdrawals] = useState(0);
-  useEffect(() => {
-    if (!me?.permissions.includes("registrations.read")) return;
-    api
-      .get<{ open: number }>("/admin/league/withdrawals/count")
-      .then((r) => setWithdrawals(r.open))
-      .catch(() => setWithdrawals(0));
-  }, [me]);
+  const { items: attention } = useAttention();
+  const [off, setOff] = useState<Set<string>>(new Set());
+  const [season, setSeason] = useState<string | null>(null);
 
   useEffect(() => {
     if (!me) return;
@@ -35,235 +23,86 @@ export default function AdminPage() {
       router.replace("/dashboard");
       return;
     }
-    if (!canFlags) return;
+    // Release switches that are off (only people who can change them see the "Off" chips).
+    if (me.permissions.includes("platform.flags.manage")) {
+      api
+        .get<{ items: { key: string; enabled: boolean }[] }>("/admin/flags")
+        .then((r) => setOff(new Set(r.items.filter((f) => !f.enabled).map((f) => f.key))))
+        .catch(() => undefined);
+    }
     api
-      .get<{ items: Flag[] }>("/admin/flags")
-      .then((r) => setFlags(r.items))
-      .catch((err) => {
-        if (err instanceof ApiError && err.code === "SESSION_IDLE")
-          router.replace("/sign-in");
-        else setError(err.message);
-      });
-  }, [me, canFlags, router, setError]);
-
-  async function toggle(flag: Flag) {
-    const res = await run(() =>
-      api.put<{ flag: Flag }>(`/admin/flags/${flag.key}`, {
-        enabled: !flag.enabled,
-      }),
-    );
-    if (res)
-      setFlags(
-        (list) => list?.map((f) => (f.key === flag.key ? res.flag : f)) ?? null,
-      );
-  }
+      .get<{ items: { name: string; isCurrent: string | null }[] }>("/admin/league/seasons")
+      .then((r) => setSeason(r.items.find((s) => s.isCurrent)?.name ?? null))
+      .catch(() => undefined);
+  }, [me, router]);
 
   if (loading || !me) return <main className="page muted">Loading…</main>;
+  const groups = visibleGroups(me.permissions);
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "America/New_York" });
 
   return (
     <main className="page">
       <p>
         <Link href="/dashboard">← My account</Link>
       </p>
-      <h1>Admin portal</h1>
-      <div className="grid">
-        {me.permissions.includes("registrations.read") && (
-          <div className="card">
-            <h2>Registrations</h2>
-            <p className="muted">
-              Review new registrations, approve or reject, refund, and download
-              a spreadsheet.
-            </p>
-            <Link className="btn small" href="/admin/registrations">
-              Open registrations
-            </Link>
-            {withdrawals > 0 && (
-              <p style={{ margin: "12px 0 0" }}>
-                <Link href="/admin/registrations?show=withdrawal">
-                  <span className="status warn">{withdrawals}</span> withdrawal request{withdrawals === 1 ? "" : "s"} waiting
-                </Link>
-              </p>
-            )}
-          </div>
-        )}
-        {me.permissions.includes("registrations.read") && (
-          <div className="card">
-            <h2>Waitlist</h2>
-            <p className="muted">
-              Families waiting for a spot in full divisions, and open offers.
-            </p>
-            <Link className="btn small" href="/admin/waitlist">
-              Open waitlist
-            </Link>
-          </div>
-        )}
-        {me.permissions.includes("staff.applications.review") && (
-          <div className="card">
-            <h2>Coaches & staff</h2>
-            <p className="muted">
-              Head coach, assistant coach and team mom applications, background
-              checks and approvals.
-            </p>
-            <Link className="btn small" href="/admin/staff">
-              Review applications
-            </Link>
-          </div>
-        )}
-        {me.permissions.includes("referees.manage") && (
-          <div className="card">
-            <h2>Referees</h2>
-            <p className="muted">
-              Referee sign-ups and approvals, game assignments, and pay through
-              Stripe.
-            </p>
-            <OffNote flags={flags} k="r5.referees" what="Referee pages" />
-            <Link className="btn small" href="/admin/referees">
-              Referees
-            </Link>
-          </div>
-        )}
-        {me.permissions.includes("platform.admins.manage") && (
-          <div className="card">
-            <h2>Admins</h2>
-            <p className="muted">
-              Add or remove people who help run the league. Only you can change
-              payments setup.
-            </p>
-            <Link className="btn small" href="/admin/admins">
-              Manage admins
-            </Link>
-          </div>
-        )}
-        {me.permissions.includes("promo.manage") && (
-          <div className="card">
-            <h2>Promo codes</h2>
-            <p className="muted">Discount codes for registration and coach / team mom fees, with how often each was used.</p>
-            <OffNote flags={flags} k="r2.promo_codes" what="Promo code boxes at checkout" />
-            <Link className="btn small" href="/admin/promo-codes">
-              Promo codes
-            </Link>
-          </div>
-        )}
-        {me.permissions.includes("teams.manage") && (
-          <div className="card">
-            <h2>Teams & draft</h2>
-            <p className="muted">
-              Create teams, assign coaches and team moms, run the draft and
-              publish rosters.
-            </p>
-            <OffNote flags={flags} k="r3.teams_draft" what="Teams and rosters" />
-            <Link className="btn small" href="/admin/teams">
-              Teams & draft
-            </Link>
-          </div>
-        )}
-        {me.permissions.includes("games.manage") && (
-          <div className="card">
-            <h2>Schedule & scores</h2>
-            <p className="muted">Add games or import a spreadsheet, reschedule or cancel, and enter final scores for the standings.</p>
-            <OffNote flags={flags} k="r4.games" what="Games and standings" />
-            <Link className="btn small" href="/admin/schedule">
-              Schedule
-            </Link>
-          </div>
-        )}
-        {me.permissions.includes("announcements.send") && (
-          <div className="card">
-            <h2>Announcements</h2>
-            <p className="muted">Email every family this season, one division, or one team.</p>
-            <OffNote flags={flags} k="r4.announcements" what="Coach announcements" />
-            <Link className="btn small" href="/admin/announcements">
-              Send an announcement
-            </Link>
-          </div>
-        )}
-        {me.permissions.includes("seasons.read") && (
-          <div className="card">
-            <h2>Seasons and divisions</h2>
-            <p className="muted">
-              Registration dates, divisions, age ranges, prices and capacity.
-            </p>
-            <Link className="btn small" href="/admin/seasons">
-              Set up seasons
-            </Link>
-          </div>
-        )}
-        {me.permissions.includes("payments.read") && (
-          <div className="card">
-            <h2>Payments</h2>
-            <p className="muted">
-              Stripe and Square setup, and who pays the card fee.
-            </p>
-            <Link className="btn small" href="/admin/payments">
-              Payment settings
-            </Link>
-          </div>
-        )}
-        {me.permissions.includes("content.manage") && (
-          <div className="card">
-            <h2>Site content</h2>
-            <p className="muted">
-              Edit public pages, the announcement banner and contact details,
-              and read contact-form messages.
-            </p>
-            <Link className="btn small" href="/admin/content">
-              Manage content
-            </Link>
-          </div>
-        )}
+      <div className="portal-head">
+        <div>
+          <h1>Admin portal</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            {season ? `${season} · ` : ""}
+            {today}
+          </p>
+        </div>
+        <AdminSearch permissions={me.permissions} />
       </div>
 
-      {canFlags && (
-        <section className="card" style={{ marginTop: 24 }}>
-          <h2>Release switches</h2>
-          <p className="muted">
-            Turn each release on when it's been accepted. Every change is
-            recorded in the audit log.
-          </p>
-          <ErrorAlert error={error} />
-          {!flags ? (
-            <p className="muted">Loading…</p>
-          ) : (
-            <table className="simple stack">
-              <thead>
-                <tr>
-                  <th>Feature</th>
-                  <th>Status</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {flags.map((f) => (
-                  <tr key={f.key}>
-                    <td data-label="">
-                      {f.description ?? f.key}
-                      <br />
-                      <code className="muted">{f.key}</code>
-                    </td>
-                    <td data-label="Status">{f.enabled ? "On" : "Off"}</td>
-                    <td data-label="">
-                      <button className="btn ghost" onClick={() => toggle(f)}>
-                        Turn {f.enabled ? "off" : "on"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+      {attention && attention.length > 0 && (
+        <section className="attention" aria-labelledby="attention-title">
+          <h2 id="attention-title">Needs attention</h2>
+          <ul>
+            {attention.map((a) => (
+              <li key={a.key}>
+                <Link href={a.href}>
+                  <span className={`attention-n ${a.tone}`}>{attentionFigure(a)}</span>
+                  <span>{a.label}</span>
+                  <span className="go" aria-hidden="true">
+                    →
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
-    </main>
-  );
-}
+      {attention && attention.length === 0 && (
+        <p className="all-clear">
+          <span className="status ok">All caught up</span> Nothing is waiting on you right now.
+        </p>
+      )}
 
-/** Shown on a card when its release switch is off (only the Super Admin sees switches). */
-function OffNote({ flags, k, what }: { flags: Flag[] | null; k: string; what: string }) {
-  const f = flags?.find((x) => x.key === k);
-  if (!f || f.enabled) return null;
-  return (
-    <p className="muted" style={{ margin: "0 0 12px", fontSize: 15 }}>
-      <span className="status warn">Off</span> {what} are hidden from families and coaches. Turn on <code>{k}</code> under Release switches when ready.
-    </p>
+      {groups.map((g) => (
+        <section key={g.title} className="portal-group" aria-label={g.title}>
+          <h3>{g.title}</h3>
+          <div className="portal-tiles">
+            {g.items.map((i) => {
+              const b = badgeFor(i, attention ?? []);
+              return (
+                <Link key={i.href} href={i.href} className="portal-tile">
+                  <strong>{i.label}</strong>
+                  <span>{i.blurb}</span>
+                  {b ? (
+                    <span className={`admin-badge ${b.tone}`}>{b.text}</span>
+                  ) : i.flag && off.has(i.flag) ? (
+                    <span className="tile-off" title="Its release switch is off: families and coaches don't see it yet">
+                      Off
+                    </span>
+                  ) : null}
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </main>
   );
 }
