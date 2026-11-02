@@ -77,7 +77,7 @@ export default function AdminSchedulePage() {
       </p>
       <h1>Schedule & scores</h1>
       <p className="muted">
-        All times are Jacksonville time. Final scores update the <Link href="/schedule">public standings</Link> within a minute.
+        All times are Eastern Standard Time. Final scores update the <Link href="/schedule">public standings</Link> within a minute.
       </p>
       <ErrorAlert error={error} />
       <div className="filters">

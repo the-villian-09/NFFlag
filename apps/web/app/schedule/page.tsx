@@ -32,7 +32,7 @@ export default async function SchedulePage() {
         </section>
       ) : (
         <>
-          <p className="muted">{data.season.name}. All times are Jacksonville time.</p>
+          <p className="muted">{data.season.name}. All times are Eastern Standard Time.</p>
           <ScheduleBrowser divisions={divs} season={data.season} />
         </>
       )}
