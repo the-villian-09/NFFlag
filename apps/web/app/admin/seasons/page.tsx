@@ -287,7 +287,7 @@ function SeasonForm({ season, onDone, onCancel }: { season?: Season; onDone: () 
       <label>
         Season pass link <span className="muted">(optional)</span>
         <input type="url" inputMode="url" name="seasonPassUrl" maxLength={500} defaultValue={season?.seasonPassUrl ?? ""} placeholder="https://…" pattern="https://.*" title="Starts with https://" />
-        <span className="hint">Your TixFlo season pass page. Shows a Season passes button at the top of the Games list on the public schedule until the season is completed.</span>
+        <span className="hint">Your TixFlo season pass page. Shows a Buy season passes button at the top of the Games list on the public schedule until the season is completed.</span>
       </label>
       <label className="check">
         <input type="checkbox" name="isCurrent" defaultChecked={!!season?.isCurrent} /> This is the current season (shown to families)

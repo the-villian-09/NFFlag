@@ -86,7 +86,7 @@ export default async function SchedulePage() {
                     <h3 style={{ margin: 0 }}>Games</h3>
                     {data.season.seasonPassUrl && (
                       <a className="btn small" href={data.season.seasonPassUrl} target="_blank" rel="noopener noreferrer" aria-label={`Buy ${data.season.name} season passes`}>
-                        Season passes
+                        Buy season passes
                       </a>
                     )}
                   </div>
