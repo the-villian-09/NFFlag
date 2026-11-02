@@ -364,7 +364,8 @@ describe("Stripe checkout", () => {
     const t = Math.floor(Date.now() / 1000);
     const sig = createHmac("sha256", "whsec_test").update(`${t}.${body}`).digest("hex");
     expect(verifyStripeSignature(body, `t=${t},v1=${sig}`)).toBe(true);
-    expect(verifyStripeSignature(body, `t=${t},v1=${sig.replace(/.$/, "0")}`)).toBe(false);
+    const tampered = sig.slice(0, -1) + (sig.endsWith("0") ? "1" : "0");
+    expect(verifyStripeSignature(body, `t=${t},v1=${tampered}`)).toBe(false);
     expect(verifyStripeSignature(body, `t=${t - 600},v1=${createHmac("sha256", "whsec_test").update(`${t - 600}.${body}`).digest("hex")}`)).toBe(false);
   });
 });
