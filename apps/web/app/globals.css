@@ -518,11 +518,12 @@ table.standings tr.hit td:first-child { box-shadow: inset 4px 0 0 var(--lime); }
 /* Latest results above the standings */
 .sched-col { display: grid; gap: 24px; min-width: 0; }
 .results { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.results li { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; background: var(--navy); padding: 10px 14px; }
+.results li { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 2px 16px; background: var(--navy); padding: 10px 14px; }
+.res-vs { color: var(--blue-bright); font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; }
 .res-team { display: flex; justify-content: space-between; gap: 8px; color: var(--ink-muted); min-width: 0; }
 .res-team span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .res-team b { font-variant-numeric: tabular-nums; }
 .res-team.won { color: #fff; }
 .res-team.won b { color: var(--lime); }
 .res-team.hit span { box-shadow: inset 0 -2px 0 var(--lime); }
-@media (max-width: 360px) { .results li { grid-template-columns: 1fr; } }
+@media (max-width: 360px) { .results li { grid-template-columns: 1fr; } .res-vs { display: none; } }

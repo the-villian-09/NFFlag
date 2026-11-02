@@ -77,6 +77,9 @@ function LatestResults({ games, teams }: { games: Game[]; teams: Set<string> }) 
           return (
             <li key={g.id} aria-label={`${g.home} ${h}, ${g.away} ${a}`}>
               {side(g.home, g.homeTeamId, h, a)}
+              <span className="res-vs" aria-hidden="true">
+                vs
+              </span>
               {side(g.away, g.awayTeamId, a, h)}
             </li>
           );
