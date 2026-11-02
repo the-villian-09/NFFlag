@@ -27,6 +27,7 @@ import { adminRefereeRouter, refereeRouter } from "./modules/referees/routes.js"
 import { adminPortalRouter } from "./modules/admin/portal.js";
 import { documentsRouter } from "./modules/documents/routes.js";
 import { adminSiteRouter, publicSiteRouter } from "./modules/content/site.js";
+import { smsRouter } from "./modules/sms/routes.js";
 
 export function createApp() {
   const app = express();
@@ -61,6 +62,7 @@ export function createApp() {
   app.use("/api/v1", platformRouter);
   app.use("/api/v1", leagueRouter);
   app.use("/api/v1", accountsRouter);
+  app.use("/api/v1", smsRouter);
   app.use("/api/v1", publicContentRouter);
   app.use("/api/v1", publicSiteRouter);
   app.use("/api/v1", registrationRouter);

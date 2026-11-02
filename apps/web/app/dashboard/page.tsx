@@ -9,6 +9,7 @@ import { fmtDate, fmtDateTime, money, StatusBadge } from "@/lib/format";
 import { EventRow } from "@/components/event-row";
 import { TicketButton } from "@/components/ticket-button";
 import { Modal } from "@/components/modal";
+import { TextAlertsCard } from "@/components/text-alerts-card";
 import { GAME_STATUS, resultFor, type Game, type Practice } from "@/lib/schedule";
 import { useFlags } from "@/lib/use-flags";
 import { isAdmin, useMe } from "@/lib/use-me";
@@ -167,6 +168,7 @@ export default function DashboardPage() {
         {household && <WaitlistCard />}
         <StaffCard />
         <RefereeCard />
+        <TextAlertsCard />
         <SecurityCard
           enabled={me.mfa.enabled}
           required={me.mfa.required === "totp"}

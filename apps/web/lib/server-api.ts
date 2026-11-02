@@ -35,4 +35,5 @@ export const PAGES: { slug: string; label: string }[] = [
   { slug: "contact", label: "Contact" },
   { slug: "privacy", label: "Privacy" },
   { slug: "terms", label: "Terms" },
+  { slug: "text-alerts", label: "Text alerts" },
 ];

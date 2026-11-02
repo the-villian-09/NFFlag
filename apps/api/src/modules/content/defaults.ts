@@ -20,6 +20,7 @@ export const PAGE_SLUGS = [
   "contact",
   "privacy",
   "terms",
+  "text-alerts",
   "waiver-liability",
   "waiver-medical",
   "waiver-media",
@@ -191,6 +192,10 @@ To run registration, eligibility, teams, schedules and communication; to keep pl
 
 We do not sell personal information.
 
+## Text messages
+
+If you sign up for NFFL Text Alerts, we use your mobile number only to send the texts described on our [Text alerts](/text-alerts) page. No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. Text messaging opt-in data and consent will not be shared with any third parties, except the service provider that delivers the messages for us (Twilio). Reply STOP to any text to stop receiving them.
+
 ## Children's information
 
 Children do not have accounts. All player information is provided and managed by a parent or guardian.
@@ -236,6 +241,10 @@ Families, players, coaches and team staff agree to the league's code of conduct.
 
 Participation requires the liability waiver and medical authorization accepted at registration.
 
+## Text messages
+
+NFFL Text Alerts are optional. If you sign up in your account, the league texts your mobile number with game-day alerts (such as rainouts and schedule changes), registration and payment reminders, and messages from your child's coach or team. Message frequency varies, typically a few messages a week during the season. Message and data rates may apply. Reply **HELP** for help or **STOP** to cancel at any time; you can also turn texts off in your account. Carriers are not liable for delayed or undelivered messages. See [Text alerts](/text-alerts) and our [Privacy policy](/privacy).
+
 ## Changes
 
 We may update these terms; the date above shows the latest version.
@@ -247,6 +256,35 @@ These terms are governed by the laws of the State of Florida.
 ## Contact
 
 [LEAGUE LEGAL NAME, MAILING ADDRESS, EMAIL]`,
+  },
+  {
+    slug: "text-alerts",
+    title: "NFFL Text Alerts",
+    body: `Get North Florida Flag League updates by text message.
+
+## What you'll get
+
+- **Game-day alerts:** rainouts, delays, field changes and schedule changes.
+- **Reminders:** registration deadlines, payments and required forms.
+- **Team messages:** updates from your child's coach or team mom.
+
+Message frequency varies, typically a few messages a week during the season. Message and data rates may apply.
+
+## How to sign up
+
+Text alerts are optional and never required to register. To sign up, sign in to your account at nfflag.com, open **My account**, enter your mobile number under **Text message alerts** and tick the box agreeing to receive texts. We'll send a confirmation text.
+
+![The Text message alerts sign-up box in My account: a mobile number field and an unticked consent box](/images/sms-opt-in.png)
+
+## How to stop
+
+Reply **STOP** to any message to stop all texts, or untick the box in your account. Reply **HELP** for help. You can also reach us through our [contact page](/contact).
+
+## Your privacy
+
+We use your mobile number only to send these messages. No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. See our [Privacy policy](/privacy) and [Terms](/terms).
+
+Carriers are not liable for delayed or undelivered messages.`,
   },
 ];
 

@@ -86,6 +86,7 @@ describe("admin content editing", () => {
       "contact",
       "privacy",
       "terms",
+      "text-alerts",
       "waiver-liability",
       "waiver-medical",
       "waiver-media",

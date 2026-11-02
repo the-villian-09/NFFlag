@@ -120,6 +120,13 @@
       "when": 1793644261518,
       "tag": "0016_site_images_news",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793657045133,
+      "tag": "0017_sms_subscriptions",
+      "breakpoints": true
     }
   ]
 }

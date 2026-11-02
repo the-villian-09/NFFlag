@@ -22,6 +22,13 @@ export function Markdown({ source }: { source: string }) {
               </a>
             );
           },
+          // Only the site's own pictures (e.g. /images/…); no images from other sites.
+          img({ src, alt }) {
+            const url = typeof src === "string" ? src : "";
+            if (!url.startsWith("/") || url.startsWith("//")) return null;
+            // eslint-disable-next-line @next/next/no-img-element
+            return <img src={url} alt={alt ?? ""} loading="lazy" />;
+          },
           table({ children }) {
             return (
               <div className="table-wrap">
