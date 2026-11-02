@@ -37,14 +37,17 @@ export const FEATURE_FLAGS: { key: string; description: string }[] = [
   { key: "r5.referees", description: "Referees: sign-up, game assignments and pay through Stripe. Admins can set up and test while it's off" },
   { key: "r6.documents", description: "Required uploads: each child's birth certificate, insurance card and headshot before paying; a headshot for coaches, team moms and referees. Needs the uploads bucket (infra/set-uploads.sh)" },
   { key: "r4.sms", description: "Text messages through Twilio (not built yet; needs A2P approval; no effect)" },
-  { key: "r4.tixflo_widget", description: "TixFlo ticket widget (not built yet; no effect)" },
   { key: "r5.playoffs", description: "Playoffs and brackets (not built yet; no effect)" },
   { key: "auth.google", description: "Sign in with Google (not built yet; no effect)" },
   { key: "auth.microsoft", description: "Sign in with Microsoft (not built yet; no effect)" },
 ];
 
-/** Switches retired because the feature is always on (refunds ship with registration). */
-const RETIRED_FLAGS = ["r2.refunds"];
+/**
+ * Retired switches, removed on the next deploy:
+ * r2.refunds: always on (refunds ship with registration).
+ * r4.tixflo_widget: dropped; tickets and season passes use TixFlo links (Nov 2).
+ */
+const RETIRED_FLAGS = ["r2.refunds", "r4.tixflo_widget"];
 
 export async function seedPlatform(conn: DbOrTx = db) {
   await conn
