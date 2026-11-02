@@ -227,7 +227,7 @@ export interface ConnectedAccount {
 
 /**
  * A connected account for a referee. The league (platform) is responsible for
- * fees and losses, and the referee manages everything through Stripe's
+ * fees, losses and keeping their details current (as in the platform profile), and the referee manages everything through Stripe's
  * embedded components on our site (no Stripe dashboard of their own).
  */
 export async function createConnectedAccount(p: { email: string; userId: string; idempotencyKey: string }) {
@@ -243,7 +243,7 @@ export async function createConnectedAccount(p: { email: string; userId: string;
           fees: { payer: "application" },
           losses: { payments: "application" },
           stripe_dashboard: { type: "none" },
-          requirement_collection: "stripe",
+          requirement_collection: "application",
         },
         capabilities: { transfers: { requested: true } },
         business_profile: { mcc: "7941", product_description: "Youth flag football referee paid by the North Florida Flag League" },
