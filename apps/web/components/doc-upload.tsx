@@ -32,7 +32,7 @@ const HINT: Record<string, string> = {
 const MAX_BYTES = 4 * 1024 * 1024;
 
 /** Shrinks a photo to fit within `max` pixels and returns a JPEG (the original if it can't be read here). */
-async function shrink(file: File, max: number): Promise<Blob> {
+export async function shrink(file: File, max: number): Promise<Blob> {
   try {
     const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
     const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));

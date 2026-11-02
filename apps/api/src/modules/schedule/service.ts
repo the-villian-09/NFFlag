@@ -460,7 +460,7 @@ export function computeStandings(ts: { id: string; name: string }[], finals: { h
 /** Public: every division in the season with its games and standings. */
 export async function publicSchedule(seasonId: string) {
   const divs = await db
-    .select({ id: divisions.id, name: divisions.name })
+    .select({ id: divisions.id, name: divisions.name, genderPolicy: divisions.genderPolicy })
     .from(divisions)
     .where(and(eq(divisions.seasonId, seasonId), sql`${divisions.status} <> 'draft'`))
     .orderBy(asc(divisions.sortOrder), asc(divisions.name));
@@ -472,6 +472,7 @@ export async function publicSchedule(seasonId: string) {
     return {
       id: d.id,
       name: d.name,
+      genderPolicy: d.genderPolicy,
       games: dg.map((g) => {
         const { notes: _n, ...row } = gameRow(g, name);
         return row;

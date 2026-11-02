@@ -6,7 +6,7 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
-import { DEFAULT_HOMEPAGE, homepageSchema } from "@nffl/shared";
+import { homepageSchema, imageSlotsSchema, seasonHomeSchema } from "@nffl/shared";
 import { z } from "zod";
 import { env } from "../../config.js";
 import { db, type DbOrTx } from "../../db/client.js";
@@ -41,7 +41,16 @@ const contactSchema = z.object({
   phone: z.string().trim().max(32).optional(),
 });
 
-const SETTING_SCHEMAS = { announcement: announcementSchema, contact: contactSchema, homepage: homepageSchema } as const;
+const SETTING_SCHEMAS = {
+  announcement: announcementSchema,
+  contact: contactSchema,
+  homepage: homepageSchema,
+  seasonHome: seasonHomeSchema,
+  /** Which uploaded photo replaces each built-in one; changed only through the photo routes. */
+  images: imageSlotsSchema,
+} as const;
+/** Settings the generic PUT may change. */
+const EDITABLE = new Set(["announcement", "contact", "homepage", "seasonHome"]);
 type SettingKey = keyof typeof SETTING_SCHEMAS;
 
 const pageInput = z.object({
@@ -103,12 +112,13 @@ publicContentRouter.get(
   }),
 );
 
-/** Homepage facts (dates, schedule, divisions, fees). */
+/** Homepage facts (dates, schedule, divisions, fees), the in-season page settings and uploaded photos. */
 publicContentRouter.get(
   "/homepage",
   handler(async (_req, res) => {
     res.set("cache-control", "public, max-age=30");
-    res.json({ homepage: await getSetting("homepage") });
+    const [homepage, seasonHome, images] = await Promise.all([getSetting("homepage"), getSetting("seasonHome"), getSetting("images")]);
+    res.json({ homepage, seasonHome, images });
   }),
 );
 
@@ -242,7 +252,13 @@ adminContentRouter.put(
 adminContentRouter.get(
   "/settings",
   handler(async (_req, res) => {
-    res.json({ announcement: await getSetting("announcement"), contact: await getSetting("contact"), homepage: await getSetting("homepage") });
+    res.json({
+      announcement: await getSetting("announcement"),
+      contact: await getSetting("contact"),
+      homepage: await getSetting("homepage"),
+      seasonHome: await getSetting("seasonHome"),
+      images: await getSetting("images"),
+    });
   }),
 );
 
@@ -250,7 +266,7 @@ adminContentRouter.put(
   "/settings/:key",
   handler(async (req, res) => {
     const key = String(req.params.key);
-    if (!(key in SETTING_SCHEMAS)) throw new HttpError(404, "NOT_FOUND", "Unknown setting.");
+    if (!EDITABLE.has(key)) throw new HttpError(404, "NOT_FOUND", "Unknown setting.");
     const value = SETTING_SCHEMAS[key as SettingKey].parse(req.body);
     const actor = req.ctx.auth!.user.id;
     await db.transaction(async (tx) => {

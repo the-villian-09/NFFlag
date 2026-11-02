@@ -1,4 +1,4 @@
-import { DEFAULT_HOMEPAGE, type Homepage } from "@nffl/shared";
+import { DEFAULT_HOMEPAGE, DEFAULT_IMAGE_SLOTS, DEFAULT_SEASON_HOME, type Homepage, type ImageSlots, type SeasonHome } from "@nffl/shared";
 /**
  * Starting text for the public pages. Facts come from the 2027 season flyer;
  * anything not yet supplied by the league is a [BRACKETED PLACEHOLDER].
@@ -311,8 +311,10 @@ export interface ContactInfo {
   phone?: string;
 }
 
-export const DEFAULT_SETTINGS: { announcement: Announcement; contact: ContactInfo; homepage: Homepage } = {
+export const DEFAULT_SETTINGS: { announcement: Announcement; contact: ContactInfo; homepage: Homepage; seasonHome: SeasonHome; images: ImageSlots } = {
   homepage: DEFAULT_HOMEPAGE,
+  seasonHome: DEFAULT_SEASON_HOME,
+  images: DEFAULT_IMAGE_SLOTS,
   announcement: {
     enabled: true,
     message: "Registration for the 2027 season opens December 1.",

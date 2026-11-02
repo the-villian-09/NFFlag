@@ -7,7 +7,8 @@ import { ErrorAlert, useAction } from "@/components/form";
 import { api, ApiError } from "@/lib/api";
 import { useMe } from "@/lib/use-me";
 import { HomepageForm } from "@/components/homepage-form";
-import type { Homepage } from "@nffl/shared";
+import { PhotosCard, SeasonHomeForm } from "@/components/season-home-form";
+import type { Homepage, ImageSlots, SeasonHome } from "@nffl/shared";
 
 interface PageRow {
   slug: string;
@@ -48,6 +49,8 @@ export default function AdminContentPage() {
   const [banner, setBanner] = useState<Announcement | null>(null);
   const [contact, setContact] = useState<Contact | null>(null);
   const [homepage, setHomepage] = useState<Homepage | null>(null);
+  const [seasonHome, setSeasonHome] = useState<SeasonHome | null>(null);
+  const [images, setImages] = useState<ImageSlots | null>(null);
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -59,7 +62,7 @@ export default function AdminContentPage() {
     }
     Promise.all([
       api.get<{ items: PageRow[] }>("/admin/content/pages"),
-      api.get<{ announcement: Announcement; contact: Contact; homepage: Homepage }>("/admin/content/settings"),
+      api.get<{ announcement: Announcement; contact: Contact; homepage: Homepage; seasonHome: SeasonHome; images: ImageSlots }>("/admin/content/settings"),
       api.get<{ items: Message[] }>("/admin/content/contact-messages"),
     ])
       .then(([p, s, m]) => {
@@ -67,6 +70,8 @@ export default function AdminContentPage() {
         setBanner(s.announcement);
         setContact(s.contact);
         setHomepage(s.homepage);
+        setSeasonHome(s.seasonHome);
+        setImages(s.images);
         setMessages(m.items);
       })
       .catch((err) => {
@@ -125,6 +130,8 @@ export default function AdminContentPage() {
       </section>
 
       {homepage && <HomepageForm initial={homepage} />}
+      {seasonHome && <SeasonHomeForm initial={seasonHome} />}
+      {images && <PhotosCard initial={images} />}
 
       <div className="grid" style={{ marginTop: 24 }}>
         {banner && <BannerForm initial={banner} />}

@@ -1,16 +1,36 @@
 import Link from "next/link";
 
-import { DEFAULT_HOMEPAGE, type Homepage } from "@nffl/shared";
+import { DEFAULT_HOMEPAGE, DEFAULT_SEASON_HOME, type Homepage, type ImageSlots, type SeasonHome as SeasonSettings } from "@nffl/shared";
+import { SeasonHome, type NewsItem } from "@/components/season-home";
 import { serverGet } from "@/lib/server-api";
+import { imageFor, type HomeDivision } from "@/lib/season-home";
 
 /**
- * Public home — "Split Field" look. Dates, schedule, divisions and fees are
- * edited by admins in Site content → Homepage; the flyer values are the fallback.
+ * Public home. Before and during registration: the "Split Field" sign-up page
+ * (Site content → Homepage). Once the season is in season or in the playoffs:
+ * the game-day page (Site content → In-season home page). Admins can force
+ * either. Photos can be replaced in Site content → Photos.
  */
 export const revalidate = 60;
 
+interface ScheduleData {
+  season: { id: string; name: string; status?: string; seasonPassUrl?: string | null };
+  divisions: HomeDivision[];
+}
+
 export default async function Home() {
-  const h: Homepage = (await serverGet<{ homepage: Homepage }>("/homepage"))?.homepage ?? DEFAULT_HOMEPAGE;
+  const [content, schedule] = await Promise.all([
+    serverGet<{ homepage: Homepage; seasonHome?: SeasonSettings; images?: Partial<ImageSlots> }>("/homepage"),
+    serverGet<ScheduleData>("/schedule"),
+  ]);
+  const h: Homepage = content?.homepage ?? DEFAULT_HOMEPAGE;
+  const sh: SeasonSettings = { ...DEFAULT_SEASON_HOME, ...content?.seasonHome };
+  const images = content?.images ?? {};
+  const inSeason = schedule && (sh.mode === "season" || (sh.mode === "auto" && (schedule.season.status === "in_season" || schedule.season.status === "playoffs")));
+  if (inSeason) {
+    const news = sh.showNews ? ((await serverGet<{ items: NewsItem[] }>("/news?limit=3"))?.items ?? []) : [];
+    return <SeasonHome s={sh} images={images} season={schedule.season} divisions={schedule.divisions} news={news} />;
+  }
   return (
     <main>
       <section className="hero" aria-labelledby="hero-title">
@@ -25,7 +45,7 @@ export default async function Home() {
         </div>
         <div className="hero-half boys">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/images/hero-boy.jpg" alt="" className="hero-photo" fetchPriority="high" />
+          <img src={imageFor(images, "heroBoy")} alt="" className="hero-photo" fetchPriority="high" />
           <div className="hero-tint" aria-hidden="true" />
           <div className="hero-label">
             <strong>Boys</strong>
@@ -34,7 +54,7 @@ export default async function Home() {
         </div>
         <div className="hero-half girls">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/images/hero-girl.jpg" alt="" className="hero-photo" fetchPriority="high" />
+          <img src={imageFor(images, "heroGirl")} alt="" className="hero-photo" fetchPriority="high" />
           <div className="hero-tint" aria-hidden="true" />
           <div className="hero-label">
             <strong>Girls</strong>
@@ -76,7 +96,7 @@ export default async function Home() {
         <div className="cols">
           <article className="division">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/images/division-boys.jpg" alt="Boy player leaping to catch a pass" loading="lazy" style={{ objectPosition: "50% 30%" }} />
+            <img src={imageFor(images, "divisionBoys")} alt="Boys division players" loading="lazy" style={{ objectPosition: "50% 30%" }} />
             <div className="ages">
               <h3>Boys</h3>
               {h.boysDivisions.map((a) => (
@@ -86,7 +106,7 @@ export default async function Home() {
           </article>
           <article className="division girls">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/images/division-girls.jpg" alt="Girl player pulling a ball carrier's flag" loading="lazy" style={{ objectPosition: "55% 35%" }} />
+            <img src={imageFor(images, "divisionGirls")} alt="Girls division players" loading="lazy" style={{ objectPosition: "55% 35%" }} />
             <div className="ages">
               <h3>Girls</h3>
               {h.girlsDivisions.map((a) => (

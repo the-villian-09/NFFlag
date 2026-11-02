@@ -26,6 +26,7 @@ import { adminPromoRouter } from "./modules/promo/routes.js";
 import { adminRefereeRouter, refereeRouter } from "./modules/referees/routes.js";
 import { adminPortalRouter } from "./modules/admin/portal.js";
 import { documentsRouter } from "./modules/documents/routes.js";
+import { adminSiteRouter, publicSiteRouter } from "./modules/content/site.js";
 
 export function createApp() {
   const app = express();
@@ -61,6 +62,7 @@ export function createApp() {
   app.use("/api/v1", leagueRouter);
   app.use("/api/v1", accountsRouter);
   app.use("/api/v1", publicContentRouter);
+  app.use("/api/v1", publicSiteRouter);
   app.use("/api/v1", registrationRouter);
   app.use("/api/v1", squareCallbackRouter);
   app.use("/api/v1", staffRouter);
@@ -73,6 +75,7 @@ export function createApp() {
   app.use("/api/v1/admin/referees", adminRefereeRouter);
   app.use("/api/v1/admin/schedule", adminScheduleRouter);
   app.use("/api/v1/admin/promo-codes", adminPromoRouter);
+  app.use("/api/v1/admin/content", adminSiteRouter);
   app.use("/api/v1/admin/content", adminContentRouter);
   app.use("/api/v1/admin/league", adminLeagueRouter);
   app.use("/api/v1/admin/payments", adminPaymentsRouter);

@@ -4,7 +4,7 @@
  * Public schedule: a search over divisions and teams, each division's
  * standings with its next game, and every game in a pop-up with its own search.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EventRow } from "@/components/event-row";
 import { Modal } from "@/components/modal";
 import { TicketButton } from "@/components/ticket-button";
@@ -112,6 +112,11 @@ function SearchBox({ value, onChange, label, placeholder }: { value: string; onC
 
 export function ScheduleBrowser({ divisions, season }: { divisions: ScheduleDivision[]; season: { name: string; seasonPassUrl?: string | null } }) {
   const [q, setQ] = useState("");
+  // Links like /schedule?q=Fire (from the home page) open already searched.
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("q");
+    if (fromUrl) setQ(fromUrl.slice(0, 80));
+  }, []);
   const [open, setOpen] = useState<{ div: ScheduleDivision; q: string } | null>(null);
   const now = Date.now();
 

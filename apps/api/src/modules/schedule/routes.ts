@@ -54,7 +54,7 @@ scheduleRouter.get(
     if (!found) throw new HttpError(404, "NOT_FOUND", "No current season.");
     res.set("cache-control", "public, max-age=60");
     // Season passes are on sale until the season is over.
-    const season = { id: found.id, name: found.name, seasonPassUrl: found.status === "completed" || found.status === "archived" ? null : found.seasonPassUrl };
+    const season = { id: found.id, name: found.name, status: found.status, seasonPassUrl: found.status === "completed" || found.status === "archived" ? null : found.seasonPassUrl };
     // Until games are switched on, the public page says the schedule is coming.
     res.json({ season, divisions: (await isEnabled(FLAG.games)) ? await publicSchedule(season.id) : [] });
   }),
