@@ -514,3 +514,14 @@ input:disabled, select:disabled, textarea:disabled { background: #1a2633; color:
 table.standings tr.hit td { background: var(--navy-3); }
 table.standings tr.hit td:first-child { box-shadow: inset 4px 0 0 var(--lime); }
 .modal-sub { font-size: 20px; margin: 20px 0 8px; color: var(--ink-muted); }
+
+/* Latest results above the standings */
+.sched-col { display: grid; gap: 24px; min-width: 0; }
+.results { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); }
+.results li { display: grid; gap: 2px; background: var(--navy); padding: 10px 14px; }
+.res-team { display: flex; justify-content: space-between; gap: 8px; color: var(--ink-muted); min-width: 0; }
+.res-team span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.res-team b { font-variant-numeric: tabular-nums; }
+.res-team.won { color: #fff; }
+.res-team.won b { color: var(--lime); }
+.res-team.hit span { box-shadow: inset 0 -2px 0 var(--lime); }

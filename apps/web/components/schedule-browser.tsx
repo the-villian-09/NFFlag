@@ -46,6 +46,46 @@ function gameText(g: Game) {
   ].join(" ");
 }
 
+const dayKey = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ });
+
+/** Final scores from the most recent day games were played (oldest kickoff first). */
+function latestResults(games: Game[], now: number) {
+  const finals = games.filter((g) => g.status === "final" && g.homeScore !== null && g.awayScore !== null && new Date(g.startsAt).getTime() <= now);
+  if (!finals.length) return [];
+  const day = dayKey(finals.reduce((a, b) => (b.startsAt > a.startsAt ? b : a)).startsAt);
+  return finals.filter((g) => dayKey(g.startsAt) === day).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+}
+
+function LatestResults({ games, teams }: { games: Game[]; teams: Set<string> }) {
+  const when = new Date(games[0]!.startsAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: TZ });
+  return (
+    <div className="card">
+      <div className="games-head">
+        <h3 style={{ margin: 0 }}>Latest results</h3>
+        <span className="muted">{when}</span>
+      </div>
+      <ul className="results">
+        {games.map((g) => {
+          const h = g.homeScore!;
+          const a = g.awayScore!;
+          const side = (name: string, id: string, score: number, other: number) => (
+            <span className={`res-team${score > other ? " won" : ""}${teams.has(id) ? " hit" : ""}`}>
+              <span>{name}</span>
+              <b>{score}</b>
+            </span>
+          );
+          return (
+            <li key={g.id} aria-label={`${g.home} ${h}, ${g.away} ${a}`}>
+              {side(g.home, g.homeTeamId, h, a)}
+              {side(g.away, g.awayTeamId, a, h)}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function GameRow({ g }: { g: Game }) {
   return (
     <EventRow
@@ -109,11 +149,14 @@ export function ScheduleBrowser({ divisions, season }: { divisions: ScheduleDivi
         // With a team searched, its next game; otherwise the division's.
         const mine = (g: Game) => !teams.size || teams.has(g.homeTeamId) || teams.has(g.awayTeamId);
         const next = d.games.find((g) => mine(g) && isUpcoming(g, now));
+        const last = latestResults(d.games.filter(mine), now);
         const teamLabel = teams.size === 1 ? d.standings.find((s) => teams.has(s.teamId))?.team : undefined;
         return (
           <section key={d.id} id={`d-${d.id}`} style={{ marginBottom: 40, scrollMarginTop: 96 }}>
             <h2>{d.name}</h2>
             <div className="grid" style={{ alignItems: "start" }}>
+              <div className="sched-col">
+                {last.length > 0 && <LatestResults games={last} teams={teams} />}
               <div className="card">
                 <h3 style={{ marginTop: 0 }}>Standings</h3>
                 <div className="table-wrap">
@@ -146,6 +189,7 @@ export function ScheduleBrowser({ divisions, season }: { divisions: ScheduleDivi
                     </tbody>
                   </table>
                 </div>
+              </div>
               </div>
               <div className="card">
                 <div className="games-head">
