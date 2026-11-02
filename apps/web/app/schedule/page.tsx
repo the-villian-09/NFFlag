@@ -27,7 +27,7 @@ export default async function SchedulePage() {
           <h2>Games coming soon</h2>
           <p className="muted">
             The {data.season.name} game schedule is posted after the draft. Practice nights and the season calendar are on the{" "}
-            <Link href="/#schedule">home page</Link>.
+            <Link href="/">home page</Link>.
           </p>
         </section>
       ) : (

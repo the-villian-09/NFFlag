@@ -4,6 +4,7 @@ import { DEFAULT_HOMEPAGE, DEFAULT_SEASON_HOME, type Homepage, type ImageSlots, 
 import { SeasonHome, type NewsItem } from "@/components/season-home";
 import { serverGet } from "@/lib/server-api";
 import { imageFor, type HomeDivision } from "@/lib/season-home";
+import { DivisionsSection, FeesSection } from "@/components/home-sections";
 
 /**
  * Public home. Before and during registration: the "Split Field" sign-up page
@@ -91,60 +92,8 @@ export default async function Home() {
         </div>
       </section>
 
-      <section id="divisions" className="container section" aria-labelledby="divisions-title">
-        <h2 id="divisions-title">Divisions</h2>
-        <div className="cols">
-          <article className="division">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imageFor(images, "divisionBoys")} alt="Boys division players" loading="lazy" style={{ objectPosition: "50% 30%" }} />
-            <div className="ages">
-              <h3>Boys</h3>
-              {h.boysDivisions.map((a) => (
-                <span key={a}>{a}</span>
-              ))}
-            </div>
-          </article>
-          <article className="division girls">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imageFor(images, "divisionGirls")} alt="Girls division players" loading="lazy" style={{ objectPosition: "55% 35%" }} />
-            <div className="ages">
-              <h3>Girls</h3>
-              {h.girlsDivisions.map((a) => (
-                <span key={a}>{a}</span>
-              ))}
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section id="fees" className="container section" aria-labelledby="fees-title">
-        <h2 id="fees-title">Fees</h2>
-        <div className="cols" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))" }}>
-          <div className="fee primary">
-            <span className="label">Registration</span>
-            <span className="amount">{h.registrationFee}</span>
-            <span className="label" style={{ fontSize: 17 }}>{h.registrationFeeNote}</span>
-          </div>
-          <div className="fee">
-            <span className="label" style={{ color: "#6fbfff" }}>League fees</span>
-            {h.leagueFees.map((f) => (
-              <div className="row" key={f.label}>
-                <span>{f.label}</span>
-                <b>{f.value}</b>
-              </div>
-            ))}
-          </div>
-          <div className="fee">
-            <span className="label" style={{ color: "var(--gold)" }}>Gate fee</span>
-            {h.gateFees.map((f) => (
-              <div className="row" key={f.label}>
-                <span>{f.label}</span>
-                <b style={/^free$/i.test(f.value) ? { color: "var(--lime)" } : undefined}>{f.value}</b>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <DivisionsSection h={h} images={images} />
+      <FeesSection h={h} />
 
       <section className="cta-band">
         <div className="container">
