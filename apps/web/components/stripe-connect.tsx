@@ -58,6 +58,8 @@ function connect(userId: string) {
 export function StripeConnectComponent({ tag, userId, onExit }: { tag: Tag; userId: string; onExit?: () => void }) {
   const box = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+  // The notification banner stays hidden until Stripe has something to say.
+  const [hidden, setHidden] = useState(tag === "notification-banner");
 
   useEffect(() => {
     let el: (HTMLElement & { setOnExit?: (l: (() => void) | undefined) => void }) | null = null;
@@ -67,6 +69,9 @@ export function StripeConnectComponent({ tag, userId, onExit }: { tag: Tag; user
         if (cancelled || !box.current) return;
         el = c.create(tag) as HTMLElement & { setOnExit?: (l: (() => void) | undefined) => void };
         if (onExit && el.setOnExit) el.setOnExit(onExit);
+        if (tag === "notification-banner") {
+          (el as unknown as { setOnNotificationsChange: (l: (n: { total: number }) => void) => void }).setOnNotificationsChange(({ total }) => setHidden(total === 0));
+        }
         box.current.appendChild(el);
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Stripe couldn't load. Check your connection and refresh."));
@@ -77,5 +82,5 @@ export function StripeConnectComponent({ tag, userId, onExit }: { tag: Tag; user
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tag, userId]);
 
-  return error ? <div className="alert error">{error}</div> : <div ref={box} className="connect-box" />;
+  return error ? <div className="alert error">{error}</div> : <div ref={box} className="connect-box" hidden={hidden} />;
 }
