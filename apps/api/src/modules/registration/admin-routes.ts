@@ -3,6 +3,7 @@
  * cancel, export) and payment settings. Mounted at /api/v1/admin/league.
  */
 import { adminPlayerDocuments } from "../documents/service.js";
+import { isTicketUrl } from "../schedule/service.js";
 import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { Router } from "express";
 import { z } from "zod";
@@ -58,6 +59,14 @@ const seasonInput = z.object({
   registrationOpensAt: isoDateTime,
   registrationClosesAt: isoDateTime,
   ageCutoffDate: isoDate,
+  /** TixFlo season pass page. Left out = unchanged; "" clears it. */
+  seasonPassUrl: z
+    .string()
+    .trim()
+    .max(500)
+    .refine((v) => v === "" || isTicketUrl(v), "The season pass link must start with https://")
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v || null)),
   isCurrent: z.boolean(),
 });
 

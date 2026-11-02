@@ -53,6 +53,8 @@ export const seasons = pgTable(
     registrationOpensAt: timestamp("registration_opens_at", { withTimezone: true }),
     registrationClosesAt: timestamp("registration_closes_at", { withTimezone: true }),
     ageCutoffDate: date("age_cutoff_date"),
+    /** TixFlo season pass page (shown as a "Season passes" button on the public schedule). */
+    seasonPassUrl: text("season_pass_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

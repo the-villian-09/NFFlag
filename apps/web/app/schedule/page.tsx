@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Schedule & standings" };
 export const revalidate = 60;
 
 interface Data {
-  season: { id: string; name: string };
+  season: { id: string; name: string; seasonPassUrl?: string | null };
   divisions: { id: string; name: string; games: Game[]; standings: Standing[] }[];
 }
 
@@ -82,7 +82,14 @@ export default async function SchedulePage() {
                   </div>
                 </div>
                 <div className="card">
-                  <h3 style={{ marginTop: 0 }}>Games</h3>
+                  <div className="games-head">
+                    <h3 style={{ margin: 0 }}>Games</h3>
+                    {data.season.seasonPassUrl && (
+                      <a className="btn small" href={data.season.seasonPassUrl} target="_blank" rel="noopener noreferrer" aria-label={`Buy ${data.season.name} season passes`}>
+                        Season passes
+                      </a>
+                    )}
+                  </div>
                   <ul className="events">
                     {d.games.map((g) => (
                       <EventRow

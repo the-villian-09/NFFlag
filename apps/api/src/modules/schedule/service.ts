@@ -410,8 +410,11 @@ export async function importGames(actor: Actor, seasonId: string, csv: string, d
 
 /* ---------------- public schedule + standings ---------------- */
 
+/** What the public schedule shows about a season. */
+export const SEASON_PUBLIC = { id: seasons.id, name: seasons.name, status: seasons.status, seasonPassUrl: seasons.seasonPassUrl };
+
 export async function currentSeasonId() {
-  const [s] = await db.select({ id: seasons.id, name: seasons.name }).from(seasons).where(eq(seasons.isCurrent, "current")).limit(1);
+  const [s] = await db.select(SEASON_PUBLIC).from(seasons).where(eq(seasons.isCurrent, "current")).limit(1);
   return s ?? null;
 }
 

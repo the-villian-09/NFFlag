@@ -18,6 +18,7 @@ import {
   deletePracticeSeriesFrom,
   importGames,
   isTicketUrl,
+  SEASON_PUBLIC,
   listAnnouncements,
   listGames,
   listPractices,
@@ -45,13 +46,15 @@ scheduleRouter.get(
   "/schedule",
   handler(async (req, res) => {
     const { seasonId } = z.object({ seasonId: uuid.optional() }).parse(req.query);
-    let season: { id: string; name: string } | null;
+    let found: Awaited<ReturnType<typeof currentSeasonId>>;
     if (seasonId) {
-      const [s] = await db.select({ id: seasons.id, name: seasons.name }).from(seasons).where(eq(seasons.id, seasonId));
-      season = s ?? null;
-    } else season = await currentSeasonId();
-    if (!season) throw new HttpError(404, "NOT_FOUND", "No current season.");
+      const [s] = await db.select(SEASON_PUBLIC).from(seasons).where(eq(seasons.id, seasonId));
+      found = s ?? null;
+    } else found = await currentSeasonId();
+    if (!found) throw new HttpError(404, "NOT_FOUND", "No current season.");
     res.set("cache-control", "public, max-age=60");
+    // Season passes are on sale until the season is over.
+    const season = { id: found.id, name: found.name, seasonPassUrl: found.status === "completed" || found.status === "archived" ? null : found.seasonPassUrl };
     // Until games are switched on, the public page says the schedule is coming.
     res.json({ season, divisions: (await isEnabled(FLAG.games)) ? await publicSchedule(season.id) : [] });
   }),

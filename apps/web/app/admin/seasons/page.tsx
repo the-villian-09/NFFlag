@@ -31,6 +31,7 @@ interface Season {
   registrationOpensAt: string | null;
   registrationClosesAt: string | null;
   ageCutoffDate: string | null;
+  seasonPassUrl: string | null;
   divisions: Division[];
 }
 
@@ -144,6 +145,16 @@ function SeasonCard({ season, canManage, onChanged }: { season: Season; canManag
           <dd>{season.ageCutoffDate ?? "Not set"}</dd>
           <dt>Status</dt>
           <dd>{season.status.replace(/_/g, " ")}</dd>
+          <dt>Season passes</dt>
+          <dd>
+            {season.seasonPassUrl ? (
+              <a href={season.seasonPassUrl} target="_blank" rel="noopener noreferrer">
+                {season.seasonPassUrl}
+              </a>
+            ) : (
+              "No link (button hidden)"
+            )}
+          </dd>
         </dl>
       )}
 
@@ -228,6 +239,7 @@ function SeasonForm({ season, onDone, onCancel }: { season?: Season; onDone: () 
       registrationOpensAt: fromLocalInput(String(f.get("opens") ?? "")),
       registrationClosesAt: fromLocalInput(String(f.get("closes") ?? "")),
       ageCutoffDate: String(f.get("ageCutoffDate") ?? ""),
+      seasonPassUrl: String(f.get("seasonPassUrl") ?? "").trim(),
       isCurrent: f.get("isCurrent") === "on",
     };
     const res = await run(() => (season ? api.put(`/admin/league/seasons/${season.id}`, body) : api.post("/admin/league/seasons", body)));
@@ -272,6 +284,11 @@ function SeasonForm({ season, onDone, onCancel }: { season?: Season; onDone: () 
           <span className="hint">For reference; eligibility uses each division's birth-date range.</span>
         </label>
       </div>
+      <label>
+        Season pass link <span className="muted">(optional)</span>
+        <input type="url" inputMode="url" name="seasonPassUrl" maxLength={500} defaultValue={season?.seasonPassUrl ?? ""} placeholder="https://…" pattern="https://.*" title="Starts with https://" />
+        <span className="hint">Your TixFlo season pass page. Shows a Season passes button at the top of the Games list on the public schedule until the season is completed.</span>
+      </label>
       <label className="check">
         <input type="checkbox" name="isCurrent" defaultChecked={!!season?.isCurrent} /> This is the current season (shown to families)
       </label>

@@ -154,6 +154,21 @@ describe("games, scores and standings", () => {
     expect(new Date(r.body.game.startsAt).toISOString()).toBe("2027-01-16T14:00:00.000Z");
   });
 
+  it("season pass link: admins set it on the season; the public schedule shows it until the season is over", async () => {
+    const body = { name: "Schedule Season", year: 2027, status: "in_season", isCurrent: true };
+    expect((await admin.put(`/api/v1/admin/league/seasons/${seasonId}`).send({ ...body, seasonPassUrl: "http://tixflo.com/pass" })).status).toBe(400);
+    expect((await admin.put(`/api/v1/admin/league/seasons/${seasonId}`).send({ ...body, seasonPassUrl: "https://tixflo.com/nffl/season" })).status).toBe(200);
+    expect((await agent().get("/api/v1/schedule")).body.season.seasonPassUrl).toBe("https://tixflo.com/nffl/season");
+    // Saving without the field leaves it alone.
+    await admin.put(`/api/v1/admin/league/seasons/${seasonId}`).send(body);
+    expect((await agent().get("/api/v1/schedule")).body.season.seasonPassUrl).toBe("https://tixflo.com/nffl/season");
+    await admin.put(`/api/v1/admin/league/seasons/${seasonId}`).send({ ...body, status: "completed" });
+    expect((await agent().get("/api/v1/schedule")).body.season.seasonPassUrl).toBeNull();
+    await admin.put(`/api/v1/admin/league/seasons/${seasonId}`).send({ ...body, seasonPassUrl: "" });
+    const [row] = await db.select().from(seasons).where(eq(seasons.id, seasonId));
+    expect(row!.seasonPassUrl).toBeNull();
+  });
+
   it("records a score, which shows on the public schedule and standings (without private notes)", async () => {
     const outsider = agent();
     expect((await outsider.put(`/api/v1/admin/schedule/games/${gameId}/score`).send({ homeScore: 1, awayScore: 0 })).status).toBe(401);

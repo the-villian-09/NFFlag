@@ -1,0 +1,1 @@
+ALTER TABLE "seasons" ADD COLUMN "season_pass_url" text;
