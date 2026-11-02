@@ -505,3 +505,12 @@ input:disabled, select:disabled, textarea:disabled { background: #1a2633; color:
 
 /* Games card heading with the Season passes button on the right */
 .games-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+
+/* Public schedule search, matched team rows, pop-up sections */
+.sched-search { display: flex; align-items: center; gap: 12px; max-width: 480px; margin: 16px 0 24px; }
+.sched-search input { flex: 1; min-width: 0; }
+.modal .sched-search { max-width: none; margin: 0 0 8px; }
+.sched-search + .chips { margin-top: -16px !important; }
+table.standings tr.hit td { background: var(--navy-3); }
+table.standings tr.hit td:first-child { box-shadow: inset 4px 0 0 var(--lime); }
+.modal-sub { font-size: 20px; margin: 20px 0 8px; color: var(--ink-muted); }

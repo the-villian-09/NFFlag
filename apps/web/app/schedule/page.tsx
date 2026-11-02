@@ -1,16 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { serverGet } from "@/lib/server-api";
-import { EventRow } from "@/components/event-row";
-import { TicketButton } from "@/components/ticket-button";
-import { GAME_STATUS, pct, type Game, type Standing } from "@/lib/schedule";
+import { ScheduleBrowser, type ScheduleDivision } from "@/components/schedule-browser";
 
 export const metadata: Metadata = { title: "Schedule & standings" };
 export const revalidate = 60;
 
 interface Data {
   season: { id: string; name: string; seasonPassUrl?: string | null };
-  divisions: { id: string; name: string; games: Game[]; standings: Standing[] }[];
+  divisions: ScheduleDivision[];
 }
 
 /** Public game schedule, results and standings for the current season. */
@@ -35,78 +33,7 @@ export default async function SchedulePage() {
       ) : (
         <>
           <p className="muted">{data.season.name}. All times are Jacksonville time.</p>
-          {divs.length > 1 && (
-            <nav className="chips" aria-label="Divisions" style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0 24px" }}>
-              {divs.map((d) => (
-                <a key={d.id} className="btn ghost small" href={`#d-${d.id}`}>
-                  {d.name}
-                </a>
-              ))}
-            </nav>
-          )}
-          {divs.map((d) => (
-            <section key={d.id} id={`d-${d.id}`} style={{ marginBottom: 40, scrollMarginTop: 96 }}>
-              <h2>{d.name}</h2>
-              <div className="grid" style={{ alignItems: "start" }}>
-                <div className="card">
-                  <h3 style={{ marginTop: 0 }}>Standings</h3>
-                  <div className="table-wrap">
-                    <table className="simple standings">
-                      <thead>
-                        <tr>
-                          <th>Team</th>
-                          <th>W</th>
-                          <th>L</th>
-                          <th>T</th>
-                          <th>Pct</th>
-                          <th>PF</th>
-                          <th>PA</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {d.standings.map((s) => (
-                          <tr key={s.teamId}>
-                            <td>
-                              <strong>{s.team}</strong>
-                            </td>
-                            <td>{s.w}</td>
-                            <td>{s.l}</td>
-                            <td>{s.t}</td>
-                            <td>{pct(s.pct)}</td>
-                            <td>{s.pf}</td>
-                            <td>{s.pa}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                <div className="card">
-                  <div className="games-head">
-                    <h3 style={{ margin: 0 }}>Games</h3>
-                    {data.season.seasonPassUrl && (
-                      <a className="btn small" href={data.season.seasonPassUrl} target="_blank" rel="noopener noreferrer" aria-label={`Buy ${data.season.name} season passes`}>
-                        Buy season passes
-                      </a>
-                    )}
-                  </div>
-                  <ul className="events">
-                    {d.games.map((g) => (
-                      <EventRow
-                        key={g.id}
-                        startsAt={g.startsAt}
-                        title={g.status === "final" ? `${g.home} ${g.homeScore} – ${g.away} ${g.awayScore}` : `${g.home} vs ${g.away}`}
-                        detail={g.location}
-                        struck={g.status === "cancelled"}
-                        badge={g.status !== "scheduled" ? <span className={`status ${GAME_STATUS[g.status].tone}`}>{GAME_STATUS[g.status].label}</span> : null}
-                        action={<TicketButton g={g} />}
-                      />
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </section>
-          ))}
+          <ScheduleBrowser divisions={divs} season={data.season} />
         </>
       )}
     </main>
