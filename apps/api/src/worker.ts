@@ -7,6 +7,7 @@
  */
 import { pool } from "./db/client.js";
 import { logger } from "./lib/logger.js";
+import { errorForLog } from "./lib/log-error.js";
 import { registerSubscribers } from "./modules/subscribers.js";
 import { processOutbox } from "./modules/platform/outbox.js";
 import { expireHolds, reconcileProcessing, retryAutoRefunds, retrySubmittingRefunds } from "./modules/registration/service.js";
@@ -76,7 +77,7 @@ async function housekeeping() {
 }
 
 async function drain() {
-  await housekeeping().catch((err) => logger.error({ err }, "housekeeping failed"));
+  await housekeeping().catch((err) => logger.error({ err: errorForLog(err) }, "housekeeping failed"));
   let total = 0;
   for (;;) {
     const { processed, failed } = await processOutbox(50);
@@ -99,7 +100,7 @@ async function main() {
 
 main()
   .catch((err) => {
-    logger.error({ err }, "worker failed");
+    logger.error({ err: errorForLog(err) }, "worker failed");
     process.exitCode = 1;
   })
   .finally(() => pool.end());

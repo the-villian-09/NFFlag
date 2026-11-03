@@ -128,19 +128,27 @@ done
 gcloud iam service-accounts add-iam-policy-binding $RUNTIME_SA \
   --member=serviceAccount:$DEPLOY_SA --role=roles/iam.serviceAccountUser
 
+# Trust the repo by its numeric id (a name can be re-registered by someone else),
+# and only this environment's deploy job on its branch (security audit H2).
+GITHUB_REPO_ID=$(curl -s https://api.github.com/repos/$GITHUB_REPO | jq -r .id)   # or read it from the repo page
+ENV_NAME=staging; GH_REF=refs/heads/main          # prod: ENV_NAME=prod; GH_REF=refs/heads/production
 gcloud iam workload-identity-pools create github --location=global
 gcloud iam workload-identity-pools providers create-oidc github --location=global \
   --workload-identity-pool=github --issuer-uri=https://token.actions.githubusercontent.com \
-  --attribute-mapping=google.subject=assertion.sub,attribute.repository=assertion.repository \
-  --attribute-condition="assertion.repository=='$GITHUB_REPO'"
+  --attribute-mapping=google.subject=assertion.sub,attribute.repository_id=assertion.repository_id,attribute.environment=assertion.environment,attribute.ref=assertion.ref \
+  --attribute-condition="assertion.repository_id=='$GITHUB_REPO_ID' && assertion.environment=='$ENV_NAME' && assertion.ref=='$GH_REF'"
 POOL=$(gcloud iam workload-identity-pools describe github --location=global --format='value(name)')
 gcloud iam service-accounts add-iam-policy-binding $DEPLOY_SA --role=roles/iam.workloadIdentityUser \
-  --member="principalSet://iam.googleapis.com/$POOL/attribute.repository/$GITHUB_REPO"
+  --member="principalSet://iam.googleapis.com/$POOL/attribute.repository_id/$GITHUB_REPO_ID"
 echo "GCP_WIF_PROVIDER = $POOL/providers/github"
 ```
 
+`setup-gcp.sh` does all of this; `harden-gcp.sh` applies the same limits to an
+existing project.
+
 In GitHub → Settings → Environments, create `staging` and `prod` (add required
-reviewers on `prod`) and set these **variables** on each:
+reviewers on `prod`; set **Deployment branches** to `main` for staging and
+`production` for prod) and set these **variables** on each:
 `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`.
 
 ## 7. Vercel (front end)
@@ -244,3 +252,16 @@ gcloud run services update-traffic nffl-api-$ENV_NAME --region=$REGION --to-revi
 ```
 Migrations are forward-only: write them so the previous app version still works with the new schema
 (add columns nullable, backfill, then tighten in a later release).
+
+
+## Security hardening (Nov 3, 2026 audit)
+
+Run once per environment, staging first, from the `infra` folder in Cloud Shell:
+
+1. `bash set-proxy-secret.sh <staging|prod> <project>`: the API answers only the
+   website, and rate limits and audit IPs use the real visitor address.
+2. `bash harden-gcp.sh <staging|prod> <project>`: deploy access limited to the
+   environment's branch, sign-in links kept out of logs (and old logs deleted),
+   optional sign-out of everyone, encrypted-only database connections, a
+   row-access-only database login for the app, an optional narrower deploy role,
+   and a list of who can read logs. Each step asks first.

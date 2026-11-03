@@ -94,8 +94,9 @@ else
     --database-version=POSTGRES_16 --edition=ENTERPRISE --tier="$DB_TIER" --region="$REGION" \
     --storage-size=10 --storage-auto-increase \
     --backup-start-time=07:00 --retained-backups-count=14 "$PITR_FLAG" \
+    --ssl-mode=TRUSTED_CLIENT_CERTIFICATE_REQUIRED \
     --deletion-protection
-  ok "instance $INSTANCE created"
+  ok "instance $INSTANCE created (encrypted connections only)"
 fi
 
 if gcloud sql databases describe "$DB_NAME" --instance="$INSTANCE" >/dev/null 2>&1; then
@@ -170,11 +171,17 @@ ok "API can reach the database and its secrets; deployer can deploy"
 step "5. API service, migrate job and worker job (placeholder image until the first deploy)"
 SECRETS="DATABASE_URL=nffl-database-url:latest,BETTER_AUTH_SECRET=nffl-auth-secret:latest"
 $HAVE_RESEND && SECRETS="$SECRETS,RESEND_API_KEY=nffl-resend-key:latest"
+# The API and worker use the row-access-only login once harden-gcp.sh has made it
+# (security audit M10); migrations always use the owner login.
+APP_SECRETS="$SECRETS"
+if gcloud secrets describe nffl-database-url-runtime >/dev/null 2>&1; then
+  APP_SECRETS="${SECRETS/DATABASE_URL=nffl-database-url:latest/DATABASE_URL=nffl-database-url-runtime:latest}"
+fi
 ENVVARS="^|^APP_ENV=$ENV_NAME|APP_BASE_URL=$APP_BASE_URL|EMAIL_FROM=$EMAIL_FROM|NODE_ENV=production"
 
 if gcloud run services describe "nffl-api-$ENV_NAME" >/dev/null 2>&1; then
   gcloud run services update "nffl-api-$ENV_NAME" --region="$REGION" \
-    --update-secrets="$SECRETS" --update-env-vars="$ENVVARS" --set-cloudsql-instances="$CONN" --quiet >/dev/null
+    --update-secrets="$APP_SECRETS" --update-env-vars="$ENVVARS" --set-cloudsql-instances="$CONN" --quiet >/dev/null
   ok "API service updated"
 else
   gcloud run deploy "nffl-api-$ENV_NAME" --image="$PLACEHOLDER_IMAGE" --region="$REGION" \
@@ -185,21 +192,21 @@ else
 fi
 
 ensure_job() {
-  local name=$1 cmd=$2 args=$3
+  local name=$1 cmd=$2 args=$3 secrets=${4:-$SECRETS}
   if gcloud run jobs describe "$name" --region="$REGION" >/dev/null 2>&1; then
-    gcloud run jobs update "$name" --region="$REGION" --update-secrets="$SECRETS" \
+    gcloud run jobs update "$name" --region="$REGION" --update-secrets="$secrets" \
       --update-env-vars="$ENVVARS" --set-cloudsql-instances="$CONN" --quiet >/dev/null
     ok "job $name updated"
   else
     gcloud run jobs create "$name" --image="$PLACEHOLDER_IMAGE" --region="$REGION" \
-      --service-account="$RUNTIME_SA" --set-secrets="$SECRETS" --set-env-vars="$ENVVARS" \
+      --service-account="$RUNTIME_SA" --set-secrets="$secrets" --set-env-vars="$ENVVARS" \
       --set-cloudsql-instances="$CONN" --command="$cmd" --args="$args" \
       --max-retries=0 --task-timeout=10m --quiet >/dev/null
     ok "job $name created"
   fi
 }
 ensure_job "nffl-migrate-$ENV_NAME" sh "-c,node dist/db/migrate.js && node dist/db/seed.js"
-ensure_job "nffl-worker-$ENV_NAME" node "dist/worker.js"
+ensure_job "nffl-worker-$ENV_NAME" node "dist/worker.js" "$APP_SECRETS"
 
 gcloud run jobs add-iam-policy-binding "nffl-worker-$ENV_NAME" --region="$REGION" \
   --member="serviceAccount:$SCHED_SA" --role=roles/run.invoker >/dev/null
@@ -222,15 +229,21 @@ else
   gcloud iam workload-identity-pools create github --location=global --display-name="GitHub Actions"
   ok "identity pool created"
 fi
+# Only this repo's deploy job, in this environment's GitHub environment and from
+# this environment's branch, can act as the deployer (security audit H2).
+if [[ "$ENV_NAME" == "prod" ]]; then GH_REF="refs/heads/production"; else GH_REF="refs/heads/main"; fi
+WIF_MAPPING="google.subject=assertion.sub,attribute.repository_id=assertion.repository_id,attribute.repository=assertion.repository,attribute.environment=assertion.environment,attribute.ref=assertion.ref"
+WIF_CONDITION="assertion.repository_id=='$GITHUB_REPO_ID' && assertion.environment=='$ENV_NAME' && assertion.ref=='$GH_REF'"
 if gcloud iam workload-identity-pools providers describe github --location=global --workload-identity-pool=github >/dev/null 2>&1; then
-  ok "GitHub provider exists"
+  gcloud iam workload-identity-pools providers update-oidc github --location=global --workload-identity-pool=github \
+    --attribute-mapping="$WIF_MAPPING" --attribute-condition="$WIF_CONDITION" >/dev/null
+  ok "GitHub provider limited to the $ENV_NAME environment on ${GH_REF#refs/heads/}"
 else
   gcloud iam workload-identity-pools providers create-oidc github --location=global \
     --workload-identity-pool=github --display-name="GitHub" \
     --issuer-uri="https://token.actions.githubusercontent.com" \
-    --attribute-mapping="google.subject=assertion.sub,attribute.repository_id=assertion.repository_id,attribute.repository=assertion.repository" \
-    --attribute-condition="assertion.repository_id=='$GITHUB_REPO_ID'"
-  ok "GitHub provider created (only $GITHUB_REPO can use it)"
+    --attribute-mapping="$WIF_MAPPING" --attribute-condition="$WIF_CONDITION"
+  ok "GitHub provider created (only $GITHUB_REPO's $ENV_NAME deploys from ${GH_REF#refs/heads/})"
 fi
 POOL="projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github"
 gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA" --role=roles/iam.workloadIdentityUser \

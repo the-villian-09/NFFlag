@@ -35,7 +35,7 @@ export class MemoryEmailSender implements EmailSender {
     this.sent.push(message);
     if (env.NODE_ENV === "test") return;
     if (env.APP_ENV === "prod") {
-      logger.error({ to: message.to, template: message.template }, "email NOT sent: RESEND_API_KEY is not configured");
+      logger.error({ template: message.template }, "email NOT sent: RESEND_API_KEY is not configured");
       return;
     }
     logger.warn(

@@ -1,6 +1,7 @@
 import type { ErrorRequestHandler } from "express";
 import { ZodError } from "zod";
 import { logger } from "../lib/logger.js";
+import { errorForLog } from "../lib/log-error.js";
 
 /** Stable error codes the front end can switch on. */
 export type ErrorCode =
@@ -51,6 +52,6 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     res.status(err.status).json({ error: { code: err.code, message: err.message, requestId, ...err.details } });
     return;
   }
-  logger.error({ err, requestId }, "unhandled error");
+  logger.error({ err: errorForLog(err), requestId }, "unhandled error");
   res.status(500).json({ error: { code: "INTERNAL", message: "Something went wrong.", requestId } });
 };

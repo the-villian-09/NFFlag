@@ -16,6 +16,7 @@ import { HttpError } from "../../http/errors.js";
 import { getEmailSender } from "../../lib/email.js";
 import { templates } from "../../lib/email-templates.js";
 import { logger } from "../../lib/logger.js";
+import { errorForLog } from "../../lib/log-error.js";
 import { writeAudit } from "../platform/audit.js";
 import { DEFAULT_PAGES, DEFAULT_SETTINGS, PAGE_SLUGS, type Announcement, type ContactInfo } from "./defaults.js";
 
@@ -187,7 +188,7 @@ publicContentRouter.post(
         );
         await db.update(contactMessages).set({ emailedAt: new Date() }).where(eq(contactMessages.id, saved!.id));
       } catch (err) {
-        logger.error({ err, messageId: saved!.id }, "contact message saved but email failed");
+        logger.error({ err: errorForLog(err), messageId: saved!.id }, "contact message saved but email failed");
       }
     } else {
       logger.warn({ messageId: saved!.id }, "contact message saved; no inbox email set in Site content");
