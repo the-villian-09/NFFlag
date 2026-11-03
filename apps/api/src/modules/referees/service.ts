@@ -242,7 +242,8 @@ export async function payoutSession(u: { id: string; email: string }) {
     if (!(err instanceof StripeError)) throw err;
     // Stripe's own reason (usually a dashboard setting), so it can be fixed.
     logger.error({ userId: u.id, status: err.status, type: err.type, code: err.code, message: err.message }, "Stripe refused payout setup");
-    throw new HttpError(503, "PAYMENTS_UNAVAILABLE", `Payout setup isn't available right now. Stripe said: ${err.message}`);
+    // The details stay in the log for the league; referees get a plain message.
+    throw new HttpError(503, "PAYMENTS_UNAVAILABLE", "Payout setup isn't available right now. Please try again later, or contact the league if it keeps happening.");
   }
 }
 
@@ -942,12 +943,28 @@ export async function sendPayout(payoutId: string, actor?: Actor & { userId: str
         .returning();
       return { p: after!, skip: true as const };
     }
+    // Another send of this payout is in progress (another admin, or the worker).
+    if (p.sendingAt && Date.now() - p.sendingAt.getTime() < SENDING_WINDOW_MS) return { p, skip: true as const };
     const [acct] = await tx.select().from(refereeAccounts).where(eq(refereeAccounts.userId, p.userId));
-    await tx.update(refereePayouts).set({ attempts: sql`${refereePayouts.attempts} + 1`, updatedAt: new Date() }).where(eq(refereePayouts.id, p.id));
+    await tx
+      .update(refereePayouts)
+      .set({ attempts: sql`${refereePayouts.attempts} + 1`, sendingAt: new Date(), updatedAt: new Date() })
+      .where(eq(refereePayouts.id, p.id));
     return { p, acct: acct ?? null, skip: false as const };
   });
   if (claim.skip) return publicPayout(claim.p);
   const { p, acct } = claim as { p: typeof refereePayouts.$inferSelect; acct: Account | null };
+  try {
+    return await sendClaimed(p, acct, actor);
+  } finally {
+    await db.update(refereePayouts).set({ sendingAt: null }).where(eq(refereePayouts.id, p.id));
+  }
+}
+
+/** How long a send may hold a payout before it's treated as interrupted. */
+const SENDING_WINDOW_MS = 5 * 60_000;
+
+async function sendClaimed(p: typeof refereePayouts.$inferSelect, acct: Account | null, actor?: Actor & { userId: string }) {
 
   // Tried before: it may already have gone through (response lost, or a different attempt).
   if (p.attempts > 0) {
@@ -1038,6 +1055,11 @@ export async function voidPayout(actor: Actor & { userId: string }, payoutId: st
   return db.transaction(async (tx) => {
     const [p] = await tx.select().from(refereePayouts).where(eq(refereePayouts.id, payoutId)).for("update");
     if (!p || p.status === "paid" || p.status === "void") throw new HttpError(409, "CONFLICT", "This payout can't be voided.");
+    // A send that started after the check above (or is still running) wins; try Void again in a few minutes.
+    if (p.sendingAt && Date.now() - p.sendingAt.getTime() < SENDING_WINDOW_MS) {
+      throw new HttpError(409, "CONFLICT", "This payout is being sent right now. Wait a few minutes and check it again before voiding.");
+    }
+    if (p.attempts !== p0.attempts) throw new HttpError(409, "CONFLICT", "This payout was just tried again. Refresh and check it before voiding.");
     await tx.update(refereePayouts).set({ status: "void", lastError: reason, updatedAt: new Date() }).where(eq(refereePayouts.id, p.id));
     const games = await tx
       .update(gameOfficials)

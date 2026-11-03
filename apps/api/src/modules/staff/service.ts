@@ -17,7 +17,7 @@ import { logger } from "../../lib/logger.js";
 import { writeAudit } from "../platform/audit.js";
 import { isEnabled } from "../platform/flags.js";
 import { publish } from "../platform/outbox.js";
-import { COMPLETED, isUniqueViolation, issueRefund, refundAll, type Actor, type PaymentRequest } from "../registration/service.js";
+import { autoRefund, COMPLETED, isUniqueViolation, issueRefund, refundAll, type Actor, type PaymentRequest } from "../registration/service.js";
 import { PROMO_FLAG, settleApplicationCode, submitFreeApplication } from "../promo/service.js";
 import { removeFromSeasonTeams } from "../teams/service.js";
 import { getPaymentSettings, quote } from "../registration/settings.js";
@@ -345,6 +345,23 @@ export async function recordApplicationPayment(payment: GatewayPayment, actor: A
     if (a.status === "withdrawn" || a.status === "rejected") {
       return refunding ? keep : { ...keep, refundPaymentId: row!.id, reason: "Application was closed before payment finished" };
     }
+    // A payment for a different amount than the fee now is (e.g. a promo code
+    // removed after an abandoned payment) is given back; they can pay again.
+    if (payment.amountCents != null && payment.amountCents !== a.totalCents) {
+      if (a.status === "processing") {
+        await tx
+          .update(volunteerApplications)
+          .set({
+            status: "pending_payment",
+            paymentRequest: null,
+            processingStartedAt: null,
+            paymentError: "That payment didn't match the current fee, so it's being refunded. Please pay again.",
+            updatedAt: new Date(),
+          })
+          .where(eq(volunteerApplications.id, a.id));
+      }
+      return refunding ? keep : { ...keep, refundPaymentId: row!.id, reason: "Payment didn't match the fee" };
+    }
     const [after] = await tx
       .update(volunteerApplications)
       .set({ status: "submitted", paidAt: new Date(), paymentError: null, paymentRequest: null, processingStartedAt: null, updatedAt: new Date() })
@@ -363,11 +380,7 @@ export async function recordApplicationPayment(payment: GatewayPayment, actor: A
     return { ...keep, app: after! };
   });
   if (outcome.refundPaymentId && outcome.app) {
-    try {
-      await issueRefund({ applicationId: outcome.app.id }, { reason: outcome.reason, paymentId: outcome.refundPaymentId }, { userId: null });
-    } catch (err) {
-      logger.error({ applicationId: outcome.app.id, err: err instanceof Error ? err.message : String(err) }, "automatic volunteer fee refund failed");
-    }
+    await autoRefund({ applicationId: outcome.app.id }, outcome.refundPaymentId, outcome.reason);
   }
   return outcome.app;
 }
@@ -438,7 +451,9 @@ export async function withdrawApplication(actor: Actor & { userId: string }, app
   if (!a) throw new HttpError(409, "CONFLICT", "This application can't be withdrawn. Contact the league.");
   await writeAudit(db, { actorUserId: actor.userId, action: "staff.application.withdraw", targetType: "volunteer_application", targetId: a.id, requestId: actor.requestId, ipAddress: actor.ip });
   const refund = a.paidAt ? await refundAll({ applicationId: a.id }, "Application withdrawn", actor) : null;
-  return { application: publicApplication(a), refund };
+  // Card processor wording stays with admins (the refund needing a retry shows on the admin page).
+  const shown = refund && { ...refund, error: refund.error ? "Your fee couldn't be refunded automatically. The league will send it." : null };
+  return { application: publicApplication(a), refund: shown };
 }
 
 /* ---------------- admin ---------------- */

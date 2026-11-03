@@ -9,7 +9,7 @@ import { pool } from "./db/client.js";
 import { logger } from "./lib/logger.js";
 import { registerSubscribers } from "./modules/subscribers.js";
 import { processOutbox } from "./modules/platform/outbox.js";
-import { expireHolds, reconcileProcessing } from "./modules/registration/service.js";
+import { expireHolds, reconcileProcessing, retryAutoRefunds, retrySubmittingRefunds } from "./modules/registration/service.js";
 import { processWaitlist } from "./modules/registration/waitlist.js";
 import { reconcileApplications } from "./modules/staff/service.js";
 import { refreshConnection } from "./modules/square/client.js";
@@ -45,6 +45,13 @@ async function housekeeping() {
   await step("waitlist", async () => {
     const wl = await processWaitlist();
     if (wl.offered || wl.expired) logger.info(wl, "waitlist offers sent / expired");
+  });
+  await step("refunds awaiting an answer", async () => {
+    const n = await retrySubmittingRefunds();
+    if (n) logger.info({ settled: n }, "settled refunds whose answer was lost");
+  });
+  await step("automatic refunds", async () => {
+    await retryAutoRefunds();
   });
   await step("referee pay", async () => {
     const n = await processRefereePayouts();

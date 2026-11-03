@@ -16,6 +16,7 @@ export type ErrorCode =
   | "DIVISION_FULL"
   | "PAYMENT_FAILED"
   | "PAYMENT_PENDING"
+  | "REFUND_PENDING"
   /** The bank wants the cardholder to confirm (3-D Secure); details.clientSecret finishes it in the browser. */
   | "PAYMENT_ACTION_REQUIRED"
   | "PAYMENTS_UNAVAILABLE"

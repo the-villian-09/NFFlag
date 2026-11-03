@@ -14,6 +14,7 @@ import { db, type DbOrTx, type Tx } from "../../db/client.js";
 import {
   contentPages,
   divisions,
+  householdMembers,
   payments,
   players,
   promoCodes,
@@ -559,10 +560,30 @@ export async function recordCompletedPayment(payment: GatewayPayment, actor: Act
       return keep;
     }
 
+    // A payment for a different amount than the registration now costs (for
+    // example a promo code removed after an abandoned payment) is given back.
+    if (payment.amountCents != null && payment.amountCents !== r.totalCents) {
+      if (r.status === "processing") {
+        await tx
+          .update(registrations)
+          .set({
+            status: "pending_payment",
+            paymentRequest: null,
+            processingStartedAt: null,
+            paymentError: "That payment didn't match the current total, so it's being refunded. Please pay again.",
+            updatedAt: new Date(),
+          })
+          .where(eq(registrations.id, r.id));
+      }
+      return refunding ? keep : { ...keep, refundPaymentId: row!.id, reason: "Payment didn't match the registration total" };
+    }
+
     let lostSpot = r.status === "cancelled" || r.status === "rejected";
-    if (r.status === "expired") {
+    // The spot was held only until holdExpiresAt: once that has passed (expired,
+    // or not yet swept by the worker), a late payment keeps it only if there's still room.
+    if (r.status === "expired" || (r.holdExpiresAt && r.holdExpiresAt.getTime() <= Date.now())) {
       const d = await lockDivision(tx, r.divisionId);
-      lostSpot = (await spotsTaken(tx, d.id, r.id)) >= d.capacity;
+      lostSpot = lostSpot || (await spotsTaken(tx, d.id, r.id)) >= d.capacity;
     }
     if (!lostSpot) {
       try {
@@ -577,11 +598,7 @@ export async function recordCompletedPayment(payment: GatewayPayment, actor: Act
   });
 
   if (outcome.refundPaymentId && outcome.reg) {
-    try {
-      await refundRegistration(outcome.reg.id, { reason: outcome.reason, paymentId: outcome.refundPaymentId }, { userId: null });
-    } catch (err) {
-      logger.error({ registrationId: outcome.reg.id, err: err instanceof Error ? err.message : String(err) }, "automatic refund failed");
-    }
+    await autoRefund({ registrationId: outcome.reg.id }, outcome.refundPaymentId, outcome.reason);
   }
   return outcome.reg;
 }
@@ -606,11 +623,9 @@ export function refundRegistration(registrationId: string, input: { amountCents?
  * The refund goes through the provider that took the payment.
  */
 export async function issueRefund(owner: PaymentOwner, input: { amountCents?: number; reason: string; paymentId?: string }, actor: Actor) {
-  const target = "registrationId" in owner
-    ? { type: "registration", id: owner.registrationId, event: "registration.refunded" as const }
-    : { type: "volunteer_application", id: owner.applicationId, event: "staff.application_refunded" as const };
+  const target = refundTarget(owner);
 
-  const { p, amount } = await db.transaction(async (tx) => {
+  const { p, amount, refundRowId, idempotencyKey } = await db.transaction(async (tx) => {
     const [p] = await tx
       .select()
       .from(payments)
@@ -625,6 +640,14 @@ export async function issueRefund(owner: PaymentOwner, input: { amountCents?: nu
       .limit(1)
       .for("update");
     if (!p) throw new HttpError(409, "CONFLICT", "There's no completed payment to refund.");
+    const [stuck] = await tx
+      .select({ id: refunds.id })
+      .from(refunds)
+      .where(and(eq(refunds.paymentId, p.id), eq(refunds.status, "SUBMITTING")))
+      .limit(1);
+    if (stuck) {
+      throw new HttpError(409, "CONFLICT", "A refund of this payment is still being confirmed with the card processor. Check back in a few minutes before refunding again.");
+    }
     const remaining = p.amountCents - p.refundedCents;
     const amount = input.amountCents ?? remaining;
     if (amount <= 0 || amount > remaining) {
@@ -634,51 +657,38 @@ export async function issueRefund(owner: PaymentOwner, input: { amountCents?: nu
       .update(payments)
       .set({ refundedCents: sql`${payments.refundedCents} + ${amount}`, updatedAt: new Date() })
       .where(eq(payments.id, p.id));
-    return { p, amount };
+    // Recorded before the card processor is asked, so an answer that never
+    // arrives can be asked about again with the same key instead of refunding twice.
+    const idempotencyKey = randomUUID();
+    const [row] = await tx
+      .insert(refunds)
+      .values({ paymentId: p.id, status: "SUBMITTING", amountCents: amount, reason: input.reason, issuedBy: actor.userId, idempotencyKey })
+      .returning({ id: refunds.id });
+    return { p, amount, refundRowId: row!.id, idempotencyKey };
   });
-  const release = () =>
-    db
-      .update(payments)
-      .set({ refundedCents: sql`greatest(0, ${payments.refundedCents} - ${amount})`, updatedAt: new Date() })
-      .where(eq(payments.id, p.id));
 
-  let refund: { id: string; status: string };
-  try {
-    refund = await refundCard({
-      provider: p.provider,
-      environment: p.providerEnvironment,
-      paymentId: p.providerPaymentId,
-      amountCents: amount,
-      idempotencyKey: randomUUID(),
-      reason: input.reason,
-    });
-  } catch (err) {
-    await release();
-    if (err instanceof GatewayUnavailableError) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", err.message);
-    if (err instanceof GatewaySetupError) throw new HttpError(409, "CONFLICT", err.message);
+  const result = await submitRefund({ refundRowId, idempotencyKey, payment: p, amountCents: amount, reason: input.reason });
+  if (result.kind === "refused") {
+    if (result.error instanceof GatewayUnavailableError) throw new HttpError(503, "PAYMENTS_UNAVAILABLE", result.error.message);
+    if (result.error instanceof GatewaySetupError) throw new HttpError(409, "CONFLICT", result.error.message);
     const provider = p.provider === "stripe" ? "Stripe" : "Square";
-    throw new HttpError(502, "PAYMENT_FAILED", `${provider} refused the refund: ${err instanceof Error ? err.message : "unknown error"}`);
+    throw new HttpError(502, "PAYMENT_FAILED", `${provider} refused the refund: ${result.error instanceof Error ? result.error.message : "unknown error"}`);
+  }
+  if (result.kind === "unknown") {
+    throw new HttpError(
+      502,
+      "REFUND_PENDING",
+      "The card processor didn't answer in time. The refund is being confirmed automatically; don't refund again. Check back in a few minutes.",
+    );
   }
 
   await db.transaction(async (tx) => {
-    // The webhook may have recorded (and counted) this refund already; then give back our reservation.
-    const [saved] = await tx
-      .insert(refunds)
-      .values({ paymentId: p.id, providerRefundId: refund.id, status: refund.status, amountCents: amount, reason: input.reason, issuedBy: actor.userId })
-      .onConflictDoUpdate({ target: refunds.providerRefundId, set: { reason: input.reason, issuedBy: actor.userId, updatedAt: new Date() } })
-      .returning({ inserted: sql<boolean>`(xmax = 0)` });
-    if (!saved?.inserted) {
-      await tx
-        .update(payments)
-        .set({ refundedCents: sql`greatest(0, ${payments.refundedCents} - ${amount})`, updatedAt: new Date() })
-        .where(eq(payments.id, p.id));
-    }
     await writeAudit(tx, {
       actorUserId: actor.userId,
       action: `${target.type}.refund`,
       targetType: target.type,
       targetId: target.id,
-      after: { refundId: refund.id, paymentId: p.providerPaymentId, amountCents: amount, status: refund.status },
+      after: { refundId: result.refund.id, paymentId: p.providerPaymentId, amountCents: amount, status: result.refund.status },
       reason: input.reason,
       requestId: actor.requestId,
       ipAddress: actor.ip,
@@ -688,10 +698,144 @@ export async function issueRefund(owner: PaymentOwner, input: { amountCents?: nu
       aggregateType: target.type,
       aggregateId: target.id,
       payload: { amountCents: amount },
-      dedupeKey: `${target.event}:${refund.id}`,
+      dedupeKey: `${target.event}:${result.refund.id}`,
     });
   });
-  return { refundId: refund.id, amountCents: amount, status: refund.status };
+  return { refundId: result.refund.id, amountCents: amount, status: result.refund.status };
+}
+
+/** Admins can't decide, cancel or refund their own household's registrations. */
+export async function refuseOwnRegistration(registrationId: string, userId: string) {
+  const [mine] = await db
+    .select({ id: registrations.id })
+    .from(registrations)
+    .innerJoin(householdMembers, eq(householdMembers.householdId, registrations.householdId))
+    .where(and(eq(registrations.id, registrationId), eq(householdMembers.userId, userId)))
+    .limit(1);
+  if (mine) throw new HttpError(403, "FORBIDDEN", "Another admin needs to handle your own family's registration.");
+}
+
+function refundTarget(owner: PaymentOwner) {
+  return "registrationId" in owner
+    ? { type: "registration", id: owner.registrationId, event: "registration.refunded" as const }
+    : { type: "volunteer_application", id: owner.applicationId, event: "staff.application_refunded" as const };
+}
+
+/** A provider answer that means the refund definitely didn't happen. */
+function definitelyRefused(err: unknown) {
+  if (err instanceof GatewayUnavailableError || err instanceof GatewaySetupError || err instanceof CardDeclinedError) return true;
+  const status = (err as { status?: unknown })?.status;
+  return typeof status === "number" && status >= 400 && status < 500 && status !== 409 && status !== 429;
+}
+
+type PaymentRow = typeof payments.$inferSelect;
+
+/**
+ * Sends (or re-sends, with the same key) a refund recorded as SUBMITTING and
+ * settles our records: done → the provider's id and status; definitely
+ * refused → the reservation is given back; no answer → left for the worker.
+ */
+async function submitRefund(r: { refundRowId: string; idempotencyKey: string; payment: PaymentRow; amountCents: number; reason: string }) {
+  const release = (tx: DbOrTx) =>
+    tx
+      .update(payments)
+      .set({ refundedCents: sql`greatest(0, ${payments.refundedCents} - ${r.amountCents})`, updatedAt: new Date() })
+      .where(eq(payments.id, r.payment.id));
+  let refund: { id: string; status: string };
+  try {
+    refund = await refundCard({
+      provider: r.payment.provider,
+      environment: r.payment.providerEnvironment,
+      paymentId: r.payment.providerPaymentId,
+      amountCents: r.amountCents,
+      idempotencyKey: r.idempotencyKey,
+      reason: r.reason,
+    });
+  } catch (err) {
+    if (!definitelyRefused(err)) {
+      logger.error({ refundId: r.refundRowId, err: err instanceof Error ? err.message : String(err) }, "refund outcome unknown; the worker will ask again");
+      return { kind: "unknown" as const };
+    }
+    await db.transaction(async (tx) => {
+      const [gone] = await tx.delete(refunds).where(and(eq(refunds.id, r.refundRowId), eq(refunds.status, "SUBMITTING"))).returning({ id: refunds.id });
+      if (gone) await release(tx);
+    });
+    return { kind: "refused" as const, error: err };
+  }
+  await db.transaction(async (tx) => {
+    // The webhook may already have recorded (and counted) this refund under the provider's id.
+    const [webhookRow] = await tx.select({ id: refunds.id }).from(refunds).where(eq(refunds.providerRefundId, refund.id));
+    if (webhookRow) {
+      const [gone] = await tx.delete(refunds).where(and(eq(refunds.id, r.refundRowId), eq(refunds.status, "SUBMITTING"))).returning({ id: refunds.id });
+      if (gone) {
+        await release(tx);
+        await tx.update(refunds).set({ reason: r.reason, updatedAt: new Date() }).where(eq(refunds.id, webhookRow.id));
+      }
+      return;
+    }
+    await tx
+      .update(refunds)
+      .set({ providerRefundId: refund.id, status: refund.status, updatedAt: new Date() })
+      .where(eq(refunds.id, r.refundRowId));
+    if (refund.status === "FAILED" || refund.status === "REJECTED") await release(tx);
+  });
+  return { kind: "done" as const, refund };
+}
+
+/** Worker: refunds whose answer never arrived are asked about again with their original key. */
+export async function retrySubmittingRefunds(limit = 20) {
+  const rows = await db
+    .select({ refund: refunds, payment: payments })
+    .from(refunds)
+    .innerJoin(payments, eq(payments.id, refunds.paymentId))
+    .where(and(eq(refunds.status, "SUBMITTING"), sql`${refunds.createdAt} < now() - interval '2 minutes'`))
+    .limit(limit);
+  let settled = 0;
+  for (const { refund, payment } of rows) {
+    if (!refund.idempotencyKey) continue;
+    const res = await submitRefund({ refundRowId: refund.id, idempotencyKey: refund.idempotencyKey, payment, amountCents: refund.amountCents, reason: refund.reason });
+    if (res.kind !== "unknown") settled++;
+  }
+  return settled;
+}
+
+/**
+ * A payment we must give back (duplicate, late, wrong amount). Marks it so the
+ * worker keeps trying if the refund can't go through right now.
+ */
+export async function autoRefund(owner: PaymentOwner, paymentId: string, reason: string) {
+  await db.update(payments).set({ autoRefundReason: reason, autoRefundAttemptAt: new Date() }).where(eq(payments.id, paymentId));
+  try {
+    await issueRefund(owner, { reason, paymentId }, { userId: null });
+    await db.update(payments).set({ autoRefundReason: null }).where(eq(payments.id, paymentId));
+  } catch (err) {
+    logger.error({ paymentId, err: err instanceof Error ? err.message : String(err) }, "automatic refund didn't go through; the worker will retry");
+  }
+}
+
+/** Worker: automatic refunds that didn't go through, retried every 15 minutes. */
+export async function retryAutoRefunds(limit = 20) {
+  const rows = await db
+    .select()
+    .from(payments)
+    .where(
+      and(
+        sql`${payments.autoRefundReason} is not null`,
+        sql`coalesce(${payments.autoRefundAttemptAt}, 'epoch'::timestamptz) < now() - interval '15 minutes'`,
+      ),
+    )
+    .limit(limit);
+  for (const p of rows) {
+    const [open] = await db.select({ id: refunds.id }).from(refunds).where(and(eq(refunds.paymentId, p.id), eq(refunds.status, "SUBMITTING"))).limit(1);
+    if (p.refundedCents >= p.amountCents && !open) {
+      await db.update(payments).set({ autoRefundReason: null }).where(eq(payments.id, p.id));
+      continue;
+    }
+    if (open) continue;
+    const owner: PaymentOwner = p.registrationId ? { registrationId: p.registrationId } : { applicationId: p.applicationId! };
+    await autoRefund(owner, p.id, p.autoRefundReason!);
+  }
+  return rows.length;
 }
 
 /**

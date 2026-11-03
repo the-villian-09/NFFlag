@@ -233,6 +233,11 @@ adminStaffRouter.post(
   requirePermission("refunds.issue"),
   handler(async (req, res) => {
     const input = z.object({ amountCents: z.number().int().min(1).optional(), reason: z.string().trim().min(3).max(190) }).parse(req.body);
+    const [own] = await db
+      .select({ id: volunteerApplications.id })
+      .from(volunteerApplications)
+      .where(and(eq(volunteerApplications.id, String(req.params.id)), eq(volunteerApplications.userId, req.ctx.auth!.user.id)));
+    if (own) throw new HttpError(403, "FORBIDDEN", "Another admin needs to refund your own fee.");
     res.json({ refund: await issueRefund({ applicationId: String(req.params.id) }, input, actorOf(req)) });
   }),
 );

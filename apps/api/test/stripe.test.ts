@@ -9,7 +9,7 @@ import { db } from "../src/db/client.js";
 import { featureFlags, payments, refunds, registrations, seasons, user, userRoleAssignments, volunteerApplications } from "../src/db/schema/index.js";
 import { clearSubscribers, processOutbox } from "../src/modules/platform/outbox.js";
 import { resetFlagCache } from "../src/modules/platform/flags.js";
-import { reconcileProcessing } from "../src/modules/registration/service.js";
+import { reconcileProcessing, retrySubmittingRefunds } from "../src/modules/registration/service.js";
 import { verifyStripeSignature } from "../src/modules/stripe/client.js";
 import { registerSubscribers } from "../src/modules/subscribers.js";
 import { agent, signUp, uniqueEmail, useProvider, type Agent } from "./helpers.js";
@@ -23,6 +23,8 @@ const stripe = {
   /** idempotency key → [status, body] of the original response. */
   byKey: new Map<string, [number, unknown]>(),
   seq: 0,
+  /** The next refund goes through at Stripe but its response is lost. */
+  loseNextRefund: false,
 };
 const realFetch = globalThis.fetch;
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
@@ -82,7 +84,12 @@ beforeAll(() => {
       return json(200, pi);
     }
     if (method === "POST" && url.pathname === "/v1/refunds") {
-      return remember(200, { id: `re_${++stripe.seq}`, status: "pending", amount: Number(body.get("amount")), payment_intent: body.get("payment_intent") });
+      const res = remember(200, { id: `re_${++stripe.seq}`, status: "pending", amount: Number(body.get("amount")), payment_intent: body.get("payment_intent") });
+      if (stripe.loseNextRefund) {
+        stripe.loseNextRefund = false;
+        return json(503, { error: { type: "api_error", message: "unavailable" } });
+      }
+      return res;
     }
     return json(404, { error: { type: "invalid_request_error", message: "not found" } });
   });
@@ -367,5 +374,68 @@ describe("Stripe checkout", () => {
     const tampered = sig.slice(0, -1) + (sig.endsWith("0") ? "1" : "0");
     expect(verifyStripeSignature(body, `t=${t},v1=${tampered}`)).toBe(false);
     expect(verifyStripeSignature(body, `t=${t - 600},v1=${createHmac("sha256", "whsec_test").update(`${t - 600}.${body}`).digest("hex")}`)).toBe(false);
+  });
+});
+
+describe("payment safeguards (security audit)", () => {
+  it("gives back a payment whose amount no longer matches the registration (M1)", async () => {
+    const { a, regId } = await startRegistration("Mismatch");
+    const res = await a.post(`/api/v1/registrations/${regId}/pay`).send({ sourceId: "ctoken_3ds" });
+    const intentId = (res.body.error.clientSecret as string).split("_secret")[0]!;
+    // The price changed while the bank check was open (e.g. a promo code was taken off).
+    await db.update(registrations).set({ totalCents: 12000 }).where(eq(registrations.id, regId));
+    completeAction(res.body.error.clientSecret);
+    const pi = stripe.intents.get(intentId)!;
+    expect((await signed(event("payment_intent.succeeded", { ...pi, latest_charge: `ch_${pi.id}` }))).status).toBe(200);
+    const reg = await regStatus(regId);
+    expect(reg.status).toBe("pending_payment");
+    expect(reg.paidAt).toBeNull();
+    expect(lastCall("/v1/refunds")!.body.get("payment_intent")).toBe(intentId);
+    const [p] = await db.select().from(payments).where(eq(payments.registrationId, regId));
+    expect(p!.refundedCents).toBe(10000);
+    expect(p!.autoRefundReason).toBeNull();
+  });
+
+  it("a refund whose answer is lost is confirmed later with the same key, never sent twice (M6)", async () => {
+    const { a, regId } = await startRegistration("Lostrefund");
+    await a.post(`/api/v1/registrations/${regId}/pay`).send({ sourceId: "ctoken_ok" });
+    const [p] = await db.select().from(payments).where(eq(payments.registrationId, regId));
+
+    stripe.loseNextRefund = true;
+    const first = await admin.post(`/api/v1/admin/league/registrations/${regId}/refund`).send({ amountCents: 3000, reason: "Partial" });
+    expect(first.status).toBe(502);
+    expect(first.body.error.code).toBe("REFUND_PENDING");
+    const [pending] = await db.select().from(refunds).where(eq(refunds.paymentId, p!.id));
+    expect(pending!.status).toBe("SUBMITTING");
+    // Trying again right away is refused instead of refunding a second time.
+    expect((await admin.post(`/api/v1/admin/league/registrations/${regId}/refund`).send({ amountCents: 3000, reason: "Partial" })).status).toBe(409);
+
+    const before = stripe.calls.filter((c) => c.path === "/v1/refunds").length;
+    await db.update(refunds).set({ createdAt: new Date(Date.now() - 5 * 60_000) }).where(eq(refunds.id, pending!.id));
+    expect(await retrySubmittingRefunds()).toBeGreaterThanOrEqual(1);
+    const retry = stripe.calls.filter((c) => c.path === "/v1/refunds").slice(before);
+    expect(retry.at(-1)!.key).toBe(pending!.idempotencyKey);
+    const [settled] = await db.select().from(refunds).where(eq(refunds.id, pending!.id));
+    expect(settled!.status).toBe("PENDING");
+    expect(settled!.providerRefundId).toMatch(/^re_/);
+    const [after] = await db.select().from(payments).where(eq(payments.id, p!.id));
+    expect(after!.refundedCents).toBe(3000);
+  });
+
+  it("admins can't refund, cancel or decide their own family's registration (M7)", async () => {
+    await admin.post("/api/v1/households").send({ displayName: "The Admin Family", phone: "904-555-0123" });
+    const pl = await admin.post("/api/v1/players").send({
+      firstName: "Adminkid",
+      lastName: "Player",
+      birthDate: "2016-06-01",
+      gender: "boy",
+      medical: { emergencyContactName: "Grandma", emergencyContactPhone: "904-555-0199" },
+    });
+    const r = await admin.post("/api/v1/registrations").send({ playerId: pl.body.player.id, divisionId, ...accept });
+    const regId = r.body.registration.id as string;
+    expect((await admin.post(`/api/v1/registrations/${regId}/pay`).send({ sourceId: "ctoken_ok" })).status).toBe(200);
+    expect((await admin.post(`/api/v1/admin/league/registrations/${regId}/refund`).send({ reason: "Mine" })).status).toBe(403);
+    expect((await admin.post(`/api/v1/admin/league/registrations/${regId}/decision`).send({ decision: "approved" })).status).toBe(403);
+    expect((await admin.post(`/api/v1/admin/league/registrations/${regId}/cancel`).send({ reason: "Mine", refund: true })).status).toBe(403);
   });
 });

@@ -219,6 +219,12 @@ export const payments = pgTable(
     cardBrand: text("card_brand"),
     cardLast4: text("card_last4"),
     receiptUrl: text("receipt_url"),
+    /**
+     * Set when this payment must be given back automatically (duplicate, late,
+     * wrong amount) and the refund hasn't gone through yet; the worker retries.
+     */
+    autoRefundReason: text("auto_refund_reason"),
+    autoRefundAttemptAt: timestamp("auto_refund_attempt_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -238,15 +244,24 @@ export const refunds = pgTable(
       .notNull()
       .references(() => payments.id),
     providerRefundId: text("provider_refund_id"),
-    /** PENDING | COMPLETED | REJECTED | FAILED */
+    /**
+     * SUBMITTING (sent, answer not known yet: the worker asks again with the same
+     * idempotency key) | PENDING | COMPLETED | REJECTED | FAILED
+     */
     status: text("status").notNull(),
+    /** Sent to the provider with the refund, so asking again can never refund twice. */
+    idempotencyKey: text("idempotency_key"),
     amountCents: integer("amount_cents").notNull(),
     reason: text("reason").notNull(),
     issuedBy: text("issued_by").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("refunds_provider_id").on(t.providerRefundId), index("refunds_payment_idx").on(t.paymentId)],
+  (t) => [
+    uniqueIndex("refunds_provider_id").on(t.providerRefundId),
+    uniqueIndex("refunds_idempotency_key").on(t.idempotencyKey),
+    index("refunds_payment_idx").on(t.paymentId),
+  ],
 );
 
 /**
@@ -742,6 +757,8 @@ export const refereePayouts = pgTable(
     amountCents: integer("amount_cents").notNull(),
     /** pending | paid | failed | void */
     status: text("status").notNull().default("pending"),
+    /** Set while a transfer is being sent (cleared after); Void waits, and no second send starts. */
+    sendingAt: timestamp("sending_at", { withTimezone: true }),
     environment: text("environment").notNull(),
     stripeTransferId: text("stripe_transfer_id").unique(),
     /** Same key on every attempt, so a retry can never send the money twice. */

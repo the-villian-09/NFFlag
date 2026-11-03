@@ -31,7 +31,7 @@ import { HttpError } from "../../http/errors.js";
 import { can } from "../platform/access.js";
 import { writeAudit } from "../platform/audit.js";
 import { declineWithdrawal, latestWithdrawals, openWithdrawalCount } from "./withdrawal.js";
-import { cancelRegistration, decideRegistration, refundRegistration, spotsTaken } from "./service.js";
+import { cancelRegistration, decideRegistration, refundRegistration, refuseOwnRegistration, spotsTaken } from "./service.js";
 import { getPaymentSettings, paymentSettingsSchema } from "./settings.js";
 import { positionOf, removeFromWaitlist } from "./waitlist.js";
 
@@ -436,6 +436,7 @@ adminLeagueRouter.post(
     if (input.decision === "rejected" && input.refund && !can(req.ctx.access!, "refunds.issue")) {
       throw new HttpError(403, "FORBIDDEN", "You don't have permission to issue refunds.");
     }
+    await refuseOwnRegistration(String(req.params.id), req.ctx.auth!.user.id);
     res.json(await decideRegistration(String(req.params.id), input, actorOf(req)));
   }),
 );
@@ -447,6 +448,7 @@ adminLeagueRouter.post(
     const input = z
       .object({ amountCents: z.number().int().min(1).optional(), reason: z.string().trim().min(3).max(190) })
       .parse(req.body);
+    await refuseOwnRegistration(String(req.params.id), req.ctx.auth!.user.id);
     res.json({ refund: await refundRegistration(String(req.params.id), input, actorOf(req)) });
   }),
 );
@@ -457,6 +459,7 @@ adminLeagueRouter.post(
   handler(async (req, res) => {
     const input = z.object({ reason: z.string().trim().min(3).max(190), refund: z.boolean().default(false) }).parse(req.body);
     if (input.refund && !can(req.ctx.access!, "refunds.issue")) throw new HttpError(403, "FORBIDDEN", "You don't have permission to issue refunds.");
+    await refuseOwnRegistration(String(req.params.id), req.ctx.auth!.user.id);
     res.json(await cancelRegistration(String(req.params.id), input, actorOf(req)));
   }),
 );

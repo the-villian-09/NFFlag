@@ -444,6 +444,10 @@ describe("pay", () => {
     stripe.available = 0;
     const res = await admin.post("/api/v1/admin/referees/pay/approve").send({ officialIds: ids });
     const payoutId = res.body.payouts[0].id;
+    // While a send is in progress, Void waits (audit M5).
+    await db.update(refereePayouts).set({ sendingAt: new Date() }).where(eq(refereePayouts.id, payoutId));
+    expect((await admin.post(`/api/v1/admin/referees/pay/payouts/${payoutId}/void`).send({ reason: "Wrong rate" })).status).toBe(409);
+    await db.update(refereePayouts).set({ sendingAt: null }).where(eq(refereePayouts.id, payoutId));
     expect((await admin.post(`/api/v1/admin/referees/pay/payouts/${payoutId}/void`).send({ reason: "Wrong rate" })).body).toMatchObject({ ok: true, games: 1 });
     stripe.available = saved;
     const view = (await admin.get("/api/v1/admin/referees/pay")).body;
