@@ -18,10 +18,12 @@ const ident = (s: string) => `"${s.replace(/"/g, '""')}"`;
 const literal = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 export function runtimeLogin(url: string) {
-  // Cloud SQL socket URLs ("postgres://user:pass@/db?host=/cloudsql/...") parse fine with WHATWG URL.
-  const u = new URL(url);
-  const user = decodeURIComponent(u.username);
-  const password = decodeURIComponent(u.password);
+  // Read the user and password directly: Cloud SQL socket URLs
+  // ("postgres://user:pass@/db?host=/cloudsql/...") have no host, which URL() rejects.
+  const m = url.match(/^postgres(?:ql)?:\/\/([^:@/]+):([^@]*)@/);
+  if (!m) throw new Error("DATABASE_URL_RUNTIME should look like postgres://user:password@...");
+  const user = decodeURIComponent(m[1]!);
+  const password = decodeURIComponent(m[2]!);
   if (!/^[a-z_][a-z0-9_]{2,62}$/.test(user)) throw new Error("DATABASE_URL_RUNTIME needs a simple user name (letters, numbers, underscores).");
   if (password.length < 24) throw new Error("DATABASE_URL_RUNTIME needs a long password.");
   return { user, password };
