@@ -8,6 +8,7 @@ import { asc, eq } from "drizzle-orm";
 import { Router, type Request } from "express";
 import { z } from "zod";
 import { db } from "../../db/client.js";
+import { writeAudit } from "../platform/audit.js";
 import { seasons } from "../../db/schema/index.js";
 import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission } from "../../http/context.js";
 import { HttpError } from "../../http/errors.js";
@@ -313,6 +314,8 @@ adminRefereeRouter.get(
   handler(async (req, res) => {
     const { year } = z.object({ year: z.coerce.number().int().min(2025).max(2100) }).parse(req.query);
     const rows = await yearReport(year);
+    // The export holds referees' names, emails and Stripe accounts: record who took it.
+    await writeAudit(db, { actorUserId: req.ctx.auth!.user.id, action: "referee.pay.report_export", targetType: "referee_report", targetId: String(year), after: { rows: rows.length }, requestId: req.ctx.requestId, ipAddress: req.ctx.ip });
     const cell = (v: unknown) => {
       const s = String(v ?? "");
       const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;

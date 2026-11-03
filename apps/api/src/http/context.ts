@@ -22,6 +22,8 @@ export interface RequestContext {
   ip: string | null;
   auth: AuthSession | null;
   access: Access | null;
+  /** The admin idle timeout already ran for this request. */
+  idleChecked?: boolean;
 }
 
 declare global {
@@ -100,8 +102,15 @@ export const requireMfa: RequestHandler = (req, _res, next) => {
 export function requirePermission(permission: Permission, scopeOf?: (req: Request) => Scope | undefined): RequestHandler {
   return (req, _res, next) => {
     const access = req.ctx.access;
-    if (!access || !can(access, permission, scopeOf?.(req))) {
+    const scope = scopeOf?.(req);
+    if (!access || !can(access, permission, scope)) {
       return next(new HttpError(403, "FORBIDDEN", "You don't have permission to do that."));
+    }
+    // A team page reached with league-wide admin rights (not as that team's
+    // coach) gets the same idle sign-out as the admin portal.
+    const viaScopedGrant = scope && access.grants.some((g) => g.scope?.type === scope.type && g.scope.id === scope.id && g.permissions.has(permission));
+    if (scopeOf && !viaScopedGrant && !req.ctx.idleChecked) {
+      return void checkAdminIdle(req).then(() => next(), next);
     }
     next();
   };
@@ -111,25 +120,27 @@ export function requirePermission(permission: Permission, scopeOf?: (req: Reques
  * Admin portal idle timeout (default 30 min), tracked in Postgres so it holds
  * across Cloud Run instances. An idle admin session is revoked.
  */
-export const adminIdleTimeout: RequestHandler = async (req: Request, _res: Response, next: NextFunction) => {
-  try {
-    const sessionId = req.ctx.auth?.session.id;
-    if (!sessionId) return next(new HttpError(401, "UNAUTHENTICATED", "Please sign in."));
-    const [row] = await db.select().from(sessionActivity).where(eq(sessionActivity.sessionId, sessionId)).limit(1);
-    const idleMs = env.ADMIN_IDLE_MINUTES * 60_000;
-    if (row && Date.now() - row.lastSeenAt.getTime() > idleMs) {
-      await db.delete(sessionTable).where(eq(sessionTable.id, sessionId));
-      return next(new HttpError(401, "SESSION_IDLE", "You were signed out after a period of inactivity."));
-    }
-    await db
-      .insert(sessionActivity)
-      .values({ sessionId, lastSeenAt: new Date() })
-      .onConflictDoUpdate({ target: sessionActivity.sessionId, set: { lastSeenAt: sql`now()` } });
-    next();
-  } catch (err) {
-    next(err);
-  }
+export const adminIdleTimeout: RequestHandler = (req: Request, _res: Response, next: NextFunction) => {
+  checkAdminIdle(req).then(() => next(), next);
 };
+
+/** Signs out an admin session idle longer than ADMIN_IDLE_MINUTES; otherwise records activity. */
+export async function checkAdminIdle(req: Request) {
+  if (req.ctx.idleChecked) return;
+  const sessionId = req.ctx.auth?.session.id;
+  if (!sessionId) throw new HttpError(401, "UNAUTHENTICATED", "Please sign in.");
+  const [row] = await db.select().from(sessionActivity).where(eq(sessionActivity.sessionId, sessionId)).limit(1);
+  const idleMs = env.ADMIN_IDLE_MINUTES * 60_000;
+  if (row && Date.now() - row.lastSeenAt.getTime() > idleMs) {
+    await db.delete(sessionTable).where(eq(sessionTable.id, sessionId));
+    throw new HttpError(401, "SESSION_IDLE", "You were signed out after a period of inactivity.");
+  }
+  await db
+    .insert(sessionActivity)
+    .values({ sessionId, lastSeenAt: new Date() })
+    .onConflictDoUpdate({ target: sessionActivity.sessionId, set: { lastSeenAt: sql`now()` } });
+  req.ctx.idleChecked = true;
+}
 
 /** Wraps async handlers so thrown errors reach the error handler. */
 export function handler(fn: (req: Request, res: Response) => Promise<unknown>): RequestHandler {

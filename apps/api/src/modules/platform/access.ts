@@ -3,9 +3,9 @@
  * "can this user do X (in scope Y)?" Every route uses this, never role names.
  */
 import { ROLE_KEYS, type Permission, type RoleKey } from "@nffl/shared";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, notInArray, or } from "drizzle-orm";
 import type { DbOrTx } from "../../db/client.js";
-import { rolePermissions, roles, twoFactor, userRoleAssignments } from "../../db/schema/index.js";
+import { rolePermissions, roles, seasons, teams, twoFactor, userRoleAssignments } from "../../db/schema/index.js";
 
 export interface Scope {
   type: "season" | "team";
@@ -44,10 +44,34 @@ export async function loadAccess(conn: DbOrTx, userId: string): Promise<Access> 
     .leftJoin(rolePermissions, eq(rolePermissions.roleKey, userRoleAssignments.roleKey))
     .where(and(eq(userRoleAssignments.userId, userId), isNull(userRoleAssignments.revokedAt)));
 
+  // Team roles (coach, team mom) count only for teams in the current season or
+  // a newer one being set up, never a completed one: last season's coaches
+  // don't keep access to those families' details.
+  const teamIds = [...new Set(rows.filter((r) => r.scopeType === "team" && r.scopeId).map((r) => r.scopeId!))];
+  let currentTeams = new Set<string>();
+  if (teamIds.length) {
+    const [current] = await conn.select({ createdAt: seasons.createdAt }).from(seasons).where(eq(seasons.isCurrent, "current")).limit(1);
+    const live = await conn
+      .select({ id: teams.id })
+      .from(teams)
+      .innerJoin(seasons, eq(seasons.id, teams.seasonId))
+      .where(
+        and(
+          inArray(teams.id, teamIds),
+          notInArray(seasons.status, ["completed", "archived"]),
+          current ? or(eq(seasons.isCurrent, "current"), gte(seasons.createdAt, current.createdAt)) : undefined,
+        ),
+      );
+    currentTeams = new Set(live.map((t) => t.id));
+  }
+
   const byGrant = new Map<string, Grant>();
   let requiresTotp = false;
   for (const r of rows) {
     if (!(ROLE_KEYS as readonly string[]).includes(r.role)) continue;
+    // A grant with only half a scope is ignored rather than treated as league-wide.
+    if (!!r.scopeType !== !!r.scopeId) continue;
+    if (r.scopeType === "team" && !currentTeams.has(r.scopeId!)) continue;
     const key = `${r.role}|${r.scopeType ?? ""}|${r.scopeId ?? ""}`;
     let g = byGrant.get(key);
     if (!g) {

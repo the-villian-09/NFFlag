@@ -7,6 +7,7 @@ import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import { env } from "../../config.js";
 import { db } from "../../db/client.js";
+import { writeAudit } from "../platform/audit.js";
 import { divisions, householdMembers, households, payments, players, promoCodes, refunds, seasons, user, volunteerApplications } from "../../db/schema/index.js";
 import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission } from "../../http/context.js";
 import { applyToApplication } from "../promo/service.js";
@@ -163,6 +164,8 @@ adminStaffRouter.get(
     const id = String(req.params.id);
     const [a] = await db.select().from(volunteerApplications).where(eq(volunteerApplications.id, id));
     if (!a) throw new HttpError(404, "NOT_FOUND", "Application not found.");
+    // Includes background screening details: record who looked.
+    await writeAudit(db, { actorUserId: req.ctx.auth!.user.id, action: "staff.application.view", targetType: "volunteer_application", targetId: a.id, requestId: req.ctx.requestId, ipAddress: req.ctx.ip });
     const [u] = await db.select({ name: user.name, email: user.email }).from(user).where(eq(user.id, a.userId));
     const [h] = await db
       .select({ displayName: households.displayName, phone: households.phone })

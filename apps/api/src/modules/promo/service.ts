@@ -69,10 +69,16 @@ interface UseContext {
  * Finds a code and checks it can be used here. Locks the code's row so two
  * families can't take the last use at the same time.
  */
+/**
+ * One answer for every reason a code can't be used (unknown, expired, used up,
+ * wrong division or fee), so codes can't be discovered by trying them.
+ */
+const CODE_REFUSED = "That code can't be used here. Check the code, or contact the league if you think it should work.";
+
 export async function usableCode(tx: Tx, raw: string, ctx: UseContext): Promise<Promo> {
   const code = normalizeCode(raw);
   const [p] = code ? await tx.select().from(promoCodes).where(eq(promoCodes.code, code)).for("update") : [];
-  if (!p || !p.active) throw new HttpError(409, "CONFLICT", "That code isn't valid.");
+  if (!p || !p.active) throw new HttpError(409, "CONFLICT", CODE_REFUSED);
   await checkUsable(tx, p, ctx);
   return p;
 }
@@ -80,18 +86,18 @@ export async function usableCode(tx: Tx, raw: string, ctx: UseContext): Promise<
 async function checkUsable(tx: Tx, p: Promo, ctx: UseContext) {
   const now = new Date();
   // Same message as an unknown code, so codes can't be discovered by guessing.
-  if (p.startsAt && p.startsAt > now) throw new HttpError(409, "CONFLICT", "That code isn't valid.");
-  if (p.endsAt && p.endsAt <= now) throw new HttpError(409, "CONFLICT", "That code has expired.");
+  if (p.startsAt && p.startsAt > now) throw new HttpError(409, "CONFLICT", CODE_REFUSED);
+  if (p.endsAt && p.endsAt <= now) throw new HttpError(409, "CONFLICT", CODE_REFUSED);
   if (p.appliesTo !== "both" && p.appliesTo !== ctx.target) {
-    throw new HttpError(409, "CONFLICT", ctx.target === "staff" ? "That code is for player registration, not staff fees." : "That code is for coach and team mom fees, not player registration.");
+    throw new HttpError(409, "CONFLICT", CODE_REFUSED);
   }
-  if (p.seasonId && p.seasonId !== ctx.seasonId) throw new HttpError(409, "CONFLICT", "That code isn't valid.");
+  if (p.seasonId && p.seasonId !== ctx.seasonId) throw new HttpError(409, "CONFLICT", CODE_REFUSED);
   const divs = (p.divisionIds as string[]) ?? [];
   if (ctx.target === "registration" && divs.length && (!ctx.divisionId || !divs.includes(ctx.divisionId))) {
-    throw new HttpError(409, "CONFLICT", "That code can't be used for this division.");
+    throw new HttpError(409, "CONFLICT", CODE_REFUSED);
   }
   if (p.maxUses !== null && (await usesOf(tx, p.id, { registrationId: ctx.registrationId, applicationId: ctx.applicationId })) >= p.maxUses) {
-    throw new HttpError(409, "CONFLICT", "That code has been used up.");
+    throw new HttpError(409, "CONFLICT", CODE_REFUSED);
   }
   if (p.onePerFamily) {
     const homes = ctx.householdId
@@ -129,7 +135,7 @@ async function checkUsable(tx: Tx, p: Promo, ctx: UseContext) {
             ),
           )) as [{ n: number }])
       : [{ n: 0 }];
-    if (regs + apps > 0) throw new HttpError(409, "CONFLICT", "Your family has already used that code.");
+    if (regs + apps > 0) throw new HttpError(409, "CONFLICT", CODE_REFUSED);
   }
 }
 
@@ -148,7 +154,7 @@ export async function settleRegistrationCode(tx: Tx, r: typeof registrations.$in
   const settings = await getPaymentSettings(tx);
   let reason: string | null = null;
   try {
-    if (!p || !p.active) throw new HttpError(409, "CONFLICT", "That code isn't valid.");
+    if (!p || !p.active) throw new HttpError(409, "CONFLICT", CODE_REFUSED);
     await checkUsable(tx, p, { target: "registration", seasonId: r.seasonId, divisionId: r.divisionId, householdId: r.householdId, registrationId: r.id });
   } catch (err) {
     if (!(err instanceof HttpError)) throw err;
@@ -162,7 +168,7 @@ export async function settleRegistrationCode(tx: Tx, r: typeof registrations.$in
     .set({ promoCodeId: reason ? null : r.promoCodeId, discountCents, feeCents: q.feeCents, totalCents: q.totalCents, updatedAt: new Date() })
     .where(eq(registrations.id, r.id));
   return reason
-    ? `Promo code ${p?.code ?? ""} can't be used any more (${reason.replace(/^That code /, "it ").replace(/\.$/, "")}). The total is now ${dollars(q.totalCents)}. No payment was taken; review it and pay again.`
+    ? `Promo code ${p?.code ?? ""} can't be used any more (it has expired, been used up or was changed). The total is now ${dollars(q.totalCents)}. No payment was taken; review it and pay again.`
     : `Promo code ${p!.code} was changed by the league. The total is now ${dollars(q.totalCents)}. No payment was taken; review it and pay again.`;
 }
 
@@ -173,7 +179,7 @@ export async function settleApplicationCode(tx: Tx, a: typeof volunteerApplicati
   const settings = await getPaymentSettings(tx);
   let reason: string | null = null;
   try {
-    if (!p || !p.active) throw new HttpError(409, "CONFLICT", "That code isn't valid.");
+    if (!p || !p.active) throw new HttpError(409, "CONFLICT", CODE_REFUSED);
     await checkUsable(tx, p, { target: "staff", seasonId: a.seasonId, userId: a.userId, applicationId: a.id });
   } catch (err) {
     if (!(err instanceof HttpError)) throw err;
@@ -187,7 +193,7 @@ export async function settleApplicationCode(tx: Tx, a: typeof volunteerApplicati
     .set({ promoCodeId: reason ? null : a.promoCodeId, discountCents, processingFeeCents: q.feeCents, totalCents: q.totalCents, updatedAt: new Date() })
     .where(eq(volunteerApplications.id, a.id));
   return reason
-    ? `Promo code ${p?.code ?? ""} can't be used any more (${reason.replace(/^That code /, "it ").replace(/\.$/, "")}). The total is now ${dollars(q.totalCents)}. No payment was taken; review it and pay again.`
+    ? `Promo code ${p?.code ?? ""} can't be used any more (it has expired, been used up or was changed). The total is now ${dollars(q.totalCents)}. No payment was taken; review it and pay again.`
     : `Promo code ${p!.code} was changed by the league. The total is now ${dollars(q.totalCents)}. No payment was taken; review it and pay again.`;
 }
 

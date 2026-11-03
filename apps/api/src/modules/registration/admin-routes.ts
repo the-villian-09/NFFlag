@@ -125,7 +125,7 @@ adminLeagueRouter.post(
     const created = await db.transaction(async (tx) => {
       const [s] = await tx.insert(seasons).values(input).returning();
       await setCurrent(tx, s!.id, isCurrent);
-      await writeAudit(tx, { actorUserId: req.ctx.auth!.user.id, action: "season.create", targetType: "season", targetId: s!.id, after: { ...s, isCurrent } });
+      await writeAudit(tx, { actorUserId: req.ctx.auth!.user.id, action: "season.create", targetType: "season", targetId: s!.id, after: { ...s, isCurrent }, requestId: req.ctx.requestId, ipAddress: req.ctx.ip });
       return s!;
     });
     res.status(201).json({ season: created });
@@ -144,7 +144,7 @@ adminLeagueRouter.put(
       await tx.update(seasons).set({ ...input, updatedAt: new Date() }).where(eq(seasons.id, id));
       await setCurrent(tx, id, isCurrent);
       const [after] = await tx.select().from(seasons).where(eq(seasons.id, id));
-      await writeAudit(tx, { actorUserId: req.ctx.auth!.user.id, action: "season.update", targetType: "season", targetId: id, before, after });
+      await writeAudit(tx, { actorUserId: req.ctx.auth!.user.id, action: "season.update", targetType: "season", targetId: id, before, after, requestId: req.ctx.requestId, ipAddress: req.ctx.ip });
       return after!;
     });
     res.json({ season: updated });
@@ -167,7 +167,7 @@ adminLeagueRouter.post(
     try {
       const created = await db.transaction(async (tx) => {
         const [d] = await tx.insert(divisions).values({ ...input, seasonId }).returning();
-        await writeAudit(tx, { actorUserId: req.ctx.auth!.user.id, action: "division.create", targetType: "division", targetId: d!.id, after: d });
+        await writeAudit(tx, { actorUserId: req.ctx.auth!.user.id, action: "division.create", targetType: "division", targetId: d!.id, after: d, requestId: req.ctx.requestId, ipAddress: req.ctx.ip });
         return d!;
       });
       res.status(201).json({ division: created });
@@ -189,7 +189,7 @@ adminLeagueRouter.put(
       const [before] = await tx.select().from(divisions).where(eq(divisions.id, id)).for("update");
       if (!before) throw new HttpError(404, "NOT_FOUND", "Division not found.");
       const [after] = await tx.update(divisions).set({ ...input, updatedAt: new Date() }).where(eq(divisions.id, id)).returning();
-      await writeAudit(tx, { actorUserId: req.ctx.auth!.user.id, action: "division.update", targetType: "division", targetId: id, before, after });
+      await writeAudit(tx, { actorUserId: req.ctx.auth!.user.id, action: "division.update", targetType: "division", targetId: id, before, after, requestId: req.ctx.requestId, ipAddress: req.ctx.ip });
       return after!;
     });
     res.json({ division: updated });

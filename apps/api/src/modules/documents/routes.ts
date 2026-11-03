@@ -9,7 +9,7 @@ import express, { Router, type Request } from "express";
 import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import { env } from "../../config.js";
-import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission } from "../../http/context.js";
+import { adminIdleTimeout, checkAdminIdle, handler, requireAuth, requireMfa, requirePermission } from "../../http/context.js";
 import { adminUploadPlayerDocument, familyDocuments, MAX_UPLOAD_BYTES, myPhoto, PLAYER_KINDS, readDocument, uploadMyPhoto, uploadPlayerDocument } from "./service.js";
 
 export const documentsRouter = Router();
@@ -86,6 +86,9 @@ documentsRouter.get(
   requireAuth,
   requireMfa,
   handler(async (req, res) => {
+    // Admins opening other families' files get the admin idle sign-out too.
+    const lw = req.ctx.access!.leagueWide;
+    if (lw.has("documents.read") || lw.has("staff.applications.review") || lw.has("referees.manage")) await checkAdminIdle(req);
     const f = await readDocument(
       { userId: req.ctx.auth!.user.id, access: req.ctx.access!, requestId: req.ctx.requestId, ip: req.ctx.ip ?? undefined },
       z.uuid().parse(req.params.id),

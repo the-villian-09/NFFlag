@@ -11,8 +11,10 @@ import {
   auditLogs,
   featureFlags,
   roles,
+  seasons,
   session as sessionTable,
   twoFactor,
+  teams,
   user,
   userRoleAssignments,
 } from "../../db/schema/index.js";
@@ -143,7 +145,7 @@ adminRouter.get(
     const rows = await db
       .select({ id: user.id, name: user.name, email: user.email, status: user.status, createdAt: user.createdAt })
       .from(user)
-      .where(q ? or(ilike(user.email, `%${q}%`), ilike(user.name, `%${q}%`)) : undefined)
+      .where(q ? or(ilike(user.email, `%${likeEscape(q)}%`), ilike(user.name, `%${likeEscape(q)}%`)) : undefined)
       .orderBy(desc(user.createdAt))
       .limit(50);
     res.json({ items: rows });
@@ -178,11 +180,21 @@ adminRouter.get(
   }),
 );
 
-const roleInput = z.object({
-  role: z.enum(ROLE_KEYS),
-  scopeType: z.enum(["season", "team"]).optional(),
-  scopeId: z.uuid().optional(),
-});
+/** Treat % and _ in a search as plain characters. */
+const likeEscape = (v: string) => v.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+const roleInput = z
+  .object({
+    role: z.enum(ROLE_KEYS),
+    scopeType: z.enum(["season", "team"]).optional(),
+    scopeId: z.uuid().optional(),
+  })
+  .refine((v) => !!v.scopeType === !!v.scopeId, { message: "Give both the scope type and its id, or neither.", path: ["scopeId"] })
+  // Coach and team mom roles only make sense on a team; give them through Teams so the grant is scoped.
+  .refine((v) => !["head_coach", "assistant_coach", "team_manager"].includes(v.role) || v.scopeType === "team", {
+    message: "Coach and team mom roles must be given for a specific team.",
+    path: ["scopeType"],
+  });
 
 adminRouter.post(
   "/users/:id/roles",
@@ -198,6 +210,11 @@ adminRouter.post(
     }
     const [target] = await db.select({ id: user.id }).from(user).where(eq(user.id, targetId));
     if (!target) throw new HttpError(404, "NOT_FOUND", "User not found.");
+    if (input.scopeType && input.scopeId) {
+      const table = input.scopeType === "team" ? teams : seasons;
+      const [scope] = await db.select({ id: table.id }).from(table).where(eq(table.id, input.scopeId));
+      if (!scope) throw new HttpError(400, "VALIDATION_FAILED", `That ${input.scopeType} doesn't exist.`);
+    }
     const created = await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(userRoleAssignments)

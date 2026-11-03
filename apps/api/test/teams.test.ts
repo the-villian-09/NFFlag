@@ -209,6 +209,14 @@ describe("teams and the draft", () => {
     expect(msg.text).toContain("coachtwo Person");
   });
 
+  it("a coach's team access ends when the season is completed (audit M3)", async () => {
+    expect((await coach1.a.get(`/api/v1/my-teams/${teamIds[0]}`)).status).toBe(200);
+    await db.update(seasons).set({ status: "completed" }).where(eq(seasons.id, seasonId));
+    expect((await coach1.a.get(`/api/v1/my-teams/${teamIds[0]}`)).status).toBe(403);
+    await db.update(seasons).set({ status: "planning" }).where(eq(seasons.id, seasonId));
+    expect((await coach1.a.get(`/api/v1/my-teams/${teamIds[0]}`)).status).toBe(200);
+  });
+
   it("moves a player after the draft, and a rejected registration leaves the team", async () => {
     const [entry] = await db.select().from(rosterEntries).where(eq(rosterEntries.registrationId, families[1]!.registrationId));
     const mv = await admin.post(`/api/v1/admin/teams/roster/${entry!.id}/move`).send({ teamId: teamIds[2] });

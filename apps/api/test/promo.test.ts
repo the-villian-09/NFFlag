@@ -105,7 +105,7 @@ describe("promo codes", () => {
     expect(list[0]).toMatchObject({ promoCode: "EARLY20", discountCents: 2000, totalCents: 8000 });
     const off = await apply(f.a, reg.id, null);
     expect(off.body.registration).toMatchObject({ discountCents: 0, totalCents: 10000, promoCode: null });
-    expect((await apply(f.a, reg.id, "NOPE")).body.error.message).toBe("That code isn't valid.");
+    expect((await apply(f.a, reg.id, "NOPE")).body.error.message).toBe("That code can't be used here. Check the code, or contact the league if you think it should work.");
     // Another family can't touch this registration.
     const other = await family("Other");
     expect((await apply(other.a, reg.id, "EARLY20")).status).toBe(404);
@@ -132,11 +132,11 @@ describe("promo codes", () => {
     await promo({ code: "PAUSED", active: false });
     const f = await family("Rules");
     const boy = await startReg(f.a);
-    expect((await apply(f.a, boy.id, "GIRLSONLY")).body.error.message).toMatch(/this division/);
-    expect((await apply(f.a, boy.id, "COACHES")).body.error.message).toMatch(/coach and team mom fees/);
-    expect((await apply(f.a, boy.id, "LATER")).body.error.message).toBe("That code isn't valid."); // not revealed before it starts
-    expect((await apply(f.a, boy.id, "GONE")).body.error.message).toMatch(/expired/);
-    expect((await apply(f.a, boy.id, "PAUSED")).body.error.message).toBe("That code isn't valid.");
+    expect((await apply(f.a, boy.id, "GIRLSONLY")).body.error.message).toMatch(/can't be used here/);
+    expect((await apply(f.a, boy.id, "COACHES")).body.error.message).toMatch(/can't be used here/);
+    expect((await apply(f.a, boy.id, "LATER")).body.error.message).toBe("That code can't be used here. Check the code, or contact the league if you think it should work."); // not revealed before it starts
+    expect((await apply(f.a, boy.id, "GONE")).body.error.message).toMatch(/can't be used here/);
+    expect((await apply(f.a, boy.id, "PAUSED")).body.error.message).toBe("That code can't be used here. Check the code, or contact the league if you think it should work.");
     const girl = await startReg(f.a, { divisionId: girlsId, gender: "girl", first: "Gia" });
     expect((await apply(f.a, girl.id, "GIRLSONLY")).body.registration.totalCents).toBe(9000);
 
@@ -153,14 +153,14 @@ describe("promo codes", () => {
     const ra = await startReg(a.a);
     const rb = await startReg(b.a);
     expect((await apply(a.a, ra.id, "ONEONLY")).status).toBe(200);
-    expect((await apply(b.a, rb.id, "ONEONLY")).body.error.message).toBe("That code has been used up.");
+    expect((await apply(b.a, rb.id, "ONEONLY")).body.error.message).toBe("That code can't be used here. Check the code, or contact the league if you think it should work.");
     await a.a.post(`/api/v1/registrations/${ra.id}/cancel`);
     expect((await apply(b.a, rb.id, "ONEONLY")).status).toBe(200);
 
     const ra2 = await startReg(a.a, { first: "Al" });
     const ra3 = await startReg(a.a, { first: "Bo" });
     expect((await apply(a.a, ra2.id, "SIBLING")).status).toBe(200);
-    expect((await apply(a.a, ra3.id, "SIBLING")).body.error.message).toBe("Your family has already used that code.");
+    expect((await apply(a.a, ra3.id, "SIBLING")).body.error.message).toBe("That code can't be used here. Check the code, or contact the league if you think it should work.");
     // Re-applying to the same registration is fine.
     expect((await apply(a.a, ra2.id, "SIBLING")).status).toBe(200);
 
@@ -206,7 +206,7 @@ describe("promo codes", () => {
     const app = await v.post("/api/v1/volunteer/applications").send({ roleKey: "head_coach", phone: "904-555-0111", signerName: "Coach Promo", acceptAgreement: true });
     expect(app.status).toBe(201);
     const id = app.body.application.id;
-    expect((await v.put(`/api/v1/volunteer/applications/${id}/promo`).send({ code: "EARLY20" })).body.error.message).toMatch(/not staff fees/);
+    expect((await v.put(`/api/v1/volunteer/applications/${id}/promo`).send({ code: "EARLY20" })).body.error.message).toMatch(/can't be used here/);
     const half = await v.put(`/api/v1/volunteer/applications/${id}/promo`).send({ code: "coaches" });
     expect(half.body.application).toMatchObject({ discountCents: 1250, totalCents: 1250, promoCode: "COACHES" });
     const free = await v.put(`/api/v1/volunteer/applications/${id}/promo`).send({ code: "COACHFREE" });

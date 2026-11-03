@@ -516,6 +516,8 @@ async function practiceOnTeam(conn: DbOrTx, teamId: string, id: string) {
 
 export async function updatePractice(actor: Actor, teamId: string, id: string, input: PracticeInput & { status: "scheduled" | "cancelled"; notify?: boolean }) {
   const startsAt = when(input.startsAt);
+  // Practice notices count toward the coach's hourly email limit (checked before saving).
+  if (input.notify) await assertUnderAnnouncementLimit(actor.userId);
   const before = await practiceOnTeam(db, teamId, id);
   const [after] = await db
     .update(practices)
@@ -646,6 +648,15 @@ async function recipients(seasonId: string, a: AnnouncementInput): Promise<strin
 
 const HOURLY_LIMIT = 10;
 
+/** Coaches' emails to their team (announcements and practice notices) share the hourly limit. */
+async function assertUnderAnnouncementLimit(userId: string) {
+  const [{ n }] = (await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(announcements)
+    .where(and(eq(announcements.sentBy, userId), gte(announcements.createdAt, new Date(Date.now() - 3600_000))))) as [{ n: number }];
+  if (n >= HOURLY_LIMIT) throw new HttpError(429, "RATE_LIMITED", "You've sent several announcements in the last hour. Try again later.");
+}
+
 export async function sendAnnouncement(actor: Actor, a: AnnouncementInput, opts: { skipRateLimit?: boolean } = {}) {
   let seasonId: string;
   if (a.audience === "team") {
@@ -662,13 +673,7 @@ export async function sendAnnouncement(actor: Actor, a: AnnouncementInput, opts:
     if (!s) throw new HttpError(409, "CONFLICT", "There's no current season.");
     seasonId = s.id;
   }
-  if (!opts.skipRateLimit) {
-    const [{ n }] = (await db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(announcements)
-      .where(and(eq(announcements.sentBy, actor.userId), gte(announcements.createdAt, new Date(Date.now() - 3600_000))))) as [{ n: number }];
-    if (n >= HOURLY_LIMIT) throw new HttpError(429, "RATE_LIMITED", "You've sent several announcements in the last hour. Try again later.");
-  }
+  if (!opts.skipRateLimit) await assertUnderAnnouncementLimit(actor.userId);
   const ids = await recipients(seasonId, a);
   return db.transaction(async (tx) => {
     const [row] = await tx
