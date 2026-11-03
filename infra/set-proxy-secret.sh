@@ -14,7 +14,8 @@
 #      come through the website, and trusts only the visitor IP the website sends.
 #   4. Checks the website still works; if not, it detaches the secret again.
 #
-# Re-running makes a new secret (repeat the Vercel step). Safe to re-run.
+# Re-running offers to keep the stored secret (no Vercel change needed) or make
+# a new one (repeat the Vercel step). Safe to re-run.
 
 set -euo pipefail
 
@@ -35,27 +36,45 @@ note() { printf '    \033[33m!\033[0m %s\n' "$*"; }
 gcloud config set project "$PROJECT" >/dev/null
 API_URL=$(gcloud run services describe "$SERVICE" --region="$REGION" --format='value(status.url)')
 
-SECRET=$(openssl rand -hex 32)
+REUSE=false
 if gcloud secrets describe nffl-proxy-secret >/dev/null 2>&1; then
-  printf '%s' "$SECRET" | gcloud secrets versions add nffl-proxy-secret --data-file=- >/dev/null
-else
-  printf '%s' "$SECRET" | gcloud secrets create nffl-proxy-secret --replication-policy=automatic --data-file=- >/dev/null
+  read -rp "A secret is already stored (and probably already in Vercel). Keep using it? [Y/n] " a
+  [[ ! "$a" =~ ^[Nn] ]] && REUSE=true
 fi
-gcloud secrets add-iam-policy-binding nffl-proxy-secret --member="serviceAccount:$RUNTIME_SA" \
-  --role=roles/secretmanager.secretAccessor >/dev/null
-ok "secret stored in Secret Manager (nffl-proxy-secret)"
 
-echo
-echo "Step 2 — add it to Vercel (project nffl-web → Settings → Environment Variables → Add):"
-echo "    Key:   API_PROXY_SECRET"
-echo "    Value: $SECRET"
-if [[ "$ENV_NAME" == "prod" ]]; then
-  echo "    Environments: Preview only, Git branch: production   (same as the production API_ORIGIN)"
+if $REUSE; then
+  ok "keeping the stored secret; it's not shown again"
+  echo
+  echo "Step 2 — make sure the website is using it:"
 else
-  echo "    Environments: Production and Preview (all branches)   (same as the staging API_ORIGIN)"
-  echo "    If a branch-specific prod value exists for 'production', leave it alone."
+  SECRET=$(openssl rand -hex 32)
+  if gcloud secrets describe nffl-proxy-secret >/dev/null 2>&1; then
+    printf '%s' "$SECRET" | gcloud secrets versions add nffl-proxy-secret --data-file=- >/dev/null
+  else
+    printf '%s' "$SECRET" | gcloud secrets create nffl-proxy-secret --replication-policy=automatic --data-file=- >/dev/null
+  fi
+  gcloud secrets add-iam-policy-binding nffl-proxy-secret --member="serviceAccount:$RUNTIME_SA" \
+    --role=roles/secretmanager.secretAccessor >/dev/null
+  ok "secret stored in Secret Manager (nffl-proxy-secret)"
+  echo
+  echo "Step 2 — add it to Vercel (project nffl-web → Settings → Environment Variables → Add)."
+  echo "Copy it straight into Vercel; don't paste it anywhere else."
+  echo "    Type:  Secret"
+  echo "    Key:   API_PROXY_SECRET"
+  echo "    Value: $SECRET"
+  unset SECRET
+  if [[ "$ENV_NAME" == "prod" ]]; then
+    echo "    Environments: untick Production; Preview Branches → production"
+  else
+    echo "    Environments: Production and Preview (Vercel's 'Production' is staging here)"
+  fi
 fi
-echo "    Tick 'Sensitive'. Then Deployments → the latest $([[ $ENV_NAME == prod ]] && echo "'production' branch" || echo "main (staging)") deployment → ⋯ → Redeploy."
+if [[ "$ENV_NAME" == "prod" ]]; then
+  echo "    Redeploy nfflag.com: Deployments → filter Branch = production → the newest row"
+  echo "    (its branch says 'production', NOT main) → ⋯ → Redeploy. Wait for Ready."
+else
+  echo "    Redeploy staging: Deployments → the newest row from branch main → ⋯ → Redeploy. Wait for Ready."
+fi
 echo
 read -rp "Press Enter once the website has finished redeploying with the new variable... "
 clear 2>/dev/null || true
