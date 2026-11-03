@@ -6,7 +6,12 @@ const API_ORIGIN = process.env.API_ORIGIN ?? "http://localhost:8080";
 
 export async function serverGet<T>(path: string, revalidateSeconds = 60): Promise<T | null> {
   try {
-    const res = await fetch(`${API_ORIGIN}/api/v1${path}`, { next: { revalidate: revalidateSeconds } });
+    const secret = process.env.API_PROXY_SECRET;
+    const res = await fetch(`${API_ORIGIN}/api/v1${path}`, {
+      next: { revalidate: revalidateSeconds },
+      // Lets the API know this call came from the website (see proxy.ts).
+      headers: secret ? { "x-nffl-proxy": secret } : undefined,
+    });
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {

@@ -28,22 +28,25 @@ import { adminPortalRouter } from "./modules/admin/portal.js";
 import { documentsRouter } from "./modules/documents/routes.js";
 import { adminSiteRouter, publicSiteRouter } from "./modules/content/site.js";
 import { smsRouter } from "./modules/sms/routes.js";
+import { httpLogSerializers } from "./lib/http-log.js";
+import { websiteOnly } from "./http/website-only.js";
 
 export function createApp() {
   const app = express();
   app.disable("x-powered-by");
   // Cloud Run sits behind Google's front end, and Vercel proxies in front of that.
+  // websiteOnly (below) rewrites X-Forwarded-For to the single visitor IP the
+  // website vouches for, so req.ip is that address and can't be supplied by a caller.
   app.set("trust proxy", true);
 
+  app.use(websiteOnly);
   app.use(requestContext);
   app.use(
     pinoHttp({
       logger,
       genReqId: (req) => (req as express.Request).ctx?.requestId ?? "",
-      // Never log one-time secrets in query strings (e.g. the Square OAuth code).
-      serializers: {
-        req: (r: { url?: string }) => ({ ...r, url: r.url?.replace(/([?&](?:code|state|token)=)[^&]*/gi, "$1[redacted]") }),
-      },
+      // Method, path and status only: never cookies, Set-Cookie, query strings or tokens.
+      serializers: httpLogSerializers,
       autoLogging: { ignore: (req) => req.url === "/api/v1/health" },
     }),
   );

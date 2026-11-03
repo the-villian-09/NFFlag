@@ -54,6 +54,15 @@ const envSchema = z.object({
      tests: a folder on disk. */
   UPLOADS_BUCKET: z.string().optional(),
   UPLOADS_DIR: z.string().default(".uploads"),
+
+  /**
+   * Shared secret the website adds to every request it forwards to the API
+   * (apps/web/proxy.ts and server-side fetches). When set, the API refuses
+   * requests without it (except health checks and payment webhooks), so the
+   * Cloud Run address can't be called directly and the visitor IP the website
+   * passes on can be trusted. Set with infra/set-proxy-secret.sh.
+   */
+  API_PROXY_SECRET: z.string().min(32).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -63,6 +72,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Invalid environment: ${issues}`);
+  }
+  // A production build must say which environment it is; defaulting to "dev"
+  // would turn on local-only behaviour (uploads on disk, emails in the log).
+  if (parsed.data.NODE_ENV === "production" && !source.APP_ENV) {
+    throw new Error("Invalid environment: APP_ENV must be set (staging or prod) when NODE_ENV=production");
   }
   return parsed.data;
 }
