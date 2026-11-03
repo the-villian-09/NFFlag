@@ -117,7 +117,7 @@ export const DEFAULT_SEASON_HOME: SeasonHome = {
   heroKicker: "Next game day",
   statusText: "Games on as scheduled",
   whereText: "",
-  passesLabel: "Buy season passes",
+  passesLabel: "Buy weekly / season passes",
   ticketsLabel: "Buy day tickets",
   ticketsUrl: "",
   noGamesTitle: "See you next season",

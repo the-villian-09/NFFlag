@@ -203,8 +203,8 @@ export function ScheduleBrowser({ divisions, season }: { divisions: ScheduleDivi
                 <div className="games-head">
                   <h3 style={{ margin: 0 }}>Next game</h3>
                   {season.seasonPassUrl && (
-                    <a className="btn small" href={season.seasonPassUrl} target="_blank" rel="noopener noreferrer" aria-label={`Buy ${season.name} season passes`}>
-                      Buy season passes
+                    <a className="btn small" href={season.seasonPassUrl} target="_blank" rel="noopener noreferrer" aria-label={`Buy ${season.name} weekly or season passes`}>
+                      Buy weekly / season passes
                     </a>
                   )}
                 </div>
