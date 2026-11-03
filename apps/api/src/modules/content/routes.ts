@@ -21,12 +21,15 @@ import { DEFAULT_PAGES, DEFAULT_SETTINGS, PAGE_SLUGS, type Announcement, type Co
 
 /* ---------- validation ---------- */
 
+/** A path on this site. "//x.com" and "/\\x.com" start with "/" but browsers treat them as other sites. */
+export const isSitePath = (v: string) => /^\/(?![\/\\])[^\s]*$/.test(v);
+
 /** Internal paths ("/sign-up") or full https links only. */
 const safeHref = z
   .string()
   .trim()
   .max(300)
-  .refine((v) => v === "" || v.startsWith("/") || /^https:\/\//i.test(v), "Use a path like /sign-up or an https:// link");
+  .refine((v) => v === "" || isSitePath(v) || /^https:\/\/[^\s]+$/i.test(v), "Use a path like /sign-up or an https:// link");
 
 const announcementSchema = z.object({
   enabled: z.boolean(),

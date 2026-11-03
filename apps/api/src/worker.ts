@@ -14,6 +14,7 @@ import { processWaitlist } from "./modules/registration/waitlist.js";
 import { reconcileApplications } from "./modules/staff/service.js";
 import { refreshConnection } from "./modules/square/client.js";
 import { processRefereePayouts } from "./modules/referees/service.js";
+import { cleanupUnusedImages } from "./modules/content/site.js";
 import { db } from "./db/client.js";
 import { squareConnection } from "./db/schema/index.js";
 import { eq } from "drizzle-orm";
@@ -56,6 +57,10 @@ async function housekeeping() {
   await step("referee pay", async () => {
     const n = await processRefereePayouts();
     if (n) logger.info({ sent: n }, "sent referee payouts that were waiting");
+  });
+  await step("unused photos", async () => {
+    const n = await cleanupUnusedImages();
+    if (n) logger.info({ deleted: n }, "deleted uploaded photos nothing used");
   });
   await step("square token", async () => {
     const [conn] = await db

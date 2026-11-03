@@ -113,6 +113,11 @@ describe("children's documents", () => {
     expect(text.status).toBe(400);
     expect((await put(f.a, `/players/${f.playerId}/documents/player_photo`, pdf, "application/pdf")).body.error.message).toMatch(/needs to be a photo/);
     expect((await put(f.a, `/players/${f.playerId}/documents/passport`, pdf, "application/pdf")).status).toBe(400);
+    // PDFs with scripts or attachments are refused (audit M9).
+    const scripted = Buffer.from("%PDF-1.4\n1 0 obj << /Type /Catalog /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >> endobj\n%%EOF\n");
+    const refused = await put(f.a, `/players/${f.playerId}/documents/insurance_card`, scripted, "application/pdf");
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.message).toMatch(/scripts/);
   });
 
   it("replacing a file retires the old one; the birth certificate carries to the next season, the rest don't", async () => {
@@ -151,6 +156,8 @@ describe("children's documents", () => {
     const seen = await admin.get(bc.url);
     expect(seen.status).toBe(200);
     expect(seen.headers["content-type"]).toBe("application/pdf");
+    // Families' PDFs download instead of opening on the site's address (audit M9).
+    expect(seen.headers["content-disposition"]).toMatch(/^attachment;/);
     const [log] = await db.select().from(auditLogs).where(and(eq(auditLogs.action, "document.view"), eq(auditLogs.targetId, bc.id)));
     expect(log?.actorUserId).toBe(adminId);
 

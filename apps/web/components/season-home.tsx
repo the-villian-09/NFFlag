@@ -7,6 +7,7 @@ import Link from "next/link";
 import { siteImageUrl, type ImageSlots, type SeasonHome as Settings } from "@nffl/shared";
 import { StandingsTabs, YourTeam } from "@/components/season-home-client";
 import { imageFor, latestScores, nextGameDay, teamRecords, type HomeDivision } from "@/lib/season-home";
+import { isSitePath } from "@/lib/links";
 
 export interface NewsItem {
   id: string;
@@ -177,7 +178,7 @@ export function SeasonHome({
                   {n.body && <p>{firstPara(n.body)}</p>}
                   {n.linkUrl && (
                     <p style={{ marginTop: 10 }}>
-                      <a className="sh-more" href={n.linkUrl} {...(n.linkUrl.startsWith("/") ? {} : { target: "_blank", rel: "noopener noreferrer" })}>
+                      <a className="sh-more" href={n.linkUrl} {...(isSitePath(n.linkUrl) ? {} : { target: "_blank", rel: "noopener noreferrer" })}>
                         {`${n.linkText || "Read more"} →`}
                       </a>
                     </p>

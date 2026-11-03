@@ -13,6 +13,7 @@ import { and, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import express, { Router, type Request } from "express";
 import { rateLimit } from "express-rate-limit";
 import sharp from "sharp";
+import { MAX_INPUT_PIXELS, oneAtATime } from "../../lib/images.js";
 import { z } from "zod";
 import { env } from "../../config.js";
 import { db, type DbOrTx } from "../../db/client.js";
@@ -21,7 +22,7 @@ import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission }
 import { HttpError } from "../../http/errors.js";
 import { writeAudit } from "../platform/audit.js";
 import { sniff } from "../documents/service.js";
-import { getSetting } from "./routes.js";
+import { getSetting, isSitePath } from "./routes.js";
 
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
@@ -34,12 +35,14 @@ async function cleanPhoto(buf: Buffer, max: number) {
   const type = sniff(buf);
   if (!type || type === "application/pdf") throw new HttpError(400, "VALIDATION_FAILED", "Upload a photo (JPG, PNG or WebP).");
   try {
-    const { data, info } = await sharp(buf, { failOn: "error", limitInputPixels: 80_000_000 })
-      .rotate()
-      .resize({ width: max, height: max, fit: "inside", withoutEnlargement: true })
-      .flatten({ background: "#011322" })
-      .jpeg({ quality: 82, mozjpeg: true })
-      .toBuffer({ resolveWithObject: true });
+    const { data, info } = await oneAtATime(() =>
+      sharp(buf, { failOn: "error", limitInputPixels: MAX_INPUT_PIXELS })
+        .rotate()
+        .resize({ width: max, height: max, fit: "inside", withoutEnlargement: true })
+        .flatten({ background: "#011322" })
+        .jpeg({ quality: 82, mozjpeg: true })
+        .toBuffer({ resolveWithObject: true }),
+    );
     return { data, width: info.width, height: info.height };
   } catch {
     throw new HttpError(400, "VALIDATION_FAILED", "That photo couldn't be read. Try a different file.");
@@ -64,6 +67,16 @@ async function dropUnused(tx: DbOrTx, ids: (string | null | undefined)[]) {
   if (drop.length) await tx.delete(siteImages).where(inArray(siteImages.id, drop));
 }
 
+/** Worker: photos uploaded more than a day ago that nothing ended up using are deleted. */
+export async function cleanupUnusedImages() {
+  const old = await db.select({ id: siteImages.id }).from(siteImages).where(sql`${siteImages.createdAt} < now() - interval '1 day'`).limit(200);
+  if (!old.length) return 0;
+  const before = (await db.select({ n: sql<number>`count(*)::int` }).from(siteImages))[0]!.n;
+  await db.transaction((tx) => dropUnused(tx, old.map((o) => o.id)));
+  const after = (await db.select({ n: sql<number>`count(*)::int` }).from(siteImages))[0]!.n;
+  return before - after;
+}
+
 async function setSlots(tx: DbOrTx, next: ImageSlots, before: ImageSlots, actor: string, req: Request) {
   await tx
     .insert(siteSettings)
@@ -83,7 +96,7 @@ const newsInput = z.object({
     .string()
     .trim()
     .max(500)
-    .refine((v) => v === "" || v.startsWith("/") || /^https:\/\/[^\s]+$/i.test(v), "Use a path like /schedule or an https:// link")
+    .refine((v) => v === "" || isSitePath(v) || /^https:\/\/[^\s]+$/i.test(v), "Use a path like /schedule or an https:// link")
     .optional()
     .transform((v) => v || null),
   pinned: z.boolean().default(false),
@@ -124,7 +137,8 @@ publicSiteRouter.get(
     const [img] = await db.select({ data: siteImages.data, contentType: siteImages.contentType }).from(siteImages).where(eq(siteImages.id, id.data));
     if (!img) throw new HttpError(404, "NOT_FOUND", "Not found.");
     res.setHeader("content-type", img.contentType);
-    res.setHeader("cache-control", "public, max-age=31536000, immutable");
+    // A day, so a photo that's taken down doesn't linger in caches for long.
+    res.setHeader("cache-control", "public, max-age=86400, s-maxage=86400");
     res.setHeader("cross-origin-resource-policy", "same-site");
     res.send(img.data);
   }),

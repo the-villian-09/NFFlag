@@ -93,9 +93,13 @@ documentsRouter.get(
       { userId: req.ctx.auth!.user.id, access: req.ctx.access!, requestId: req.ctx.requestId, ip: req.ctx.ip ?? undefined },
       z.uuid().parse(req.params.id),
     );
+    const pdf = f.contentType === "application/pdf";
     res.setHeader("content-type", f.contentType);
     res.setHeader("cache-control", "private, no-store");
-    res.setHeader("content-disposition", `inline; filename="${f.kind.replace(/_/g, "-")}.${f.contentType === "application/pdf" ? "pdf" : "jpg"}"`);
+    // PDFs are uploaded by families as-is, so they download instead of opening on
+    // the site's own address; photos (re-saved by us) can open inline.
+    res.setHeader("content-disposition", `${pdf ? "attachment" : "inline"}; filename="${f.kind.replace(/_/g, "-")}.${pdf ? "pdf" : "jpg"}"`);
+    res.setHeader("content-security-policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
     res.send(f.data);
   }),
 );

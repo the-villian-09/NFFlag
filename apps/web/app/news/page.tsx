@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { serverGet } from "@/lib/server-api";
 import type { NewsItem } from "@/components/season-home";
+import { isSitePath } from "@/lib/links";
 
 export const metadata: Metadata = { title: "League news" };
 export const revalidate = 60;
@@ -40,7 +41,7 @@ export default async function NewsPage() {
                   ))}
                 {n.linkUrl && (
                   <p>
-                    <a className="sh-more" href={n.linkUrl} {...(n.linkUrl.startsWith("/") ? {} : { target: "_blank", rel: "noopener noreferrer" })}>
+                    <a className="sh-more" href={n.linkUrl} {...(isSitePath(n.linkUrl) ? {} : { target: "_blank", rel: "noopener noreferrer" })}>
                       {`${n.linkText || "Read more"} →`}
                     </a>
                   </p>

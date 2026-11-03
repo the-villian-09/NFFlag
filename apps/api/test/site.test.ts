@@ -39,7 +39,7 @@ describe("home page photos", () => {
     const file = await agent().get(`/api/v1/site-images/${first}`);
     expect(file.status).toBe(200);
     expect(file.headers["content-type"]).toBe("image/jpeg");
-    expect(file.headers["cache-control"]).toContain("immutable");
+    expect(file.headers["cache-control"]).toContain("max-age=86400");
 
     // Replacing removes the old file.
     const again = await admin.put("/api/v1/admin/content/images/slots/heroBoy").set("content-type", "image/png").send(await png());
@@ -85,6 +85,9 @@ describe("league news", () => {
     const later = await admin.post("/api/v1/admin/content/news").send({ title: "Playoffs announced", publishedAt: new Date(Date.now() + 86400_000).toISOString() });
     expect(later.status).toBe(201);
     expect((await admin.post("/api/v1/admin/content/news").send({ title: "Bad link", linkUrl: "javascript:alert(1)" })).status).toBe(400);
+    // Look like site paths but go to other sites (audit L6).
+    expect((await admin.post("/api/v1/admin/content/news").send({ title: "Bad link", linkUrl: "//evil.example/login" })).status).toBe(400);
+    expect((await admin.post("/api/v1/admin/content/news").send({ title: "Bad link", linkUrl: "/\\evil.example/login" })).status).toBe(400);
 
     const list = await agent().get("/api/v1/news");
     const titles = list.body.items.map((n: { title: string }) => n.title);
@@ -102,5 +105,16 @@ describe("league news", () => {
     expect((await admin.delete(`/api/v1/admin/content/news/${made.body.post.id}`)).status).toBe(200);
     expect((await admin.delete(`/api/v1/admin/content/news/${later.body.post.id}`)).status).toBe(200);
     expect((await agent().get("/api/v1/news")).body.items.map((n: { title: string }) => n.title)).not.toContain("Picture day Saturday");
+  });
+});
+
+describe("unused photos", () => {
+  it("deletes uploads older than a day that nothing uses (audit L8)", async () => {
+    const img = await admin.post("/api/v1/admin/content/images?use=news").set("content-type", "image/png").send(await png());
+    const id = img.body.image.id as string;
+    await db.update(siteImages).set({ createdAt: new Date(Date.now() - 2 * 86400_000) }).where(eq(siteImages.id, id));
+    const { cleanupUnusedImages } = await import("../src/modules/content/site.js");
+    expect(await cleanupUnusedImages()).toBeGreaterThanOrEqual(1);
+    expect((await agent().get(`/api/v1/site-images/${id}`)).status).toBe(404);
   });
 });

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { isSiteImage, isSitePath } from "@/lib/links";
 
 /**
  * Renders admin-edited Markdown. Raw HTML in the source is NOT rendered
@@ -14,7 +15,7 @@ export function Markdown({ source }: { source: string }) {
         remarkPlugins={[remarkGfm]}
         components={{
           a({ href = "", children }) {
-            if (href.startsWith("/")) return <Link href={href}>{children}</Link>;
+            if (isSitePath(href)) return <Link href={href}>{children}</Link>;
             const safe = /^(https?:|mailto:|tel:)/i.test(href) ? href : undefined;
             return (
               <a href={safe} target="_blank" rel="noopener noreferrer">
@@ -25,7 +26,7 @@ export function Markdown({ source }: { source: string }) {
           // Only the site's own pictures (e.g. /images/…); no images from other sites.
           img({ src, alt }) {
             const url = typeof src === "string" ? src : "";
-            if (!url.startsWith("/") || url.startsWith("//")) return null;
+            if (!isSiteImage(url)) return null;
             // eslint-disable-next-line @next/next/no-img-element
             return <img src={url} alt={alt ?? ""} loading="lazy" />;
           },

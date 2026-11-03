@@ -12,6 +12,7 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
+import { MAX_INPUT_PIXELS, oneAtATime } from "../../lib/images.js";
 import { db } from "../../db/client.js";
 import { documents, householdMembers, players, registrations, rosterEntries, seasons, teams } from "../../db/schema/index.js";
 import { HttpError } from "../../http/errors.js";
@@ -59,6 +60,16 @@ export function sniff(buf: Buffer): "image/jpeg" | "image/png" | "image/webp" | 
   return null;
 }
 
+/**
+ * Scanned documents don't need scripts, attachments or form actions; a PDF
+ * with them is refused. (Best effort: PDFs are also always downloaded rather
+ * than opened inside the site; see documents/routes.ts.)
+ */
+const PDF_ACTIVE = /\/(?:JavaScript|JS|Launch|EmbeddedFiles?|SubmitForm|ImportData|RichMedia|XFA|GoToR|GoToE)\b/;
+export function pdfHasActiveContent(buf: Buffer) {
+  return PDF_ACTIVE.test(buf.toString("latin1"));
+}
+
 /** Checks the file really is what it claims and cleans photos. Returns what to store. */
 export async function prepareFile(kind: DocKind, buf: Buffer): Promise<{ data: Buffer; contentType: string }> {
   if (!buf.length) throw new HttpError(400, "VALIDATION_FAILED", "Choose a file to upload.");
@@ -67,15 +78,20 @@ export async function prepareFile(kind: DocKind, buf: Buffer): Promise<{ data: B
   if (!type) throw new HttpError(400, "VALIDATION_FAILED", "Upload a photo (JPG, PNG or WebP) or a PDF.");
   if (type === "application/pdf") {
     if (KIND_INFO[kind].photo) throw new HttpError(400, "VALIDATION_FAILED", "The headshot needs to be a photo (JPG, PNG or WebP), not a PDF.");
+    if (pdfHasActiveContent(buf)) {
+      throw new HttpError(400, "VALIDATION_FAILED", "That PDF contains scripts, attachments or form actions, so it can't be uploaded. Take a photo of the document instead, or scan it to a plain PDF.");
+    }
     return { data: buf, contentType: type };
   }
   try {
     const max = KIND_INFO[kind].photo ? 1200 : 2400;
-    const data = await sharp(buf, { failOn: "error", limitInputPixels: 60_000_000 })
-      .rotate() // apply the phone's orientation before the metadata is dropped
-      .resize({ width: max, height: max, fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 85, mozjpeg: true })
-      .toBuffer();
+    const data = await oneAtATime(() =>
+      sharp(buf, { failOn: "error", limitInputPixels: MAX_INPUT_PIXELS })
+        .rotate() // apply the phone's orientation before the metadata is dropped
+        .resize({ width: max, height: max, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 85, mozjpeg: true })
+        .toBuffer(),
+    );
     return { data, contentType: "image/jpeg" };
   } catch {
     throw new HttpError(400, "VALIDATION_FAILED", "That photo couldn't be read. Try taking it again or uploading a different file.");
