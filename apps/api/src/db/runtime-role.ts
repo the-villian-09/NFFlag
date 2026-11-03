@@ -37,9 +37,10 @@ export async function ensureRuntimeRole(client: pg.PoolClient, url: string) {
   const role = ident(user);
   await client.query("begin");
   try {
-    if (!exists) await client.query(`create role ${role} login password ${literal(password)}`);
-    else await client.query(`alter role ${role} login password ${literal(password)}`);
-    await client.query(`alter role ${role} nosuperuser nocreatedb nocreaterole noinherit`);
+    // Not a superuser by default. (On Cloud SQL the owner login isn't a full
+    // superuser, and PostgreSQL 16 lets only superusers mention SUPERUSER at all.)
+    if (!exists) await client.query(`create role ${role} login nocreatedb nocreaterole noinherit password ${literal(password)}`);
+    else await client.query(`alter role ${role} login nocreatedb nocreaterole noinherit password ${literal(password)}`);
     // Cloud SQL may have added the login to cloudsqlsuperuser; take that back if so.
     const elevated = (await client.query("select 1 from pg_auth_members m join pg_roles r on r.oid = m.roleid join pg_roles u on u.oid = m.member where r.rolname = 'cloudsqlsuperuser' and u.rolname = $1", [user])).rowCount;
     if (elevated) await client.query(`revoke cloudsqlsuperuser from ${role}`);
