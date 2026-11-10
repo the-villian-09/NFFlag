@@ -16,6 +16,7 @@ import { reconcileApplications } from "./modules/staff/service.js";
 import { refreshConnection } from "./modules/square/client.js";
 import { processRefereePayouts } from "./modules/referees/service.js";
 import { cleanupUnusedImages } from "./modules/content/site.js";
+import { cleanupEmailQuota } from "./lib/email-quota.js";
 import { db } from "./db/client.js";
 import { squareConnection } from "./db/schema/index.js";
 import { eq } from "drizzle-orm";
@@ -62,6 +63,10 @@ async function housekeeping() {
   await step("unused photos", async () => {
     const n = await cleanupUnusedImages();
     if (n) logger.info({ deleted: n }, "deleted uploaded photos nothing used");
+  });
+  await step("old email counts", async () => {
+    const n = await cleanupEmailQuota();
+    if (n) logger.info({ removed: n }, "old email counts removed");
   });
   await step("square token", async () => {
     const [conn] = await db

@@ -672,3 +672,8 @@ a.sh-sp:hover { border-color: var(--lime); color: var(--lime); }
 .sms-consent { align-items: flex-start; font-size: 15px; line-height: 1.45; color: var(--ink-muted); }
 .sms-consent input { margin-top: 3px; flex: none; }
 .prose img { display: block; max-width: min(100%, 380px); height: auto; margin: 16px 0; border: 2px solid var(--line); }
+
+/* Invisible "are you human" check (Cloudflare Turnstile). */
+.turnstile-slot:empty { display: none; }
+.turnstile-note { font-size: 12px; margin: 4px 0 0; }
+.turnstile-note a { color: inherit; }

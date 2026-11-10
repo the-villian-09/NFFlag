@@ -19,14 +19,17 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
+import { captcha } from "better-auth/plugins/captcha";
 import { twoFactor } from "better-auth/plugins/two-factor";
 import { eq } from "drizzle-orm";
 import { env } from "../../config.js";
 import { db } from "../../db/client.js";
 import * as schema from "../../db/schema/index.js";
 import { getEmailSender } from "../../lib/email.js";
+import { takeEmailQuota } from "../../lib/email-quota.js";
 import { templates } from "../../lib/email-templates.js";
 import { logger } from "../../lib/logger.js";
+import { AUTH_CAPTCHA_ENDPOINTS, allowedHostnames } from "../../lib/turnstile.js";
 import { loadAccess } from "../platform/access.js";
 import { publish } from "../platform/outbox.js";
 
@@ -67,6 +70,7 @@ export const auth = betterAuth({
     resetPasswordTokenExpiresIn: 60 * 60,
     revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => {
+      if (!(await takeEmailQuota(user.email, "reset"))) return;
       await getEmailSender().send(templates.resetPassword(user.email, url));
     },
   },
@@ -79,6 +83,7 @@ export const auth = betterAuth({
     autoSignInAfterVerification: true,
     expiresIn: ONE_DAY,
     sendVerificationEmail: async ({ user, url }) => {
+      if (!(await takeEmailQuota(user.email, "verify"))) return;
       await getEmailSender().send(templates.verifyEmail(user.email, url));
     },
   },
@@ -97,6 +102,7 @@ export const auth = betterAuth({
       "/sign-in/email": { window: 60, max: 5 },
       "/sign-up/email": { window: 60, max: 5 },
       "/request-password-reset": { window: 60, max: 3 },
+      "/send-verification-email": { window: 60, max: 3 },
       "/two-factor/send-otp": { window: 60, max: 3 },
       "/two-factor/verify-otp": { window: 60, max: 5 },
       "/two-factor/verify-totp": { window: 60, max: 5 },
@@ -111,6 +117,19 @@ export const auth = betterAuth({
   },
 
   plugins: [
+    // Invisible "are you human" check on the endpoints that email whatever
+    // address is typed in (see lib/turnstile.ts). Off without a secret key.
+    // (Typed as an empty list so the other plugins' types, e.g. two-factor fields, still infer.)
+    ...((env.TURNSTILE_SECRET_KEY
+      ? [
+          captcha({
+            provider: "cloudflare-turnstile",
+            secretKey: env.TURNSTILE_SECRET_KEY,
+            endpoints: AUTH_CAPTCHA_ENDPOINTS,
+            allowedHostnames: allowedHostnames(),
+          }),
+        ]
+      : []) as []),
     twoFactor({
       issuer: "NFFL",
       trustDeviceMaxAge: 30 * ONE_DAY,
@@ -127,6 +146,7 @@ export const auth = betterAuth({
             logger.warn({ userId: user.id }, "email code refused: role requires authenticator app");
             return;
           }
+          if (!(await takeEmailQuota(user.email, "login_code"))) return;
           await getEmailSender().send(templates.loginCode(user.email, otp));
         },
       },

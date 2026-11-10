@@ -13,6 +13,8 @@ import { db, type DbOrTx } from "../../db/client.js";
 import { contactMessages, contentPages, siteSettings } from "../../db/schema/index.js";
 import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission } from "../../http/context.js";
 import { HttpError } from "../../http/errors.js";
+import { takeEmailQuota } from "../../lib/email-quota.js";
+import { checkTurnstile, TURNSTILE_MESSAGES } from "../../lib/turnstile.js";
 import { getEmailSender } from "../../lib/email.js";
 import { templates } from "../../lib/email-templates.js";
 import { logger } from "../../lib/logger.js";
@@ -156,8 +158,14 @@ publicContentRouter.post(
   contactLimiter,
   handler(async (req, res) => {
     const input = contactInput.parse(req.body);
-    // Bots fill the hidden field: pretend success, store nothing.
-    if (input.website) {
+    const human = await checkTurnstile(req);
+    if (human !== "ok") {
+      const m = TURNSTILE_MESSAGES[human];
+      throw new HttpError(m.status, m.code, m.message);
+    }
+    // Bots fill the hidden field, and one sender gets a few messages a day:
+    // either way, pretend success and store nothing.
+    if (input.website || !(await takeEmailQuota(input.email, "contact"))) {
       res.status(202).json({ ok: true });
       return;
     }

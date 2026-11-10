@@ -6,6 +6,9 @@ import { errorForLog } from "../lib/log-error.js";
 /** Stable error codes the front end can switch on. */
 export type ErrorCode =
   | "UNAUTHENTICATED"
+  | "MISSING_RESPONSE"
+  | "VERIFICATION_FAILED"
+  | "CAPTCHA_UNAVAILABLE"
   | "SESSION_IDLE"
   | "EMAIL_NOT_VERIFIED"
   | "MFA_ENROLLMENT_REQUIRED"

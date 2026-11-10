@@ -134,6 +134,13 @@
       "when": 1793708496064,
       "tag": "0018_payment_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794329653191,
+      "tag": "0019_email_quota",
+      "breakpoints": true
     }
   ]
 }

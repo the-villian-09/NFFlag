@@ -2,16 +2,18 @@
 
 import { useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
+import { useTurnstile } from "@/components/turnstile";
 import { authApi } from "@/lib/api";
 
 export default function ForgotPasswordPage() {
   const { busy, error, run } = useAction();
   const [sent, setSent] = useState(false);
+  const human = useTurnstile();
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const email = String(new FormData(e.currentTarget).get("email"));
-    if ((await run(() => authApi.requestReset(email))) !== undefined) setSent(true);
+    if ((await run(async () => authApi.requestReset(email, await human.getToken()))) !== undefined) setSent(true);
   }
 
   return (
@@ -30,6 +32,7 @@ export default function ForgotPasswordPage() {
             <button className="btn" disabled={busy}>
               {busy ? "Sending…" : "Send reset link"}
             </button>
+            {human.slot}
           </form>
         )}
       </div>

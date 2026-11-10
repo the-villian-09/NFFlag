@@ -63,6 +63,14 @@ const envSchema = z.object({
    * passes on can be trusted. Set with infra/set-proxy-secret.sh.
    */
   API_PROXY_SECRET: z.string().min(32).optional(),
+
+  /**
+   * Cloudflare Turnstile secret key (the invisible "are you human" check).
+   * When set, sign-up, password reset, resend-confirmation and the contact
+   * form need a passing check from the website's widget (whose site key is
+   * NEXT_PUBLIC_TURNSTILE_SITE_KEY in Vercel). Set with infra/set-turnstile.sh.
+   */
+  TURNSTILE_SECRET_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

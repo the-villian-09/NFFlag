@@ -265,3 +265,13 @@ Run once per environment, staging first, from the `infra` folder in Cloud Shell:
    optional sign-out of everyone, encrypted-only database connections, a
    row-access-only database login for the app, an optional narrower deploy role,
    and a list of who can read logs. Each step asks first.
+3. `bash set-turnstile.sh <staging|prod> <project>` (Nov 10): the invisible
+   "are you human" check (Cloudflare Turnstile) on sign-up, password reset,
+   resend-confirmation and the contact form. First create an Invisible widget in
+   Cloudflare (hostnames nfflag.com, staging.nfflag.com), add its Site Key in
+   Vercel as `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (Production and Preview) and
+   redeploy both sites; the script then asks for the Secret Key.
+
+Emails anyone can trigger (confirmation links, reset links, sign-in codes,
+contact messages) are also capped per address per day, counted in the
+database (`email_quota`), so the limits hold through restarts. No setup needed.

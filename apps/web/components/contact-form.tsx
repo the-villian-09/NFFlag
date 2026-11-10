@@ -2,24 +2,30 @@
 
 import { useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
+import { useTurnstile } from "@/components/turnstile";
 import { api } from "@/lib/api";
 
 export function ContactForm() {
   const { busy, error, run } = useAction();
   const [sent, setSent] = useState(false);
+  const human = useTurnstile();
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    const ok = await run(() =>
-      api.post("/contact", {
-        name: String(f.get("name")),
-        email: String(f.get("email")),
-        phone: String(f.get("phone") || "") || undefined,
-        topic: String(f.get("topic")),
-        message: String(f.get("message")),
-        website: String(f.get("website") || ""),
-      }),
+    const ok = await run(async () =>
+      api.post(
+        "/contact",
+        {
+          name: String(f.get("name")),
+          email: String(f.get("email")),
+          phone: String(f.get("phone") || "") || undefined,
+          topic: String(f.get("topic")),
+          message: String(f.get("message")),
+          website: String(f.get("website") || ""),
+        },
+        await human.getToken(),
+      ),
     );
     if (ok !== undefined) setSent(true);
   }
@@ -73,6 +79,7 @@ export function ContactForm() {
       <button className="btn" disabled={busy}>
         {busy ? "Sending…" : "Send message"}
       </button>
+      {human.slot}
     </form>
   );
 }

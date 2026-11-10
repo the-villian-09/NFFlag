@@ -5,6 +5,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -134,3 +135,22 @@ export const sessionActivity = pgTable("session_activity", {
     .references(() => session.id, { onDelete: "cascade" }),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * How many emails of each kind went to an address on a given day (UTC), so
+ * nobody can flood an inbox with sign-up, reset or code emails. Kept in the
+ * database so the limits hold through restarts and across API instances.
+ * Rows older than two days are deleted by the worker.
+ */
+export const emailQuota = pgTable(
+  "email_quota",
+  {
+    /** Lower-cased email address. */
+    address: text("address").notNull(),
+    /** verify | reset | login_code | contact */
+    kind: text("kind").notNull(),
+    day: date("day").notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.address, t.kind, t.day] })],
+);
