@@ -101,7 +101,7 @@ export function useTurnstile() {
   }
 
   const slot = SITE_KEY ? (
-    <>
+    <div className="turnstile">
       <div ref={setNode} className="turnstile-slot" />
       <p className="turnstile-note muted">
         Protected by Cloudflare Turnstile (
@@ -110,7 +110,7 @@ export function useTurnstile() {
         </a>
         ).
       </p>
-    </>
+    </div>
   ) : null;
 
   return { slot, getToken };

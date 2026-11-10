@@ -674,6 +674,11 @@ a.sh-sp:hover { border-color: var(--lime); color: var(--lime); }
 .prose img { display: block; max-width: min(100%, 380px); height: auto; margin: 16px 0; border: 2px solid var(--line); }
 
 /* Invisible "are you human" check (Cloudflare Turnstile). */
+/* One block under the button, with breathing room above it. */
+.turnstile { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .turnstile-slot:empty { display: none; }
-.turnstile-note { font-size: 12px; margin: 4px 0 0; }
+.turnstile-note { font-size: 12px; margin: 0; }
+/* A little more room between the last field and the button on these forms. */
+.auth-wrap form.stack > .btn, .contact-form > .btn { margin-top: 8px; }
+.auth-wrap .card > .btn + .turnstile { margin-top: 20px; }
 .turnstile-note a { color: inherit; }
