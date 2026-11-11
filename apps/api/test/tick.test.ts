@@ -98,3 +98,19 @@ describe("worker tick", () => {
     }
   });
 });
+
+describe("worker pass time limit", () => {
+  it("stops after its time budget and leaves the rest for the next pass", async () => {
+    const { runWorkerPass } = await import("../src/modules/platform/worker-pass.js");
+    await runWorkerPass(); // start from an empty queue
+    const stamp = Date.now();
+    for (let i = 0; i < 70; i++) {
+      await publish(db, { name: "user.registered", aggregateType: "user", aggregateId: `budget-${i}`, dedupeKey: `budget:${stamp}:${i}` });
+    }
+    // No time left: one batch only.
+    const first = await runWorkerPass(0);
+    expect(first).toMatchObject({ processed: 50, more: true });
+    const second = await runWorkerPass();
+    expect(second).toMatchObject({ processed: 20, more: false });
+  });
+});

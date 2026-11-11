@@ -83,24 +83,41 @@ async function housekeeping() {
   });
 }
 
-async function drain() {
+/**
+ * How long one pass may keep sending queued events. A Cloud Scheduler call to
+ * the API is cut off after 5 minutes, and a cut in the middle of a batch would
+ * re-send that batch's emails. One minute leaves a wide margin; whatever is
+ * left (a big announcement, say) carries on in the next pass a minute later.
+ */
+export const PASS_BUDGET_MS = 60_000;
+const BATCH = 50;
+
+async function drain(budgetMs: number) {
+  const started = Date.now();
   await housekeeping().catch((err) => logger.error({ err: errorForLog(err) }, "housekeeping failed"));
   let total = 0;
-  for (;;) {
-    const { processed, failed } = await processOutbox(50);
+  let more = false;
+  for (let first = true; ; first = false) {
+    // Always at least one batch, so a slow housekeeping step can't stall the queue.
+    if (!first && Date.now() - started >= budgetMs) {
+      more = true;
+      break;
+    }
+    const { processed, failed } = await processOutbox(BATCH);
     total += processed;
     if (processed + failed === 0) break;
   }
-  return total;
+  return { processed: total, more };
 }
-
 
 /**
  * Runs one pass unless another is already running (then returns null at once).
  * The lock is tied to one database session, so it's released even if this
  * process dies mid-pass.
  */
-export async function runWorkerPass(): Promise<{ processed: number; ms: number } | null> {
+export async function runWorkerPass(
+  budgetMs = PASS_BUDGET_MS,
+): Promise<{ processed: number; more: boolean; ms: number } | null> {
   registerSubscribers();
   const started = Date.now();
   const lockClient = await pool.connect();
@@ -108,8 +125,9 @@ export async function runWorkerPass(): Promise<{ processed: number; ms: number }
     const got = await lockClient.query<{ ok: boolean }>("select pg_try_advisory_lock($1) as ok", [PASS_LOCK]);
     if (!got.rows[0]?.ok) return null;
     try {
-      const processed = await drain();
-      return { processed, ms: Date.now() - started };
+      const r = await drain(budgetMs);
+      if (r.more) logger.info({ processed: r.processed }, "worker pass hit its time limit; the rest goes next pass");
+      return { ...r, ms: Date.now() - started };
     } finally {
       await lockClient.query("select pg_advisory_unlock($1)", [PASS_LOCK]);
     }
