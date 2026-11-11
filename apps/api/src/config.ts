@@ -71,6 +71,16 @@ const envSchema = z.object({
    * NEXT_PUBLIC_TURNSTILE_SITE_KEY in Vercel). Set with infra/set-turnstile.sh.
    */
   TURNSTILE_SECRET_KEY: z.string().min(1).optional(),
+
+  /**
+   * Cloud Scheduler calls POST /internal/tick every minute to run the
+   * background worker inside the API (much cheaper than starting a job each
+   * minute). The call carries a Google-signed token for this service account,
+   * issued for WORKER_TICK_AUDIENCE (the API's Cloud Run URL). Both unset:
+   * the endpoint answers 404. Set with infra/set-worker-tick.sh.
+   */
+  WORKER_TICK_SA: z.email().optional(),
+  WORKER_TICK_AUDIENCE: z.url().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

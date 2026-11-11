@@ -31,6 +31,9 @@ importers:
       helmet:
         specifier: ^8.3.0
         version: 8.3.0
+      jose:
+        specifier: 6.2.14
+        version: 6.2.14
       pg:
         specifier: ^8.23.1
         version: 8.23.1

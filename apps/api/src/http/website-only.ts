@@ -4,8 +4,8 @@
  * The website (apps/web/proxy.ts and its server-side fetches) adds a shared
  * secret header to every request it forwards, plus the visitor's IP as Vercel
  * saw it. When API_PROXY_SECRET is set:
- *   - requests without the secret get 404, except health checks and payment
- *     webhooks (those are signature-checked);
+ *   - requests without the secret get 404, except health checks, payment
+ *     webhooks (signature-checked) and the scheduler's worker tick (Google token);
  *   - the visitor IP comes only from the website's header, so rate limits,
  *     the audit log and text-alert consent records use the real address.
  * Without the secret configured (local dev, tests, before rollout) requests
@@ -19,7 +19,9 @@ import { env } from "../config.js";
 export const PROXY_HEADER = "x-nffl-proxy";
 export const CLIENT_IP_HEADER = "x-nffl-client-ip";
 
-const OPEN_PATHS = [/^\/api\/v1\/health$/, /^\/api\/v1\/ready$/, /^\/api\/v1\/webhooks\//];
+// Health checks, payment webhooks (signature-checked) and the scheduler's
+// worker tick (Google-signed token, see modules/platform/tick.ts).
+const OPEN_PATHS = [/^\/api\/v1\/health$/, /^\/api\/v1\/ready$/, /^\/api\/v1\/webhooks\//, /^\/internal\/tick$/];
 
 function secretMatches(given: string | undefined, secret: string) {
   if (!given) return false;

@@ -108,7 +108,12 @@ async function officialContext(id: string) {
   return { ...o, matchup: `${name(o.homeTeamId)} vs ${name(o.awayTeamId)}`, when: fmtDeadline(o.startsAt) };
 }
 
+let registered = false;
+
+/** Safe to call more than once (the API and tests both call it). */
 export function registerSubscribers() {
+  if (registered) return;
+  registered = true;
   /* ---------------- referees (R5) ---------------- */
   subscribe("referee.application_submitted", async (e) => {
     const [a] = await db

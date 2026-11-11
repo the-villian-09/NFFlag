@@ -275,3 +275,17 @@ Run once per environment, staging first, from the `infra` folder in Cloud Shell:
 Emails anyone can trigger (confirmation links, reset links, sign-in codes,
 contact messages) are also capped per address per day, counted in the
 database (`email_quota`), so the limits hold through restarts. No setup needed.
+
+## Worker: run inside the API (Nov 11)
+
+The background worker (holds, waitlist, refunds, payouts, queued emails) used to
+run as a Cloud Run job started every minute, which billed ~25 s of start-up per
+run (about $3/day). Now Cloud Scheduler calls the API's `POST /internal/tick`
+with a Google-signed token for `nffl-scheduler`, and the API does the pass in
+about a second. Switch each environment with:
+
+    bash set-worker-tick.sh <staging|prod> <project>
+
+It checks everything before pausing the old trigger. The `nffl-worker-<env>`
+job stays deployed as a fallback; job and tick never run at the same time
+(Postgres advisory lock). Switch back with the two commands the script prints.

@@ -30,6 +30,7 @@ import { adminSiteRouter, publicSiteRouter } from "./modules/content/site.js";
 import { smsRouter } from "./modules/sms/routes.js";
 import { httpLogSerializers } from "./lib/http-log.js";
 import { websiteOnly } from "./http/website-only.js";
+import { tickRouter } from "./modules/platform/tick.js";
 
 export function createApp() {
   const app = express();
@@ -51,6 +52,9 @@ export function createApp() {
     }),
   );
   app.use(helmet());
+
+  // Cloud Scheduler's once-a-minute worker run (Google-signed token; not under /api).
+  app.use(tickRouter);
 
   // Better Auth reads the raw body itself, so it mounts before express.json().
   app.all("/api/auth/{*splat}", toNodeHandler(auth));
