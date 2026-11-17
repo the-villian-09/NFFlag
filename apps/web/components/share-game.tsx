@@ -35,9 +35,15 @@ const ShareIcon = ({ size = 18 }: { size?: number }) => (
   </svg>
 );
 
-/** A phone or tablet with its own share menu (touch screen + Web Share). */
+/**
+ * A phone or tablet with its own share menu: Web Share, a touch screen, and no
+ * mouse. (Touch-screen laptops have a mouse or trackpad too, so they get our
+ * share window, which still offers the computer's menu under "More apps".)
+ */
 const phoneShare = () =>
-  typeof navigator !== "undefined" && typeof navigator.share === "function" && window.matchMedia("(pointer: coarse)").matches;
+  typeof navigator !== "undefined" &&
+  typeof navigator.share === "function" &&
+  window.matchMedia("(hover: none) and (pointer: coarse)").matches;
 
 function useShare() {
   const [open, setOpen] = useState<ShareTarget | null>(null);
