@@ -12,6 +12,8 @@ import type { NextConfig } from "next";
 const apiOrigin = process.env.API_ORIGIN ?? "http://localhost:8080";
 
 const config: NextConfig = {
+  // Fonts, logo and photo the game share images are drawn with (read from disk at run time).
+  outputFileTracingIncludes: { "/games/[id]/share-image": ["./assets/share/**"] },
   reactStrictMode: true,
   poweredByHeader: false,
   transpilePackages: ["@nffl/shared"],

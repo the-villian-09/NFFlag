@@ -378,3 +378,44 @@ describe("release switches", () => {
     expect((await fam.a.get("/api/v1/my-schedule")).body.items[0].practices.length).toBeGreaterThan(0);
   });
 });
+
+describe("public game page", () => {
+  it("shows one game with its division, season and both teams' records", async () => {
+    const { games } = await import("../src/db/schema/index.js");
+    const [played] = await db
+      .insert(games)
+      .values({ seasonId, divisionId, homeTeamId: team.sharks, awayTeamId: team.jets, startsAt: new Date("2027-03-07T14:00:00Z"), location: "Field 2", status: "final", homeScore: 21, awayScore: 14, notes: "admin only" })
+      .returning();
+    const [next] = await db
+      .insert(games)
+      .values({ seasonId, divisionId, homeTeamId: team.jets, awayTeamId: team.sharks, startsAt: new Date("2027-03-14T13:00:00Z"), location: "Field 1", ticketUrl: "https://tixflo.com/e/1" })
+      .returning();
+
+    const res = await agent().get(`/api/v1/games/${next!.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.game).toMatchObject({ id: next!.id, home: "Jets", away: "Sharks", location: "Field 1", status: "scheduled", ticketUrl: "https://tixflo.com/e/1" });
+    expect(res.body.division.name).toBe("Sched 8U");
+    expect(res.body.season.name).toBe("Schedule Season");
+    // Records count every final in the division (earlier tests played some too).
+    expect(res.body.records.home.l).toBeGreaterThanOrEqual(1);
+    expect(res.body.records.away.w).toBeGreaterThanOrEqual(1);
+
+    const final = await agent().get(`/api/v1/games/${played!.id}`);
+    expect(final.body.game).toMatchObject({ status: "final", homeScore: 21, awayScore: 14 });
+    expect(final.body.game.notes).toBeUndefined();
+  });
+
+  it("hides games in draft divisions, unknown ids, and everything while games are switched off", async () => {
+    const { games } = await import("../src/db/schema/index.js");
+    const [d] = await db.insert(divisions).values({ seasonId, name: "Draft Div", capacity: 10, priceCents: 1, status: "draft" }).returning();
+    const [ta, tb] = await db.insert(teams).values([{ seasonId, divisionId: d!.id, name: "A" }, { seasonId, divisionId: d!.id, name: "B" }]).returning();
+    const [hidden] = await db.insert(games).values({ seasonId, divisionId: d!.id, homeTeamId: ta!.id, awayTeamId: tb!.id, startsAt: new Date(), location: "X" }).returning();
+    expect((await agent().get(`/api/v1/games/${hidden!.id}`)).status).toBe(404);
+    expect((await agent().get("/api/v1/games/not-a-uuid")).status).toBe(404);
+    expect((await agent().get("/api/v1/games/00000000-0000-4000-8000-000000000000")).status).toBe(404);
+    const [any] = await db.select({ id: games.id }).from(games).where(eq(games.divisionId, divisionId)).limit(1);
+    await setFlags(false, ["r4.games"]);
+    expect((await agent().get(`/api/v1/games/${any!.id}`)).status).toBe(404);
+    await setFlags(true, ["r4.games"]);
+  });
+});

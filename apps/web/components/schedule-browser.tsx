@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { EventRow } from "@/components/event-row";
 import { Modal } from "@/components/modal";
+import { ShareGameButton, ShareScheduleButton } from "@/components/share-game";
 import { TicketButton } from "@/components/ticket-button";
 import { GAME_STATUS, pct, type Game, type Standing } from "@/lib/schedule";
 
@@ -56,7 +57,7 @@ function latestResults(games: Game[], now: number) {
   return finals.filter((g) => dayKey(g.startsAt) === day).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 
-function LatestResults({ games, teams }: { games: Game[]; teams: Set<string> }) {
+function LatestResults({ games, teams, division }: { games: Game[]; teams: Set<string>; division: string }) {
   const when = new Date(games[0]!.startsAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: TZ });
   return (
     <div className="card">
@@ -81,6 +82,7 @@ function LatestResults({ games, teams }: { games: Game[]; teams: Set<string> }) 
                 vs
               </span>
               {side(g.away, g.awayTeamId, a, h)}
+              <ShareGameButton game={g} division={division} variant="icon" />
             </li>
           );
         })}
@@ -89,7 +91,7 @@ function LatestResults({ games, teams }: { games: Game[]; teams: Set<string> }) 
   );
 }
 
-function GameRow({ g }: { g: Game }) {
+function GameRow({ g, division, share = "icon" }: { g: Game; division: string; share?: "icon" | "button" }) {
   return (
     <EventRow
       startsAt={g.startsAt}
@@ -97,7 +99,12 @@ function GameRow({ g }: { g: Game }) {
       detail={g.location}
       struck={g.status === "cancelled"}
       badge={g.status !== "scheduled" ? <span className={`status ${GAME_STATUS[g.status].tone}`}>{GAME_STATUS[g.status].label}</span> : null}
-      action={<TicketButton g={g} />}
+      action={
+        <>
+          <TicketButton g={g} />
+          <ShareGameButton game={g} division={division} variant={share} />
+        </>
+      }
     />
   );
 }
@@ -164,7 +171,7 @@ export function ScheduleBrowser({ divisions, season }: { divisions: ScheduleDivi
             <h2>{d.name}</h2>
             <div className="grid" style={{ alignItems: "start" }}>
               <div className="sched-col">
-                {last.length > 0 && <LatestResults games={last} teams={teams} />}
+                {last.length > 0 && <LatestResults games={last} teams={teams} division={d.name} />}
               <div className="card">
                 <h3 style={{ marginTop: 0 }}>Standings</h3>
                 <div className="table-wrap">
@@ -210,7 +217,7 @@ export function ScheduleBrowser({ divisions, season }: { divisions: ScheduleDivi
                 </div>
                 {next ? (
                   <ul className="events">
-                    <GameRow g={next} />
+                    <GameRow g={next} division={d.name} share="button" />
                   </ul>
                 ) : (
                   <p className="muted">{teamLabel ? `No more games scheduled for ${teamLabel}.` : "No more games scheduled."}</p>
@@ -218,6 +225,10 @@ export function ScheduleBrowser({ divisions, season }: { divisions: ScheduleDivi
                 <button type="button" className="btn ghost small" style={{ marginTop: 16 }} onClick={() => setOpen({ div: d, q: teams.size ? q : "" })}>
                   All games ({d.games.length})
                 </button>
+                <div className="share-schedule">
+                  <span className="muted">Share the whole {d.name} schedule</span>
+                  <ShareScheduleButton division={d.name} season={season.name} />
+                </div>
               </div>
             </div>
           </section>
@@ -248,7 +259,7 @@ function AllGames({ div, initialQ, now, onClose }: { div: ScheduleDivision; init
               <h3 className="modal-sub">Upcoming ({upcoming.length})</h3>
               <ul className="events">
                 {upcoming.map((g) => (
-                  <GameRow key={g.id} g={g} />
+                  <GameRow key={g.id} g={g} division={div.name} />
                 ))}
               </ul>
             </>
@@ -258,7 +269,7 @@ function AllGames({ div, initialQ, now, onClose }: { div: ScheduleDivision; init
               <h3 className="modal-sub">Results ({past.length})</h3>
               <ul className="events">
                 {past.map((g) => (
-                  <GameRow key={g.id} g={g} />
+                  <GameRow key={g.id} g={g} division={div.name} />
                 ))}
               </ul>
             </>

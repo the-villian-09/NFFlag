@@ -23,6 +23,7 @@ import {
   listGames,
   listPractices,
   mySchedule,
+  publicGame,
   publicSchedule,
   recordScore,
   sendAnnouncement,
@@ -57,6 +58,19 @@ scheduleRouter.get(
     const season = { id: found.id, name: found.name, status: found.status, seasonPassUrl: found.status === "completed" || found.status === "archived" ? null : found.seasonPassUrl };
     // Until games are switched on, the public page says the schedule is coming.
     res.json({ season, divisions: (await isEnabled(FLAG.games)) ? await publicSchedule(season.id) : [] });
+  }),
+);
+
+/** Public: one game, for its share page and share images (/games/<id> on the website). */
+scheduleRouter.get(
+  "/games/:id",
+  handler(async (req, res) => {
+    const id = uuid.safeParse(req.params.id);
+    if (!id.success || !(await isEnabled(FLAG.games))) throw new HttpError(404, "NOT_FOUND", "Game not found.");
+    const found = await publicGame(id.data);
+    if (!found) throw new HttpError(404, "NOT_FOUND", "Game not found.");
+    res.set("cache-control", "public, max-age=60");
+    res.json(found);
   }),
 );
 

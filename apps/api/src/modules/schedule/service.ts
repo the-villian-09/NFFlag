@@ -485,6 +485,37 @@ export async function publicSchedule(seasonId: string) {
   });
 }
 
+/**
+ * One game for its public page and share images: the game (no admin notes),
+ * its division and season, and both teams' records in the division. Null when
+ * the game doesn't exist or its division is still a draft.
+ */
+export async function publicGame(id: string) {
+  const [row] = await db
+    .select({ g: games, division: { id: divisions.id, name: divisions.name, genderPolicy: divisions.genderPolicy, status: divisions.status }, season: SEASON_PUBLIC })
+    .from(games)
+    .innerJoin(divisions, eq(divisions.id, games.divisionId))
+    .innerJoin(seasons, eq(seasons.id, games.seasonId))
+    .where(eq(games.id, id));
+  if (!row || row.division.status === "draft") return null;
+  const ts = await db.select({ id: teams.id, name: teams.name }).from(teams).where(eq(teams.divisionId, row.division.id));
+  const finals = await db.select().from(games).where(and(eq(games.divisionId, row.division.id), eq(games.status, "final")));
+  const name = (tid: string) => ts.find((t) => t.id === tid)?.name ?? "—";
+  const table = computeStandings(ts, finals);
+  const record = (tid: string) => {
+    const r = table.find((t) => t.teamId === tid);
+    return { w: r?.w ?? 0, l: r?.l ?? 0, t: r?.t ?? 0 };
+  };
+  const { notes: _n, ...game } = gameRow(row.g, name);
+  const over = row.season.status === "completed" || row.season.status === "archived";
+  return {
+    game,
+    division: { id: row.division.id, name: row.division.name, genderPolicy: row.division.genderPolicy },
+    season: { id: row.season.id, name: row.season.name, seasonPassUrl: over ? null : row.season.seasonPassUrl },
+    records: { home: record(row.g.homeTeamId), away: record(row.g.awayTeamId) },
+  };
+}
+
 /* ---------------- practices ---------------- */
 
 export interface PracticeInput {
