@@ -23,6 +23,7 @@ import { removeFromSeasonTeams } from "../teams/service.js";
 import { getPaymentSettings, quote } from "../registration/settings.js";
 import { parseReference } from "../square/client.js";
 import { documentsRequired, requireStaffPhoto } from "../documents/service.js";
+import { checkResponses, fromLegacy, liveForms, publicForm, recordResponses, snapshot, type ResponseInput } from "../forms/service.js";
 import {
   abandonAction,
   CardDeclinedError,
@@ -58,7 +59,7 @@ export async function volunteerOptions() {
   const enabled = await isEnabled(STAFF_FLAG);
   const season = await currentSeason();
   const settings = await getPaymentSettings();
-  const [agreement] = await db.select().from(contentPages).where(eq(contentPages.slug, AGREEMENT_SLUG));
+  const staffForms = await liveForms("staff");
   const checkout = await checkoutConfig();
   const divs = season
     ? await db
@@ -73,7 +74,10 @@ export async function volunteerOptions() {
     roles: VOLUNTEER_ROLES.map((key) => ({ key, label: ROLE_LABELS[key], ...quote(settings.volunteerFees[key], settings) })),
     divisions: divs,
     promoCodes: await isEnabled(PROMO_FLAG),
-    agreement: agreement ? { slug: agreement.slug, title: agreement.title, body: agreement.body, isPlaceholder: agreement.isPlaceholder } : null,
+    // Waivers & forms for coaches and team staff.
+    forms: staffForms.map(publicForm),
+    // Older pages show one agreement checkbox (the first form).
+    agreement: staffForms[0] ? { slug: staffForms[0].legacySlug ?? staffForms[0].id, title: staffForms[0].title, body: staffForms[0].body, isPlaceholder: false } : null,
     // Public values for the card form; null = payments unavailable right now.
     checkout,
     // A headshot is required before paying.
@@ -92,14 +96,17 @@ export async function applyToVolunteer(
     notes?: string;
     shirtSize?: string;
     signerName: string;
-    acceptAgreement: boolean;
+    acceptAgreement?: boolean;
+    forms?: ResponseInput[];
   },
 ) {
   if (!(await isEnabled(STAFF_FLAG))) throw new HttpError(403, "FEATURE_DISABLED", "Coach and team staff applications aren't open yet.");
   const season = await currentSeason();
   if (!season) throw new HttpError(409, "CONFLICT", "There's no current season.");
-  const [agreement] = await db.select().from(contentPages).where(eq(contentPages.slug, AGREEMENT_SLUG));
-  if (agreement && !input.acceptAgreement) throw new HttpError(400, "VALIDATION_FAILED", `Please accept the ${agreement.title.toLowerCase()}.`);
+  const applicable = await liveForms("staff");
+  // Older pages tick one box for the coach & staff agreement.
+  const legacy = input.acceptAgreement ? applicable.filter((f) => f.legacySlug === AGREEMENT_SLUG || applicable.length === 1).map((f) => f.legacySlug ?? "") : [];
+  const checked = checkResponses(applicable, fromLegacy(applicable, legacy, input.forms ?? []));
   if (input.preferredDivisionId) {
     const [d] = await db.select({ id: divisions.id }).from(divisions).where(and(eq(divisions.id, input.preferredDivisionId), eq(divisions.seasonId, season.id)));
     if (!d) throw new HttpError(400, "VALIDATION_FAILED", "Choose a division from this season.");
@@ -128,18 +135,7 @@ export async function applyToVolunteer(
           experience: input.experience ?? null,
           notes: input.notes ?? null,
           shirtSize: input.shirtSize ?? null,
-          agreements: agreement
-            ? [
-                {
-                  slug: agreement.slug,
-                  title: agreement.title,
-                  version: agreement.updatedAt.toISOString(),
-                  sha256: createHash("sha256").update(agreement.body).digest("hex"),
-                  signerName: input.signerName,
-                  acceptedAt: new Date().toISOString(),
-                },
-              ]
-            : [],
+          agreements: snapshot(checked, input.signerName),
           feeCents: q.priceCents,
           processingFeeCents: q.feeCents,
           totalCents: q.totalCents,
@@ -147,6 +143,7 @@ export async function applyToVolunteer(
           status: q.totalCents === 0 ? "submitted" : "pending_payment",
         })
         .returning();
+      await recordResponses(tx, { subjectType: "staff_application", subjectId: app!.id, userId: actor.userId, signerName: input.signerName, ip: actor.ip }, checked);
       await writeAudit(tx, {
         actorUserId: actor.userId,
         action: "staff.application.create",

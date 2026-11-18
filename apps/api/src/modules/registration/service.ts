@@ -26,7 +26,7 @@ import {
 } from "../../db/schema/index.js";
 import { HttpError } from "../../http/errors.js";
 import { logger } from "../../lib/logger.js";
-import { WAIVER_SLUGS } from "../content/defaults.js";
+import { checkResponses, fromLegacy, liveForms, recordResponses, snapshot, type ResponseInput } from "../forms/service.js";
 import { writeAudit } from "../platform/audit.js";
 import { publish } from "../platform/outbox.js";
 import { settleRegistrationCode } from "../promo/service.js";
@@ -126,26 +126,22 @@ export async function lockDivision(tx: DbOrTx, divisionId: string) {
 
 /* ---------------- waivers ---------------- */
 
-export async function currentWaivers(conn: DbOrTx = db) {
-  const rows = await conn.select().from(contentPages).where(inArray(contentPages.slug, [...WAIVER_SLUGS]));
-  return WAIVER_SLUGS.map((slug) => rows.find((r) => r.slug === slug)).filter((r): r is NonNullable<typeof r> => !!r);
-}
+/** Live waivers & forms for players (all divisions; the screen picks the chosen division's). */
+export const currentWaivers = () => liveForms("player");
 
 /* ---------------- start ---------------- */
 
 export async function startRegistration(
   actor: Actor & { userId: string },
   householdId: string,
-  input: { playerId: string; divisionId: string; signerName: string; acceptedWaivers: string[] },
+  input: { playerId: string; divisionId: string; signerName: string; forms?: ResponseInput[]; acceptedWaivers?: string[] },
   /** Claiming a waitlist offer: the spot is already held, so the open/full checks are skipped. */
   offer?: { entryId: string },
 ) {
   const settings = await getPaymentSettings();
-  const waivers = await currentWaivers();
-  const missing = waivers.filter((w) => !input.acceptedWaivers.includes(w.slug));
-  if (missing.length) {
-    throw new HttpError(400, "VALIDATION_FAILED", `Please accept: ${missing.map((w) => w.title).join(", ")}.`);
-  }
+  // Every required waiver / form for this division agreed to, required questions answered.
+  const applicable = await liveForms("player", { divisionId: input.divisionId });
+  const checked = checkResponses(applicable, fromLegacy(applicable, input.acceptedWaivers ?? [], input.forms ?? []));
 
   try {
     return await db.transaction(async (tx) => {
@@ -201,7 +197,7 @@ export async function startRegistration(
       }
 
       const q = quote(d.priceCents, settings);
-      const acceptedAt = new Date().toISOString();
+      const acceptedAt = new Date();
       const [reg] = await tx
         .insert(registrations)
         .values({
@@ -213,16 +209,10 @@ export async function startRegistration(
           status: "pending_payment",
           holdExpiresAt,
           ...q,
-          waivers: waivers.map((w) => ({
-            slug: w.slug,
-            title: w.title,
-            version: w.updatedAt.toISOString(),
-            sha256: createHash("sha256").update(w.body).digest("hex"),
-            signerName: input.signerName,
-            acceptedAt,
-          })),
+          waivers: snapshot(checked, input.signerName, acceptedAt),
         })
         .returning();
+      await recordResponses(tx, { subjectType: "registration", subjectId: reg!.id, userId: actor.userId, signerName: input.signerName, ip: actor.ip }, checked);
       if (offer) {
         await tx.update(waitlistEntries).set({ registrationId: reg!.id }).where(eq(waitlistEntries.id, offer.entryId));
       }

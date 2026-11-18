@@ -14,8 +14,16 @@ interface PageRow {
   slug: string;
   title: string;
   isPlaceholder: boolean;
+  custom: boolean;
+  nav: "menu" | "footer" | "none";
+  navLabel: string | null;
+  published: boolean;
   updatedAt: string;
 }
+
+const WHERE: Record<PageRow["nav"], string> = { menu: "Menu", footer: "Footer", none: "Link only" };
+/** Where built-in pages are linked (fixed in the site layout). */
+const BUILT_IN_WHERE: Record<string, string> = { about: "Menu", contact: "Menu and footer" };
 interface Announcement {
   enabled: boolean;
   message: string;
@@ -92,7 +100,12 @@ export default function AdminContentPage() {
       <ErrorAlert error={loadError} />
 
       <section className="card" style={{ marginTop: 24 }}>
-        <h2>Pages</h2>
+        <div className="games-head">
+          <h2 style={{ margin: 0 }}>Pages</h2>
+          <Link className="btn small" href="/admin/content/new">
+            + Add a page
+          </Link>
+        </div>
         {!pages ? (
           <p className="muted">Loading…</p>
         ) : (
@@ -101,6 +114,7 @@ export default function AdminContentPage() {
               <thead>
                 <tr>
                   <th>Page</th>
+                  <th>Shows in</th>
                   <th>Status</th>
                   <th>Last updated</th>
                   <th />
@@ -110,11 +124,20 @@ export default function AdminContentPage() {
                 {pages.map((p) => (
                   <tr key={p.slug}>
                     <td data-label="">
-                      {p.title}
+                      <strong>{p.title}</strong>
                       <br />
-                      <code>/{p.slug}</code>
+                      <code>{p.custom ? `/p/${p.slug}` : `/${p.slug}`}</code> <span className="muted">· {p.custom ? "added by you" : "built-in"}</span>
                     </td>
-                    <td data-label="Status">{p.isPlaceholder ? <span className="status warn">Placeholder</span> : <span className="status ok">Edited</span>}</td>
+                    <td data-label="Shows in">{p.custom ? WHERE[p.nav] : (BUILT_IN_WHERE[p.slug] ?? "Footer")}</td>
+                    <td data-label="Status">
+                      {p.custom ? (
+                        p.published ? <span className="status ok">Live</span> : <span className="status warn">Draft</span>
+                      ) : p.isPlaceholder ? (
+                        <span className="status warn">Placeholder</span>
+                      ) : (
+                        <span className="status ok">Edited</span>
+                      )}
+                    </td>
                     <td data-label="Updated">{fmt(p.updatedAt)}</td>
                     <td data-label="" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                       <Link className="btn small" href={`/admin/content/${p.slug}`}>
@@ -127,6 +150,10 @@ export default function AdminContentPage() {
             </table>
           </div>
         )}
+        <p className="muted" style={{ marginBottom: 0 }}>
+          Built-in pages can be edited but not deleted. Pages you add can be hidden or deleted. Waivers and agreements are in{" "}
+          <Link href="/admin/forms">Waivers &amp; forms</Link>.
+        </p>
       </section>
 
       {homepage && <HomepageForm initial={homepage} />}

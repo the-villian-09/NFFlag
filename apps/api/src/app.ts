@@ -28,6 +28,7 @@ import { adminPortalRouter } from "./modules/admin/portal.js";
 import { documentsRouter } from "./modules/documents/routes.js";
 import { adminSiteRouter, publicSiteRouter } from "./modules/content/site.js";
 import { smsRouter } from "./modules/sms/routes.js";
+import { adminFormsRouter, myFormsRouter } from "./modules/forms/routes.js";
 import { httpLogSerializers } from "./lib/http-log.js";
 import { websiteOnly } from "./http/website-only.js";
 import { tickRouter } from "./modules/platform/tick.js";
@@ -70,6 +71,7 @@ export function createApp() {
   app.use("/api/v1", leagueRouter);
   app.use("/api/v1", accountsRouter);
   app.use("/api/v1", smsRouter);
+  app.use("/api/v1", myFormsRouter);
   app.use("/api/v1", publicContentRouter);
   app.use("/api/v1", publicSiteRouter);
   app.use("/api/v1", registrationRouter);
@@ -86,6 +88,7 @@ export function createApp() {
   app.use("/api/v1/admin/promo-codes", adminPromoRouter);
   app.use("/api/v1/admin/content", adminSiteRouter);
   app.use("/api/v1/admin/content", adminContentRouter);
+  app.use("/api/v1/admin/forms", adminFormsRouter);
   app.use("/api/v1/admin/league", adminLeagueRouter);
   app.use("/api/v1/admin/payments", adminPaymentsRouter);
   app.use("/api/v1/admin", adminRouter);

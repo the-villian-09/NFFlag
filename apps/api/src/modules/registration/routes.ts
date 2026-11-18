@@ -5,6 +5,7 @@
  * managing children is always available.
  */
 import { documentsRequired } from "../documents/service.js";
+import { publicForm } from "../forms/service.js";
 import { acceptOfferInput, joinWaitlistInput, payRegistrationInput, playerInput, startRegistrationInput } from "@nffl/shared";
 import { and, asc, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import { z } from "zod";
@@ -245,7 +246,9 @@ registrationRouter.get(
       promoCodes: await isEnabled(PROMO_FLAG),
       offerHours: settings.offerHours,
       divisions: withSpots,
-      waivers: waivers.map((w) => ({ slug: w.slug, title: w.title, body: w.body, isPlaceholder: w.isPlaceholder })),
+      // Waivers & forms; each lists the divisions it applies to (empty = all).
+      // (slug: what pages from before Nov 18 send back for the original waivers.)
+      waivers: waivers.map((w) => ({ ...publicForm(w), divisionIds: w.divisionIds, slug: w.legacySlug ?? w.id, isPlaceholder: false })),
       // Public values for the card form (Stripe or Square). null = payments unavailable right now.
       checkout,
       // Birth certificate, insurance card and headshot are required before paying.

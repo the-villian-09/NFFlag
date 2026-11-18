@@ -50,6 +50,7 @@ export const ADMIN_GROUPS: { title: string; items: AdminItem[] }[] = [
     title: "Site & settings",
     items: [
       { label: "Site content", href: "/admin/content", blurb: "Pages, home page, photos, alert banner, messages", perm: "content.manage", keywords: "home page in-season banner rainout faq contact messages photos pictures images sponsors" },
+      { label: "Waivers & forms", href: "/admin/forms", blurb: "Agreements and forms, who has signed, reminders", perm: "forms.manage", keywords: "waiver form agreement consent medical release signature code of conduct travel" },
       { label: "League news", href: "/admin/news", blurb: "Posts on the home page and News page", perm: "content.manage", keywords: "news posts announcements photos gallery" },
       { label: "Seasons & divisions", href: "/admin/seasons", blurb: "Dates, divisions, prices, referee rates", perm: "seasons.read", keywords: "season division price capacity age" },
       { label: "Release switches", href: "/admin/switches", blurb: "Turn features on when they're ready", perm: "platform.flags.manage", keywords: "flags features turn on" },

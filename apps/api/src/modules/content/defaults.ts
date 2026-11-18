@@ -30,6 +30,8 @@ export const PAGE_SLUGS = [
 /** Waivers a parent must accept to register (shown in the registration flow, edited like any page). */
 export const WAIVER_SLUGS = ["waiver-liability", "waiver-medical", "waiver-media"] as const;
 export type PageSlug = (typeof PAGE_SLUGS)[number];
+/** Pages that became forms in the Waivers & forms library (kept as the forms' starting wording). */
+export const FORM_PAGE_SLUGS = [...WAIVER_SLUGS, "volunteer-agreement"] as const;
 
 export const DEFAULT_PAGES: DefaultPage[] = [
   {

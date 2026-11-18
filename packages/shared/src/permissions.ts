@@ -33,6 +33,8 @@ export const PERMISSIONS = [
 
   // Content (R1)
   "content.manage",
+  // Waivers & forms: add and edit them, see and export responses (Nov 18)
+  "forms.manage",
 
   // Staff (R2)
   "staff.applications.review",
@@ -102,6 +104,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, readonly Permission[]> = 
     "refunds.issue",
     "promo.manage",
     "content.manage",
+    "forms.manage",
     "staff.applications.review",
     "teams.manage",
     "roster.read",

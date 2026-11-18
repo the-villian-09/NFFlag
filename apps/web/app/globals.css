@@ -736,3 +736,51 @@ a.sh-sp:hover { border-color: var(--lime); color: var(--lime); }
 .game-save { font-size: 15px; }
 .game-join { border-top: 1px solid var(--line); margin-top: 28px; padding-top: 18px; }
 .game-join h2 { margin: 0 0 6px; }
+
+/* ---------- Pages admins add (Nov 18) ---------- */
+.page-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px 24px; margin: 16px 0; padding: 16px 20px; background: var(--navy-2); }
+.page-settings fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
+.page-settings legend { font-weight: 700; margin-bottom: 4px; }
+.page-settings .radio { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.address-field { display: flex; align-items: center; border: 1px solid var(--line); background: #fff; }
+.address-field .muted { padding-left: 10px; color: #4a5868; white-space: nowrap; }
+.address-field input { border: 0; flex: 1; min-width: 0; }
+.address-field input:disabled { background: #eef1f5; }
+
+/* ---------- Waivers & forms (Nov 18) ---------- */
+.form-qs { display: grid; gap: 14px; margin: 12px 0; }
+.form-q { display: grid; gap: 6px; font-weight: 700; border: 0; margin: 0; padding: 0; }
+.form-q legend { font-weight: 700; margin-bottom: 6px; padding: 0; }
+.form-q > .muted { font-weight: 500; font-size: 15px; }
+.form-q-options { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.action-needed { background: #2b2400; border-top: 4px solid var(--gold); }
+.action-needed h2 { color: #ffe680; }
+.action-needed > p { color: #fff3c4; }
+.action-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.action-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--navy); padding: 12px 14px; flex-wrap: wrap; }
+.action-list li > span { display: flex; flex-direction: column; min-width: 0; }
+.form-editor { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 24px; align-items: start; margin-top: 16px; }
+@media (max-width: 900px) { .form-editor { grid-template-columns: minmax(0, 1fr); } }
+.radio-set { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; }
+.radio-set legend { font-weight: 700; margin-bottom: 6px; padding: 0; }
+.chip-picks { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.q-edit { display: grid; gap: 10px; padding: 14px; background: var(--navy); }
+.q-edit-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+label.inline { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+.progress-cell { display: grid; gap: 4px; min-width: 110px; }
+.progress { display: block; height: 6px; background: var(--line); }
+.progress span { display: block; height: 6px; background: var(--lime); }
+.stats3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.card.stat { display: grid; gap: 6px; align-content: center; }
+.card.stat strong { font-family: var(--font-display); font-size: 48px; line-height: 1; }
+
+/* "More" in the header: pages the league added (desktop) */
+.nav-more { position: relative; }
+.nav-more > button { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; color: var(--ink); font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
+.nav-more > button:hover, .nav-more > button[aria-expanded="true"] { color: var(--lime); }
+.nav-more-list { position: absolute; top: calc(100% + 12px); left: -16px; z-index: 30; min-width: 200px; display: grid; background: var(--navy-2); border-top: 3px solid var(--lime); box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4); }
+.nav-more-list a { padding: 12px 16px; }
+.nav-more-list a:hover { background: var(--navy-3); }
+/* One more link ("More") still fits beside the logo. */
+.site-nav.has-more { gap: 8px 15px; font-size: 16px; letter-spacing: 0.04em; }
+.progress-cell { color: var(--ink); text-decoration: none; }

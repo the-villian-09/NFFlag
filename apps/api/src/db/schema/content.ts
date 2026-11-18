@@ -15,6 +15,15 @@ export const contentPages = pgTable("content_pages", {
   body: text("body").notNull(),
   /** True until an admin edits it; the page shows a "placeholder text" notice. */
   isPlaceholder: boolean("is_placeholder").notNull().default(true),
+  /** A page an admin added (address /p/<slug>); built-in pages are false. */
+  custom: boolean("custom").notNull().default(false),
+  /** Where a custom page is linked: menu (header), footer, or none (link only). */
+  nav: text("nav").notNull().default("none"),
+  /** Short label for the menu/footer link (custom pages; defaults to the title). */
+  navLabel: text("nav_label"),
+  /** Custom pages can be saved as drafts; built-in pages are always published. */
+  published: boolean("published").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
   updatedBy: text("updated_by"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -5,7 +5,7 @@ import { PlayerDocuments } from "@/components/doc-upload";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorAlert } from "@/components/form";
-import { Markdown } from "@/components/markdown";
+import { emptyValue, FormBlock, formsReady, toPayload, type FormValue, type PublicForm } from "@/components/form-fields";
 import { PromoField } from "@/components/promo-field";
 import { CardForm, payWithCard, providerName, type CardFormHandle, type CheckoutConfig } from "@/components/card-form";
 import { api, ApiError } from "@/lib/api";
@@ -34,7 +34,8 @@ interface Options {
   promoCodes?: boolean;
   offerHours?: number;
   divisions: Division[];
-  waivers: { slug: string; title: string; body: string; isPlaceholder: boolean }[];
+  /** Waivers & forms; each lists the divisions it applies to (empty = all). */
+  waivers: PublicForm[];
   checkout: CheckoutConfig | null;
   /** Birth certificate, insurance card and headshot required before paying. */
   documents?: boolean;
@@ -473,25 +474,27 @@ function Waivers({
   onBack: () => void;
   onStarted: (r: Registration) => void;
 }) {
-  const [accepted, setAccepted] = useState<Record<string, boolean>>({});
+  // Only the waivers & forms for the chosen division.
+  const fs = options.waivers.filter((w) => !w.divisionIds?.length || w.divisionIds.includes(division.id));
+  const [values, setValues] = useState<Record<string, FormValue>>({});
   const [signer, setSigner] = useState(defaultSigner);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const all = options.waivers.every((w) => accepted[w.slug]);
+  const all = formsReady(fs, values);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const acceptedWaivers = options.waivers.filter((w) => accepted[w.slug]).map((w) => w.slug);
+      const forms = toPayload(fs, values);
       const r = offerId
-        ? await api.post<{ registration: Registration }>(`/waitlist/${offerId}/accept`, { signerName: signer, acceptedWaivers })
+        ? await api.post<{ registration: Registration }>(`/waitlist/${offerId}/accept`, { signerName: signer, forms })
         : await api.post<{ registration: Registration }>("/registrations", {
             playerId: player.id,
             divisionId: division.id,
             signerName: signer,
-            acceptedWaivers,
+            forms,
           });
       onStarted({ ...r.registration, divisionName: division.name });
     } catch (err) {
@@ -503,19 +506,12 @@ function Waivers({
 
   return (
     <form className="stack" onSubmit={submit}>
-      <h2 style={{ fontSize: 36, color: "#fff" }}>Waivers and agreements</h2>
+      <h2 style={{ fontSize: 36, color: "#fff" }}>Waivers and forms</h2>
       <p className="muted" style={{ margin: 0 }}>
-        Registering <strong>{player.firstName}</strong> for <strong>{division.name}</strong>. Please read and accept each one.
+        Registering <strong>{player.firstName}</strong> for <strong>{division.name}</strong>. Please read and complete each one.
       </p>
-      {options.waivers.map((w) => (
-        <div key={w.slug} className="waiver">
-          <strong style={{ fontSize: 20, color: "#fff" }}>{w.title}</strong>
-          <Markdown source={w.body} />
-          <label className="check">
-            <input type="checkbox" checked={!!accepted[w.slug]} onChange={(e) => setAccepted((a) => ({ ...a, [w.slug]: e.target.checked }))} />I
-            have read and agree to the {w.title.toLowerCase()}.
-          </label>
-        </div>
+      {fs.map((f) => (
+        <FormBlock key={f.id} form={f} value={values[f.id] ?? emptyValue()} onChange={(v) => setValues((all) => ({ ...all, [f.id]: v }))} />
       ))}
       <label>
         Parent or guardian's full name (your electronic signature)

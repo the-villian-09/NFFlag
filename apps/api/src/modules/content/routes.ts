@@ -3,7 +3,7 @@
  * contact form. Admins edit everything here from the portal; every change is
  * audited.
  */
-import { desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import { homepageSchema, imageSlotsSchema, seasonHomeSchema } from "@nffl/shared";
@@ -20,7 +20,7 @@ import { templates } from "../../lib/email-templates.js";
 import { logger } from "../../lib/logger.js";
 import { errorForLog } from "../../lib/log-error.js";
 import { writeAudit } from "../platform/audit.js";
-import { DEFAULT_PAGES, DEFAULT_SETTINGS, PAGE_SLUGS, type Announcement, type ContactInfo } from "./defaults.js";
+import { DEFAULT_PAGES, DEFAULT_SETTINGS, FORM_PAGE_SLUGS, PAGE_SLUGS, type Announcement, type ContactInfo } from "./defaults.js";
 
 /* ---------- validation ---------- */
 
@@ -63,6 +63,26 @@ const pageInput = z.object({
   title: z.string().trim().min(1).max(120),
   body: z.string().max(50_000),
 });
+
+/** Pages admins add (shown at /p/<slug>). */
+const NAV = ["menu", "footer", "none"] as const;
+const customSlug = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "Use letters, numbers and dashes.")
+  .min(2)
+  .max(60)
+  .refine((s) => !(PAGE_SLUGS as readonly string[]).includes(s) && s !== "new", "That address is taken.");
+const customFields = {
+  nav: z.enum(NAV).default("none"),
+  navLabel: z.string().trim().max(24).nullish().transform((v) => v || null),
+  published: z.boolean().default(false),
+};
+const customPageInput = pageInput.extend({ slug: customSlug, ...customFields });
+const customPageUpdate = pageInput.extend(customFields);
+/** The header has room for a few extra links. */
+const MAX_MENU_LINKS = 3;
 
 const contactInput = z.object({
   name: z.string().trim().min(1).max(120),
@@ -110,9 +130,9 @@ publicContentRouter.get(
   "/pages/:slug",
   handler(async (req, res) => {
     const slug = String(req.params.slug);
-    if (!isSlug(slug)) throw new HttpError(404, "NOT_FOUND", "Page not found.");
     const [page] = await db.select().from(contentPages).where(eq(contentPages.slug, slug));
-    if (!page) throw new HttpError(404, "NOT_FOUND", "Page not found.");
+    // Built-in pages, and published pages admins added.
+    if (!page || (page.custom ? !page.published : !isSlug(slug))) throw new HttpError(404, "NOT_FOUND", "Page not found.");
     res.set("cache-control", "public, max-age=30");
     res.json({ page: { slug: page.slug, title: page.title, body: page.body, isPlaceholder: page.isPlaceholder, updatedAt: page.updatedAt } });
   }),
@@ -134,10 +154,20 @@ publicContentRouter.get(
   handler(async (_req, res) => {
     const announcement = (await getSetting("announcement")) as Announcement;
     const contact = (await getSetting("contact")) as ContactInfo;
+    const custom = await db
+      .select({ slug: contentPages.slug, title: contentPages.title, nav: contentPages.nav, navLabel: contentPages.navLabel })
+      .from(contentPages)
+      .where(and(eq(contentPages.custom, true), eq(contentPages.published, true)))
+      .orderBy(asc(contentPages.sortOrder), asc(contentPages.title));
+    const link = (p: (typeof custom)[number]) => ({ href: `/p/${p.slug}`, label: p.navLabel || p.title });
     res.set("cache-control", "public, max-age=30");
     res.json({
       announcement: announcement.enabled && announcement.message ? announcement : null,
       contact: { publicEmail: contact.publicEmail || null, phone: contact.phone || null },
+      links: {
+        menu: custom.filter((p) => p.nav === "menu").slice(0, MAX_MENU_LINKS).map(link),
+        footer: custom.filter((p) => p.nav === "footer").map(link),
+      },
     });
   }),
 );
@@ -214,10 +244,23 @@ adminContentRouter.get(
   "/pages",
   handler(async (_req, res) => {
     const rows = await db
-      .select({ slug: contentPages.slug, title: contentPages.title, isPlaceholder: contentPages.isPlaceholder, updatedAt: contentPages.updatedAt })
+      .select({
+        slug: contentPages.slug,
+        title: contentPages.title,
+        isPlaceholder: contentPages.isPlaceholder,
+        custom: contentPages.custom,
+        nav: contentPages.nav,
+        navLabel: contentPages.navLabel,
+        published: contentPages.published,
+        sortOrder: contentPages.sortOrder,
+        updatedAt: contentPages.updatedAt,
+      })
       .from(contentPages);
-    rows.sort((a, b) => PAGE_SLUGS.indexOf(a.slug as never) - PAGE_SLUGS.indexOf(b.slug as never));
-    res.json({ items: rows });
+    // Waivers and agreements are edited in Waivers & forms now.
+    const shown = rows.filter((r) => !(FORM_PAGE_SLUGS as readonly string[]).includes(r.slug));
+    const builtIn = shown.filter((r) => !r.custom).sort((a, b) => PAGE_SLUGS.indexOf(a.slug as never) - PAGE_SLUGS.indexOf(b.slug as never));
+    const custom = shown.filter((r) => r.custom).sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
+    res.json({ items: [...builtIn, ...custom], maxMenuLinks: MAX_MENU_LINKS });
   }),
 );
 
@@ -234,15 +277,21 @@ adminContentRouter.put(
   "/pages/:slug",
   handler(async (req, res) => {
     const slug = String(req.params.slug);
-    if (!isSlug(slug)) throw new HttpError(404, "NOT_FOUND", "Page not found.");
-    const input = pageInput.parse(req.body);
     const actor = req.ctx.auth!.user.id;
     const page = await db.transaction(async (tx) => {
       const [before] = await tx.select().from(contentPages).where(eq(contentPages.slug, slug));
-      if (!before) throw new HttpError(404, "NOT_FOUND", "Page not found.");
+      if (!before || (!before.custom && !isSlug(slug))) throw new HttpError(404, "NOT_FOUND", "Page not found.");
+      let input: z.infer<typeof pageInput>;
+      let extra: { nav?: string; navLabel?: string | null; published?: boolean } = {};
+      if (before.custom) {
+        const c = customPageUpdate.parse(req.body);
+        input = c;
+        extra = { nav: c.nav, navLabel: c.navLabel, published: c.published };
+        if (c.nav === "menu" && before.nav !== "menu") await menuRoom(tx);
+      } else input = pageInput.parse(req.body);
       const [after] = await tx
         .update(contentPages)
-        .set({ title: input.title, body: input.body, isPlaceholder: false, updatedBy: actor, updatedAt: new Date() })
+        .set({ title: input.title, body: input.body, isPlaceholder: false, ...extra, updatedBy: actor, updatedAt: new Date() })
         .where(eq(contentPages.slug, slug))
         .returning();
       await writeAudit(tx, {
@@ -250,14 +299,80 @@ adminContentRouter.put(
         action: "content.page.update",
         targetType: "content_page",
         targetId: slug,
-        before: { title: before.title, body: before.body },
-        after: { title: after!.title, body: after!.body },
+        before: { title: before.title, body: before.body, nav: before.nav, navLabel: before.navLabel, published: before.published },
+        after: { title: after!.title, body: after!.body, nav: after!.nav, navLabel: after!.navLabel, published: after!.published },
         requestId: req.ctx.requestId,
         ipAddress: req.ctx.ip,
       });
       return after!;
     });
     res.json({ page });
+  }),
+);
+
+/** Refuses a new menu link when the header is full. */
+async function menuRoom(tx: DbOrTx) {
+  const [{ n } = { n: 0 }] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(contentPages)
+    .where(and(eq(contentPages.custom, true), eq(contentPages.nav, "menu")));
+  if (n >= MAX_MENU_LINKS) {
+    throw new HttpError(409, "CONFLICT", `The menu has room for ${MAX_MENU_LINKS} added pages. Put this one in the footer, or move another page out of the menu first.`);
+  }
+}
+
+/** Add a page (address /p/<slug>). */
+adminContentRouter.post(
+  "/pages",
+  handler(async (req, res) => {
+    const input = customPageInput.parse(req.body);
+    const actor = req.ctx.auth!.user.id;
+    const page = await db.transaction(async (tx) => {
+      const [taken] = await tx.select({ slug: contentPages.slug }).from(contentPages).where(eq(contentPages.slug, input.slug));
+      if (taken) throw new HttpError(409, "CONFLICT", "That address is taken. Choose another.");
+      if (input.nav === "menu") await menuRoom(tx);
+      const [{ next } = { next: 1 }] = await tx.select({ next: sql<number>`coalesce(max(${contentPages.sortOrder}), 0) + 1` }).from(contentPages);
+      const [row] = await tx
+        .insert(contentPages)
+        .values({ ...input, custom: true, isPlaceholder: false, sortOrder: next, updatedBy: actor })
+        .returning();
+      await writeAudit(tx, {
+        actorUserId: actor,
+        action: "content.page.create",
+        targetType: "content_page",
+        targetId: input.slug,
+        after: { title: row!.title, nav: row!.nav, published: row!.published },
+        requestId: req.ctx.requestId,
+        ipAddress: req.ctx.ip,
+      });
+      return row!;
+    });
+    res.status(201).json({ page });
+  }),
+);
+
+/** Delete a page an admin added (built-in pages can't be deleted). */
+adminContentRouter.delete(
+  "/pages/:slug",
+  handler(async (req, res) => {
+    const slug = String(req.params.slug);
+    const actor = req.ctx.auth!.user.id;
+    await db.transaction(async (tx) => {
+      const [before] = await tx.select().from(contentPages).where(eq(contentPages.slug, slug));
+      if (!before) throw new HttpError(404, "NOT_FOUND", "Page not found.");
+      if (!before.custom) throw new HttpError(409, "CONFLICT", "Built-in pages can be edited but not deleted.");
+      await tx.delete(contentPages).where(eq(contentPages.slug, slug));
+      await writeAudit(tx, {
+        actorUserId: actor,
+        action: "content.page.delete",
+        targetType: "content_page",
+        targetId: slug,
+        before: { title: before.title, body: before.body, nav: before.nav, published: before.published },
+        requestId: req.ctx.requestId,
+        ipAddress: req.ctx.ip,
+      });
+    });
+    res.json({ ok: true });
   }),
 );
 

@@ -50,7 +50,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 Flag League
               </span>
             </Link>
-            <SiteNav />
+            <SiteNav extra={site?.links?.menu} />
           </div>
         </header>
         {children}
@@ -68,6 +68,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               {PAGES.map((p) => (
                 <Link key={p.slug} href={`/${p.slug}`}>
                   {p.label}
+                </Link>
+              ))}
+              {site?.links?.footer.map((l) => (
+                <Link key={l.href} href={l.href}>
+                  {l.label}
                 </Link>
               ))}
             </nav>

@@ -78,7 +78,8 @@ describe("admin content editing", () => {
   it("edits a page, clears the placeholder flag and audits the change", async () => {
     const list = await admin.get("/api/v1/admin/content/pages");
     expect(list.status).toBe(200);
-    expect(list.body.items.map((p: { slug: string }) => p.slug)).toEqual([
+    // Built-in pages, in order (pages admins add come after them).
+    expect(list.body.items.filter((p: { custom: boolean }) => !p.custom).map((p: { slug: string }) => p.slug)).toEqual([
       "about",
       "rules",
       "coaches",
@@ -87,10 +88,7 @@ describe("admin content editing", () => {
       "privacy",
       "terms",
       "text-alerts",
-      "waiver-liability",
-      "waiver-medical",
-      "waiver-media",
-      "volunteer-agreement",
+      // Waivers and the coach agreement are edited in Waivers & forms now.
     ]);
 
     const res = await admin.put("/api/v1/admin/content/pages/faq").send({ title: "FAQ", body: "## Updated\n\nNew answer." });

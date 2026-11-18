@@ -12,6 +12,7 @@ import { feeLabel, ROLE_LABELS, type VolunteerRole } from "./staff/service.js";
 import { announcements, households, rosterEntries, teams, teamStaff, volunteerApplications, withdrawalRequests } from "../db/schema/index.js";
 import { getSetting } from "./content/routes.js";
 import { getEmailSender } from "../lib/email.js";
+import { outstandingFor } from "./forms/service.js";
 import { templates } from "../lib/email-templates.js";
 import { logger } from "../lib/logger.js";
 import { publish, subscribe } from "./platform/outbox.js";
@@ -114,6 +115,21 @@ let registered = false;
 export function registerSubscribers() {
   if (registered) return;
   registered = true;
+  /* ---------------- waivers & forms ---------------- */
+  subscribe("form.reminder", async (e) => {
+    const { userId } = e.payload as { userId: string };
+    const [u] = await db.select({ email: user.email }).from(user).where(eq(user.id, userId));
+    if (!u) return;
+    // Everything still to do, so one email covers every form and child.
+    const items = await outstandingFor(userId);
+    if (!items.length) return;
+    const due = items.map((i) => i.form.dueDate).filter((d): d is string => !!d).sort()[0] ?? null;
+    const when = due ? new Date(`${due}T12:00:00Z`).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" }) : null;
+    await getEmailSender().send(
+      templates.formReminder(u.email, { forms: items.slice(0, 12).map((i) => [i.form.title, i.label] as [string, string]), due: when, url: `${base()}/dashboard#forms` }),
+    );
+  });
+
   /* ---------------- referees (R5) ---------------- */
   subscribe("referee.application_submitted", async (e) => {
     const [a] = await db

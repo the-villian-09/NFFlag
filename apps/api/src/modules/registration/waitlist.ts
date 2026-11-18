@@ -123,7 +123,7 @@ export async function acceptOffer(
   actor: Actor & { userId: string },
   householdId: string,
   entryId: string,
-  input: { signerName: string; acceptedWaivers: string[] },
+  input: { signerName: string; forms?: import("../forms/service.js").ResponseInput[]; acceptedWaivers?: string[] },
 ) {
   const [e] = await db.select().from(waitlistEntries).where(and(eq(waitlistEntries.id, entryId), eq(waitlistEntries.householdId, householdId)));
   if (!e) throw new HttpError(404, "NOT_FOUND", "Offer not found.");

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import type { SiteLink } from "@/lib/server-api";
 
 const LINKS = [
   { href: "/about", label: "About" },
@@ -16,7 +17,7 @@ const LINKS = [
  * Header navigation. Desktop: one row of links. Phones and small tablets (≤960px): Register
  * button plus a menu button that opens a full-width list.
  */
-export function SiteNav() {
+export function SiteNav({ extra = [] }: { extra?: SiteLink[] }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
@@ -30,15 +31,46 @@ export function SiteNav() {
   }, [open]);
 
   const close = () => setOpen(false);
+  // Pages the league added: in the phone menu before Contact; on a computer under "More" so the header stays on one line.
+  const links = [...LINKS.slice(0, -1), ...extra, LINKS[LINKS.length - 1]!];
+  const [moreOpen, setMoreOpen] = useState(false);
+  useEffect(() => setMoreOpen(false), [pathname]);
+  // Close "More" on a click anywhere else.
+  useEffect(() => {
+    if (!moreOpen) return;
+    const away = (e: MouseEvent) => !(e.target as Element).closest?.(".nav-more") && setMoreOpen(false);
+    document.addEventListener("click", away);
+    return () => document.removeEventListener("click", away);
+  }, [moreOpen]);
 
   return (
     <>
-      <nav className="site-nav desktop-nav" aria-label="Main">
-        {LINKS.map((l) => (
+      <nav className={`site-nav desktop-nav${extra.length ? " has-more" : ""}`} aria-label="Main">
+        {LINKS.slice(0, -1).map((l) => (
           <Link key={l.href} href={l.href}>
             {l.label}
           </Link>
         ))}
+        {extra.length > 0 && (
+          <div className="nav-more" onKeyDown={(e) => e.key === "Escape" && setMoreOpen(false)}>
+            <button type="button" aria-expanded={moreOpen} aria-controls="nav-more-list" onClick={() => setMoreOpen((o) => !o)}>
+              More
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            {moreOpen && (
+              <div id="nav-more-list" className="nav-more-list">
+                {extra.map((l) => (
+                  <Link key={l.href} href={l.href} onClick={() => setMoreOpen(false)}>
+                    {l.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <Link href={LINKS[LINKS.length - 1]!.href}>{LINKS[LINKS.length - 1]!.label}</Link>
         <Link href="/dashboard" className="nav-signin">
           My account
         </Link>
@@ -70,7 +102,7 @@ export function SiteNav() {
       </div>
 
       <nav id="mobile-menu" className="mobile-menu" data-open={open} aria-label="Main" hidden={!open}>
-        {LINKS.map((l) => (
+        {links.map((l) => (
           <Link key={l.href} href={l.href} onClick={close}>
             {l.label}
           </Link>

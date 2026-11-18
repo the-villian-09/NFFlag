@@ -3,3 +3,4 @@ export * from "./platform.js";
 export * from "./league.js";
 export * from "./content.js";
 export * from "./sms.js";
+export * from "./forms.js";

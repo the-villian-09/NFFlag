@@ -66,13 +66,23 @@ export const playerInput = z.object({
 });
 export type PlayerInput = z.infer<typeof playerInput>;
 
+/** One waiver or form completed at sign-up: agreed (or declined, if optional) and its answers. */
+export const formResponseInput = z.object({
+  formId: z.uuid(),
+  agreed: z.boolean(),
+  answers: z.record(z.string(), z.string().max(2000)).default({}),
+});
+export type FormResponseInput = z.infer<typeof formResponseInput>;
+
 export const startRegistrationInput = z.object({
   playerId: z.uuid(),
   divisionId: z.uuid(),
   /** Typed full name of the parent/guardian signing the waivers. */
   signerName: z.string().trim().min(3).max(120),
-  /** Slugs of the waivers the parent ticked; must cover every required waiver. */
-  acceptedWaivers: z.array(z.string()).max(10),
+  /** Waivers & forms for this division; must cover every required one. */
+  forms: z.array(formResponseInput).max(30).default([]),
+  /** Before Nov 18: slugs of the original waivers (still accepted from older pages). */
+  acceptedWaivers: z.array(z.string()).max(10).default([]),
 });
 export type StartRegistrationInput = z.infer<typeof startRegistrationInput>;
 
@@ -80,7 +90,8 @@ export const joinWaitlistInput = z.object({ playerId: z.uuid(), divisionId: z.uu
 
 export const acceptOfferInput = z.object({
   signerName: z.string().trim().min(3).max(120),
-  acceptedWaivers: z.array(z.string()).max(10),
+  forms: z.array(formResponseInput).max(30).default([]),
+  acceptedWaivers: z.array(z.string()).max(10).default([]),
 });
 
 export const volunteerApplicationInput = z.object({
@@ -92,7 +103,10 @@ export const volunteerApplicationInput = z.object({
   notes: optionalText(1000),
   shirtSize: optionalText(20),
   signerName: z.string().trim().min(3).max(120),
-  acceptAgreement: z.boolean(),
+  /** Before Nov 18: ticked the coach & staff agreement. */
+  acceptAgreement: z.boolean().default(false),
+  /** Waivers & forms for coaches and team staff. */
+  forms: z.array(formResponseInput).max(30).default([]),
 });
 
 export const payRegistrationInput = z.object({
@@ -136,6 +150,7 @@ export const DOMAIN_EVENTS = [
   "roster.notify",
   "announcement.sent",
   "referee.application_submitted",
+  "form.reminder",
   "referee.application_decided",
   "referee.assigned",
   "referee.unassigned",

@@ -11,6 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { db, pool, type DbOrTx } from "./client.js";
 import { seedContent } from "../modules/content/routes.js";
+import { seedLegacyForms } from "../modules/forms/service.js";
 import { seedPaymentSettings } from "../modules/registration/settings.js";
 import { divisions, featureFlags, permissions, rolePermissions, roles, seasons } from "./schema/index.js";
 
@@ -75,6 +76,8 @@ export async function seedPlatform(conn: DbOrTx = db) {
     .onConflictDoUpdate({ target: featureFlags.key, set: { description: sql`excluded.description` } });
   await conn.delete(featureFlags).where(inArray(featureFlags.key, RETIRED_FLAGS));
   await seedContent(conn);
+  // The original waivers become forms in the Waivers & forms library (first run only).
+  await seedLegacyForms(conn);
   await seedPaymentSettings(conn);
 }
 

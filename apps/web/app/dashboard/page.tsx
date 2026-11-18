@@ -10,6 +10,7 @@ import { EventRow } from "@/components/event-row";
 import { TicketButton } from "@/components/ticket-button";
 import { Modal } from "@/components/modal";
 import { TextAlertsCard } from "@/components/text-alerts-card";
+import { ActionNeeded, SignedFormsCard, useMyForms } from "@/components/my-forms";
 import { GAME_STATUS, resultFor, type Game, type Practice } from "@/lib/schedule";
 import { useFlags } from "@/lib/use-flags";
 import { isAdmin, useMe } from "@/lib/use-me";
@@ -67,6 +68,8 @@ export default function DashboardPage() {
     undefined,
   );
   const [editingFamily, setEditingFamily] = useState(false);
+  // Waivers & forms the league added after sign-up, and everything signed.
+  const myForms = useMyForms(!!me);
 
   useEffect(() => {
     if (!me) return;
@@ -110,6 +113,12 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {myForms && myForms.outstanding.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <ActionNeeded items={myForms.outstanding} />
+        </div>
+      )}
 
       <div className="grid" style={{ marginTop: 24 }}>
         <section className="card">
@@ -169,6 +178,7 @@ export default function DashboardPage() {
         <StaffCard />
         <RefereeCard />
         <TextAlertsCard />
+        {myForms && <SignedFormsCard items={myForms.completed} />}
         <SecurityCard
           enabled={me.mfa.enabled}
           required={me.mfa.required === "totp"}

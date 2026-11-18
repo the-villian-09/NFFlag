@@ -19,9 +19,16 @@ export async function serverGet<T>(path: string, revalidateSeconds = 60): Promis
   }
 }
 
+export interface SiteLink {
+  href: string;
+  label: string;
+}
+
 export interface SiteInfo {
   announcement: { message: string; linkText?: string; linkHref?: string } | null;
   contact: { publicEmail: string | null; phone: string | null };
+  /** Pages admins added, linked from the header menu or the footer. */
+  links?: { menu: SiteLink[]; footer: SiteLink[] };
 }
 
 export interface ContentPage {

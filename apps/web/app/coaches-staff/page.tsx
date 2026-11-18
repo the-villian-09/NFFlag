@@ -4,7 +4,7 @@ import Link from "next/link";
 import { MyPhoto } from "@/components/doc-upload";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorAlert } from "@/components/form";
-import { Markdown } from "@/components/markdown";
+import { emptyValue, FormBlock, formsReady, toPayload, type FormValue, type PublicForm } from "@/components/form-fields";
 import { PromoField } from "@/components/promo-field";
 import { CardForm, payWithCard, providerName, type CardFormHandle, type CheckoutConfig } from "@/components/card-form";
 import { api, ApiError } from "@/lib/api";
@@ -23,7 +23,8 @@ interface Options {
   season: { id: string; name: string } | null;
   roles: Role[];
   divisions: { id: string; name: string }[];
-  agreement: { title: string; body: string } | null;
+  /** Waivers & forms for coaches and team staff. */
+  forms?: PublicForm[];
   promoCodes?: boolean;
   checkout: CheckoutConfig | null;
 }
@@ -219,6 +220,8 @@ function ApplyForm({
   const [error, setError] = useState<string | null>(null);
   const [role, setRole] = useState<Role["key"]>("head_coach");
   const selected = opts.roles.find((r) => r.key === role)!;
+  const fs = opts.forms ?? [];
+  const [values, setValues] = useState<Record<string, FormValue>>({});
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -236,7 +239,7 @@ function ApplyForm({
         notes: s("notes"),
         shirtSize: s("shirtSize"),
         signerName: s("signerName"),
-        acceptAgreement: f.get("acceptAgreement") === "on",
+        forms: toPayload(fs, values),
       });
       onCreated(r.application);
     } catch (err) {
@@ -307,22 +310,16 @@ function ApplyForm({
           Anything else we should know? (optional)
           <textarea name="notes" rows={2} maxLength={1000} placeholder="Availability, co-coach request…" />
         </label>
-        {opts.agreement && (
-          <div className="waiver">
-            <strong style={{ fontSize: 20, color: "#fff" }}>{opts.agreement.title}</strong>
-            <Markdown source={opts.agreement.body} />
-            <label className="check">
-              <input type="checkbox" name="acceptAgreement" required /> I have read and agree.
-            </label>
-          </div>
-        )}
+        {fs.map((form) => (
+          <FormBlock key={form.id} form={form} value={values[form.id] ?? emptyValue()} onChange={(v) => setValues((all) => ({ ...all, [form.id]: v }))} />
+        ))}
         <label>
           Your full name (electronic signature)
           <input type="text" name="signerName" required minLength={3} maxLength={120} defaultValue={defaultSigner} autoComplete="name" />
         </label>
         <ErrorAlert error={error} />
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <button className="btn" disabled={busy}>
+          <button className="btn" disabled={busy || !formsReady(fs, values)}>
             {busy ? "Saving…" : selected.totalCents ? `Continue to pay ${money(selected.totalCents)}` : "Submit application"}
           </button>
           <button type="button" className="btn ghost" onClick={onCancel}>

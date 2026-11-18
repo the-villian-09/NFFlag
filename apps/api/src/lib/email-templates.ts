@@ -370,4 +370,17 @@ export const templates = {
       button: { label: "Open my referee page", url: d.url },
     });
   },
+
+  formReminder(to: string, d: { forms: [string, string][]; due: string | null; url: string }): EmailMessage {
+    const one = d.forms.length === 1;
+    return message(to, "form.reminder", one ? `Please complete: ${d.forms[0]![0]}` : `Please complete ${d.forms.length} league forms`, {
+      preheader: d.due ? `Due by ${d.due}. It takes a couple of minutes on My account.` : "It takes a couple of minutes on My account.",
+      heading: one ? "A form to complete" : "Forms to complete",
+      paragraphs: [
+        `The league needs ${one ? "this form" : "these forms"} completed${d.due ? ` by ${d.due}` : ""}. Open My account to read and sign.`,
+      ],
+      details: d.forms,
+      button: { label: "Open My account", url: d.url },
+    });
+  },
 };
