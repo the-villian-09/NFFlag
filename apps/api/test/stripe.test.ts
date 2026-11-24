@@ -12,7 +12,7 @@ import { resetFlagCache } from "../src/modules/platform/flags.js";
 import { reconcileProcessing, retrySubmittingRefunds } from "../src/modules/registration/service.js";
 import { verifyStripeSignature } from "../src/modules/stripe/client.js";
 import { registerSubscribers } from "../src/modules/subscribers.js";
-import { agent, signUp, uniqueEmail, useProvider, type Agent } from "./helpers.js";
+import { agent, staffFormsAgreed, signUp, uniqueEmail, useProvider, type Agent } from "./helpers.js";
 
 /* ---------------- fake Stripe ---------------- */
 
@@ -341,7 +341,7 @@ describe("Stripe checkout", () => {
       phone: "904-555-0111",
       experience: "Coached 3 seasons",
       signerName: "Coach Stripe",
-      acceptAgreement: true,
+      forms: await staffFormsAgreed(),
     });
     expect(created.status).toBe(201);
     const id = created.body.application.id as string;

@@ -791,3 +791,57 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-weight:
 /* One more link ("More") still fits beside the logo. */
 .site-nav.has-more { gap: 8px 15px; font-size: 16px; letter-spacing: 0.04em; }
 .progress-cell { color: var(--ink); text-decoration: none; }
+
+/* ---------- Coaches Honor (/coaches-honor) ---------- */
+.honor { max-width: 1180px; display: flex; flex-direction: column; gap: 56px; }
+.honor-head { display: flex; flex-direction: column; gap: 14px; max-width: 820px; }
+.honor-head .page-title { margin: 0; }
+.honor-eyebrow { color: var(--gold); font-weight: 800; font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase; }
+.honor-intro { margin: 0; font-size: 20px; font-weight: 400; }
+.honor-head .chip-picks { gap: 12px; margin-top: 6px; }
+.honor-rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 16px; }
+.honor-rule { background: var(--navy-2); padding: 24px; border-top: 4px solid var(--lime); display: flex; flex-direction: column; gap: 10px; color: var(--lime); }
+.honor-rule.rule-report { border-top-color: var(--gold); color: var(--gold); }
+.honor-rule.rule-parents { border-top-color: var(--blue-bright); color: var(--blue-bright); }
+.honor-rule.rule-substance-free { border-top-color: var(--pink-bright); color: var(--pink-bright); }
+.honor-rule h2 { font-size: 30px; line-height: 1; color: var(--ink); }
+.honor-rule p { margin: 0; font-weight: 400; font-size: 17px; color: var(--ink); }
+.honor-pledge { background: #f6f3ea; color: #13202d; padding: clamp(24px, 5vw, 48px) clamp(20px, 6vw, 56px); display: flex; flex-direction: column; gap: 16px; max-width: 900px; width: 100%; box-sizing: border-box; align-self: center; font-weight: 400; }
+.honor-letterhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; border-bottom: 2px solid #13202d; padding-bottom: 14px; }
+.honor-letterhead span:first-child { font-family: var(--font-display); font-weight: 600; font-size: 26px; line-height: 1; text-transform: uppercase; letter-spacing: 0.04em; }
+.honor-letterhead span:last-child { font-weight: 700; font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase; color: #4a5a6a; }
+.honor-pledge h2 { font-size: clamp(34px, 5vw, 46px); color: var(--navy); }
+.honor-pledge p { margin: 0; font-size: 18px; }
+.honor-pledge strong { font-weight: 700; color: #13202d; }
+.honor-pledge ul { margin: 0; padding-left: 22px; font-size: 18px; display: grid; gap: 6px; }
+.honor-pledge .honor-signed { margin-top: 8px; font-size: 15px; font-weight: 600; color: #4a5a6a; }
+.honor-standards { display: flex; flex-direction: column; gap: 8px; }
+.honor-standards h2 { font-size: 52px; }
+.honor-standards > .muted { margin: 0 0 8px; }
+.honor-list { display: grid; gap: 8px; }
+.honor-list details { background: var(--navy-2); }
+.honor-list summary { display: flex; align-items: center; gap: 18px; padding: 14px 22px; min-height: 60px; box-sizing: border-box; cursor: pointer; list-style: none; }
+.honor-list summary::-webkit-details-marker { display: none; }
+.honor-list .num { font-family: var(--font-display); font-weight: 700; font-size: 32px; line-height: 1; color: var(--lime); width: 40px; flex: none; }
+.honor-list .title { flex: 1; font-weight: 800; font-size: 20px; text-transform: uppercase; letter-spacing: 0.04em; color: #fff; }
+.honor-list .mark::before { content: "+"; font-size: 28px; font-weight: 700; color: var(--ink-muted); }
+.honor-list details[open] .mark::before { content: "−"; }
+.honor-list details p { margin: 0; padding: 0 22px 20px 80px; font-weight: 400; font-size: 17px; color: #d6e1ec; }
+.honor-cta { margin-top: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; padding: 32px 36px; }
+.honor-cta h2 { font-size: 44px; }
+.honor-foot { margin: 0; font-size: 15px; font-weight: 400; }
+@media (max-width: 600px) {
+  .honor { gap: 40px; }
+  .honor-list summary { gap: 12px; padding: 10px 14px; min-height: 52px; }
+  .honor-list .num { font-size: 26px; width: 28px; }
+  .honor-list .title { font-size: 16px; }
+  .honor-list details p { padding: 0 14px 14px 54px; font-size: 15px; }
+  .honor-standards h2 { font-size: 42px; }
+  .honor-cta { padding: 24px 20px; }
+}
+@media print {
+  .site-header, .site-footer, .announce, .no-print { display: none !important; }
+  body { background: #fff; color: #000; }
+  .honor-rule, .honor-list details { background: #fff; color: #000; border: 1px solid #999; }
+  .honor-rule h2, .honor-rule p, .honor-list .title, .honor-list details p, .honor-head, .honor-intro { color: #000; }
+}

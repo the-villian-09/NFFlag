@@ -7,7 +7,7 @@ import { resetFlagCache } from "../src/modules/platform/flags.js";
 import { clearSubscribers, processOutbox } from "../src/modules/platform/outbox.js";
 import { reconcileApplications } from "../src/modules/staff/service.js";
 import { registerSubscribers } from "../src/modules/subscribers.js";
-import { agent, mail, signUp, uniqueEmail, type Agent, useProvider } from "./helpers.js";
+import { agent, staffFormsAgreed, mail, signUp, uniqueEmail, type Agent, useProvider } from "./helpers.js";
 
 const calls: { path: string; body: Record<string, unknown> }[] = [];
 const byKey = new Map<string, unknown>();
@@ -53,7 +53,7 @@ async function volunteer(prefix: string) {
   const [u] = await db.select().from(user).where(eq(user.email, email));
   return { a, email, userId: u!.id };
 }
-const form = { phone: "904-555-0111", experience: "Coached 3 seasons", signerName: "Val Volunteer", acceptAgreement: true };
+const form = { phone: "904-555-0111", experience: "Coached 3 seasons", signerName: "Val Volunteer", forms: await staffFormsAgreed() };
 
 beforeAll(async () => {
   await useProvider("square");
@@ -102,7 +102,7 @@ describe("volunteer applications", () => {
     expect(opts.body.roles.find((r: { key: string }) => r.key === "head_coach")).toMatchObject({ priceCents: 2500, totalCents: 2500 });
     expect(opts.body.agreement.slug).toBe("volunteer-agreement");
 
-    expect((await v.a.post("/api/v1/volunteer/applications").send({ ...form, roleKey: "head_coach", acceptAgreement: false })).status).toBe(400);
+    expect((await v.a.post("/api/v1/volunteer/applications").send({ ...form, roleKey: "head_coach", forms: [] })).status).toBe(400);
     const created = await v.a.post("/api/v1/volunteer/applications").send({ ...form, roleKey: "head_coach" });
     expect(created.status).toBe(201);
     const app = created.body.application;

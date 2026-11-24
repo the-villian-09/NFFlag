@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { db, pool, type DbOrTx } from "./client.js";
 import { seedContent } from "../modules/content/routes.js";
-import { seedLegacyForms } from "../modules/forms/service.js";
+import { seedCoachesHonor, seedLegacyForms } from "../modules/forms/service.js";
 import { seedPaymentSettings } from "../modules/registration/settings.js";
 import { divisions, featureFlags, permissions, rolePermissions, roles, seasons } from "./schema/index.js";
 
@@ -78,6 +78,8 @@ export async function seedPlatform(conn: DbOrTx = db) {
   await seedContent(conn);
   // The original waivers become forms in the Waivers & forms library (first run only).
   await seedLegacyForms(conn);
+  // The Coaches Honor sign-off for coaches & staff (first run only).
+  await seedCoachesHonor(conn);
   await seedPaymentSettings(conn);
 }
 

@@ -4,7 +4,7 @@ import { db } from "../src/db/client.js";
 import { featureFlags, registrations, seasons, siteSettings, user, userRoleAssignments, volunteerApplications } from "../src/db/schema/index.js";
 import { resetFlagCache } from "../src/modules/platform/flags.js";
 import { discountFor } from "../src/modules/promo/service.js";
-import { agent, signUp, uniqueEmail, type Agent } from "./helpers.js";
+import { agent, staffFormsAgreed, signUp, uniqueEmail, type Agent } from "./helpers.js";
 
 let admin: Agent;
 let adminId: string;
@@ -203,7 +203,7 @@ describe("promo codes", () => {
     const v = agent();
     const email = uniqueEmail("promo-coach");
     await signUp(v, email, "Coach Promo");
-    const app = await v.post("/api/v1/volunteer/applications").send({ roleKey: "head_coach", phone: "904-555-0111", signerName: "Coach Promo", acceptAgreement: true });
+    const app = await v.post("/api/v1/volunteer/applications").send({ roleKey: "head_coach", phone: "904-555-0111", signerName: "Coach Promo", forms: await staffFormsAgreed() });
     expect(app.status).toBe(201);
     const id = app.body.application.id;
     expect((await v.put(`/api/v1/volunteer/applications/${id}/promo`).send({ code: "EARLY20" })).body.error.message).toMatch(/can't be used here/);
@@ -250,7 +250,7 @@ describe("promo codes", () => {
     const p = (await promo({ code: "STAFFLEAK", value: 100, appliesTo: "staff" })).body.promo;
     const v = agent();
     await signUp(v, uniqueEmail("promo-asst"), "Asst Promo");
-    const app = await v.post("/api/v1/volunteer/applications").send({ roleKey: "assistant_coach", phone: "904-555-0111", signerName: "Asst Promo", acceptAgreement: true });
+    const app = await v.post("/api/v1/volunteer/applications").send({ roleKey: "assistant_coach", phone: "904-555-0111", signerName: "Asst Promo", forms: await staffFormsAgreed() });
     const id = app.body.application.id;
     await v.put(`/api/v1/volunteer/applications/${id}/promo`).send({ code: "STAFFLEAK" });
     await admin.put(`/api/v1/admin/promo-codes/${p.id}`).send({ ...p, active: false });

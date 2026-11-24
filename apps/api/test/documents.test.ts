@@ -8,7 +8,7 @@ import { env } from "../src/config.js";
 import { db } from "../src/db/client.js";
 import { auditLogs, documents, featureFlags, registrations, rosterEntries, seasons, teams, user, userRoleAssignments } from "../src/db/schema/index.js";
 import { resetFlagCache } from "../src/modules/platform/flags.js";
-import { agent, signUp, uniqueEmail, type Agent } from "./helpers.js";
+import { agent, staffFormsAgreed, signUp, uniqueEmail, type Agent } from "./helpers.js";
 
 let admin: Agent;
 let adminId: string;
@@ -234,7 +234,7 @@ describe("headshots for coaches, team moms and referees", () => {
   it("a coach can't pay the badge fee without a headshot", async () => {
     const c = agent();
     await signUp(c, uniqueEmail("doc-coach2"), "Doc Coach Two");
-    const app = await c.post("/api/v1/volunteer/applications").send({ roleKey: "head_coach", phone: "904-555-0111", signerName: "Doc Coach Two", acceptAgreement: true });
+    const app = await c.post("/api/v1/volunteer/applications").send({ roleKey: "head_coach", phone: "904-555-0111", signerName: "Doc Coach Two", forms: await staffFormsAgreed() });
     expect(app.status).toBe(201);
     const blocked = await c.post(`/api/v1/volunteer/applications/${app.body.application.id}/pay`).send({ sourceId: "cnon:ok" });
     expect(blocked.status).toBe(409);

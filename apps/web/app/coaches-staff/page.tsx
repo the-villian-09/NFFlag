@@ -90,7 +90,10 @@ export default function CoachesStaffPage() {
         <Link href="/dashboard">← My account</Link>
       </p>
       <h1>Coaches & Team Staff</h1>
-      <p className="muted">Apply to be a Head Coach, Assistant Coach or Team Mom. Everyone who works with players completes a background check before being approved.</p>
+      <p className="muted">
+        Apply to be a Head Coach, Assistant Coach or Team Mom. Everyone who works with players completes a background check and signs the{" "}
+        <Link href="/coaches-honor">Coaches Honor</Link> before being approved.
+      </p>
       <ErrorAlert error={error} />
       {!opts || !apps ? (
         !error && <p className="muted">Loading…</p>

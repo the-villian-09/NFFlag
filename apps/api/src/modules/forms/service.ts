@@ -12,6 +12,7 @@
  */
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { COACHES_HONOR, coachesHonorMarkdown } from "@nffl/shared";
 import { db, type DbOrTx } from "../../db/client.js";
 import {
   contentPages,
@@ -372,6 +373,26 @@ export async function seedLegacyForms(conn: DbOrTx = db) {
   }
   await copyLegacyAcceptances(conn);
 }
+
+/**
+ * The Coaches Honor: a required coach & staff form, created once. After that
+ * it's the league's to edit, make optional or archive in Waivers & forms.
+ * It isn't put to coaches already approved unless an admin turns on
+ * "Also ask people who already signed up".
+ */
+export async function seedCoachesHonor(conn: DbOrTx = db) {
+  const [existing] = await conn.select({ id: forms.id }).from(forms).where(eq(forms.legacySlug, COACHES_HONOR_SLUG));
+  if (existing) return;
+  const title = COACHES_HONOR.formTitle;
+  const body = coachesHonorMarkdown();
+  const [f] = await conn
+    .insert(forms)
+    .values({ title, audience: "staff", required: true, status: "live", legacySlug: COACHES_HONOR_SLUG, sortOrder: 2 })
+    .onConflictDoNothing()
+    .returning();
+  if (f) await conn.insert(formVersions).values({ formId: f.id, version: 1, title, body });
+}
+export const COACHES_HONOR_SLUG = "coaches-honor";
 
 /** Acceptances stored on registrations / staff applications before forms existed → form_responses. */
 async function copyLegacyAcceptances(conn: DbOrTx) {

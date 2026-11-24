@@ -103,3 +103,9 @@ export async function useProvider(provider: "stripe" | "square") {
   const value = { ...(await getPaymentSettings()), provider };
   await db.insert(siteSettings).values({ key: "payments", value }).onConflictDoUpdate({ target: siteSettings.key, set: { value } });
 }
+
+/** Every live coach & staff form, agreed (what the Coaches & Staff page sends). */
+export async function staffFormsAgreed() {
+  const { liveForms } = await import("../src/modules/forms/service.js");
+  return (await liveForms("staff")).map((f) => ({ formId: f.id, agreed: true, answers: {} }));
+}

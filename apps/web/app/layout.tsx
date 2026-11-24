@@ -3,6 +3,9 @@ import Link from "next/link";
 import { SiteNav } from "@/components/site-nav";
 import { LEAGUE_NAME } from "@/lib/brand";
 import { PAGES, serverGet, type SiteInfo } from "@/lib/server-api";
+
+/** Built-in page, always under More (computers) and in the footer. */
+const COACHES_HONOR_LINK = { href: "/coaches-honor", label: "Coaches Honor" };
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -50,7 +53,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 Flag League
               </span>
             </Link>
-            <SiteNav extra={site?.links?.menu} />
+            <SiteNav extra={[COACHES_HONOR_LINK, ...(site?.links?.menu ?? [])]} />
           </div>
         </header>
         {children}
@@ -70,6 +73,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   {p.label}
                 </Link>
               ))}
+              <Link href={COACHES_HONOR_LINK.href}>{COACHES_HONOR_LINK.label}</Link>
               {site?.links?.footer.map((l) => (
                 <Link key={l.href} href={l.href}>
                   {l.label}
