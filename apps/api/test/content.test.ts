@@ -25,6 +25,21 @@ describe("public content", () => {
   });
 });
 
+describe("divisions page", () => {
+  it("lists this season's divisions and birth-date ranges without signing in", async () => {
+    const res = await agent().get("/api/v1/divisions/current");
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.divisions)).toBe(true);
+    for (const d of res.body.divisions) {
+      expect(d).toHaveProperty("birthDateFrom");
+      expect(d).not.toHaveProperty("priceCents");
+    }
+    const page = await agent().get("/api/v1/pages/divisions");
+    expect(page.status).toBe(200);
+    expect(page.body.page.body).toContain("What to expect at each age");
+  });
+});
+
 describe("contact form", () => {
   it("stores the message and validates input", async () => {
     const bad = await agent().post("/api/v1/contact").send({ name: "", email: "nope", message: "hi" });
@@ -81,6 +96,7 @@ describe("admin content editing", () => {
     // Built-in pages, in order (pages admins add come after them).
     expect(list.body.items.filter((p: { custom: boolean }) => !p.custom).map((p: { slug: string }) => p.slug)).toEqual([
       "about",
+      "divisions",
       "rules",
       "coaches",
       "faq",

@@ -203,6 +203,39 @@ registrationRouter.patch(
 
 /* ---------------- registration ---------------- */
 
+/**
+ * Public: this season's divisions and the birth dates each one takes, for the
+ * Divisions page's "Find your division" chart. No prices or counts.
+ */
+registrationRouter.get(
+  "/divisions/current",
+  handler(async (_req, res) => {
+    const [season] = await db.select().from(seasons).where(eq(seasons.isCurrent, "current")).limit(1);
+    if (!season) {
+      res.json({ season: null, divisions: [] });
+      return;
+    }
+    const divs = await db
+      .select()
+      .from(divisions)
+      .where(and(eq(divisions.seasonId, season.id), ne(divisions.status, "draft")))
+      .orderBy(asc(divisions.sortOrder), asc(divisions.name));
+    const items = await Promise.all(
+      divs.map(async (d) => ({
+        id: d.id,
+        name: d.name,
+        genderPolicy: d.genderPolicy,
+        birthDateFrom: d.birthDateFrom,
+        birthDateTo: d.birthDateTo,
+        eligibilityNotes: d.eligibilityNotes,
+        full: d.status === "full" || (await spotsTaken(db, d.id)) >= d.capacity || (await waitingCount(db, d.id)) > 0,
+      })),
+    );
+    res.set("Cache-Control", "public, max-age=60");
+    res.json({ season: { name: season.name, ageCutoffDate: season.ageCutoffDate }, divisions: items });
+  }),
+);
+
 /** Everything the registration screen needs: season, divisions with prices, waivers, card form settings. */
 registrationRouter.get(
   "/registration/options",

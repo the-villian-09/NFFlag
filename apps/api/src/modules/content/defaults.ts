@@ -14,6 +14,7 @@ export interface DefaultPage {
 
 export const PAGE_SLUGS = [
   "about",
+  "divisions",
   "rules",
   "coaches",
   "faq",
@@ -34,6 +35,52 @@ export type PageSlug = (typeof PAGE_SLUGS)[number];
 export const FORM_PAGE_SLUGS = [...WAIVER_SLUGS, "volunteer-agreement"] as const;
 
 export const DEFAULT_PAGES: DefaultPage[] = [
+  {
+    slug: "divisions",
+    title: "Divisions page (below the boys and girls cards)",
+    body: `## What to expect at each age
+
+### 4U/5U and 6U: First downs
+Your player's first taste of football. Practices are short and full of games: learning to pull a flag, catch, run the right direction and line up with teammates. The goal is simple: have fun and want to come back.
+
+### 7U and 8U: Building the basics
+Players learn the real building blocks: handoffs, simple routes, throwing and catching on the move, and pulling flags without grabbing. Teams start running a handful of plays.
+
+### 9U and 10U: Learning the game
+Players learn positions, read the defense, rush the quarterback and run a bigger playbook. Teamwork and game smarts start to matter as much as speed.
+
+### 11U, 12U and Girls 14U: Competing
+Full playbooks, sharper routes, man and zone defense, and leadership on and off the field. This is where players get ready for middle school and high school football. Florida high schools have offered girls' flag football for more than 20 years.
+
+## How teams are formed
+
+1. **Register** your player in their age division.
+2. **The draft:** coaches build teams in a draft so every team gets a fair mix of new and returning players. We honor sibling and carpool requests when we can.
+3. **Meet your coach:** you'll hear from your coach before the first practice, and your team, schedule and practice times show up on **My account**.
+
+## Boys and girls divisions
+
+Boys and girls play in their own divisions, against kids their own age. Girls' divisions run through **14U**, so players can keep playing all the way to high school.
+
+## Common questions
+
+**Which division is my child in?**
+Use the chart above. When you register, the site shows the divisions your child can join based on their birth date.
+
+**Does my child need experience?**
+No. Most of our youngest players have never played before, and every division mixes new and returning players.
+
+**Can my child play up a division?**
+Playing up requires league approval. [Contact us](/contact) before you register.
+
+**What does my child need?**
+Athletic shorts or pants without pockets, rubber cleats or sneakers (no metal cleats) and a water bottle. A mouthguard is recommended.
+
+**How much does it cost?**
+See [Fees](/fees).
+
+[Register for the season →](/register)`,
+  },
   {
     slug: "about",
     title: "About the league",

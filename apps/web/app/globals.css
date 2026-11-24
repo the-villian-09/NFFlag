@@ -845,3 +845,19 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-weight:
   .honor-rule, .honor-list details { background: #fff; color: #000; border: 1px solid #999; }
   .honor-rule h2, .honor-rule p, .honor-list .title, .honor-list details p, .honor-head, .honor-intro { color: #000; }
 }
+
+/* ---------- Divisions page: finder chart and editable text ---------- */
+.div-finder { margin-top: 56px; display: flex; flex-direction: column; gap: 8px; }
+.div-finder h2 { font-size: 52px; color: #fff; }
+.div-finder > .muted { margin: 0 0 12px; }
+.div-finder-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap: 16px; align-items: start; }
+.div-finder-group { background: var(--navy-2); padding: 16px 20px 8px; border-top: 4px solid var(--lime); }
+.div-finder-group.boys { border-top-color: var(--blue-bright); }
+.div-finder-group.girls { border-top-color: var(--pink-bright); }
+.div-finder-group h3 { font-size: 32px; color: #fff; margin-bottom: 4px; }
+.div-finder-group td { font-weight: 500; }
+.div-note { display: block; font-size: 14px; }
+.div-more { margin-top: 56px; max-width: 900px; }
+.div-more .prose h2 { margin-top: 48px; }
+.div-more .prose h2:first-child { margin-top: 0; }
+@media (max-width: 600px) { .div-finder h2 { font-size: 40px; } .div-finder-group { padding: 12px 12px 4px; } }
