@@ -17,6 +17,8 @@
   --pink-deep: #2a0a20;
   --pink-chip: #4f0f3a;
   --gold: #ffd21f;
+  --h2: #e6b800;          /* section headings: a darker gold */
+  --h3: #0b82dc;          /* sub-headings: blue */
   --ink: #eef3f9;
   --ink-muted: #a9bdd2;
   --danger: #ff8080;
@@ -39,6 +41,8 @@ a { color: var(--lime); }
 a:hover { color: var(--lime-hover); }
 :focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 h1, h2, h3 { font-family: var(--font-display); font-weight: 600; text-transform: uppercase; line-height: 0.95; margin: 0; }
+h2 { color: var(--h2); }
+h3 { color: var(--h3); }
 img { max-width: 100%; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -170,7 +174,7 @@ img { max-width: 100%; }
 .dates-band strong { display: block; font-family: var(--font-display); font-weight: 700; font-size: 38px; line-height: 1; }
 
 .section { padding-top: 64px; scroll-margin-top: 16px; }
-.section h2 { font-size: 56px; color: #fff; margin-bottom: 24px; }
+.section h2 { font-size: 56px; color: var(--h2); margin-bottom: 24px; }
 .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 24px; }
 .rule { height: 4px; width: 80px; background: var(--lime); margin: 8px 0 12px; }
 .rule.blue { background: var(--blue-bright); }
@@ -203,7 +207,7 @@ img { max-width: 100%; }
 main.page { max-width: 1200px; margin: 0 auto; padding: 40px 24px 72px; }
 main.page > h1, .page-title { font-size: 56px; color: #fff; }
 .card { background: var(--navy-2); border-top: 4px solid var(--lime); padding: 24px; }
-.card h2 { font-size: 36px; color: #fff; margin-bottom: 8px; }
+.card h2 { font-size: 36px; color: var(--h2); margin-bottom: 8px; }
 .auth-wrap { max-width: 460px; margin: 48px auto 72px; padding: 0 16px; }
 .auth-wrap h1 { font-size: 48px; color: #fff; margin-bottom: 8px; }
 .muted { color: var(--ink-muted); }
@@ -242,8 +246,8 @@ details summary { cursor: pointer; color: var(--lime); }
 .content-page { max-width: 860px; }
 .placeholder-note { display: inline-block; margin: 0 0 16px; padding: 6px 12px; background: #3a2f00; color: #ffe680; font-size: 15px; font-weight: 600; }
 .prose { font-size: 19px; line-height: 1.65; }
-.prose h2 { font-size: 40px; color: #fff; margin: 40px 0 12px; }
-.prose h3 { font-size: 30px; color: #fff; margin: 28px 0 8px; }
+.prose h2 { font-size: 40px; color: var(--h2); margin: 40px 0 12px; }
+.prose h3 { font-size: 30px; color: var(--h3); margin: 28px 0 8px; }
 .prose p, .prose ul, .prose ol { margin: 0 0 16px; }
 .prose li { margin-bottom: 6px; }
 .prose strong { color: #fff; }
@@ -804,7 +808,7 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-weight:
 .honor-rule.rule-report { border-top-color: var(--gold); color: var(--gold); }
 .honor-rule.rule-parents { border-top-color: var(--blue-bright); color: var(--blue-bright); }
 .honor-rule.rule-substance-free { border-top-color: var(--pink-bright); color: var(--pink-bright); }
-.honor-rule h2 { font-size: 30px; line-height: 1; color: var(--ink); }
+.honor-rule h2 { font-size: 30px; line-height: 1; color: var(--h2); }
 .honor-rule p { margin: 0; font-weight: 400; font-size: 17px; color: var(--ink); }
 .honor-pledge { background: #f6f3ea; color: #13202d; padding: clamp(24px, 5vw, 48px) clamp(20px, 6vw, 56px); display: flex; flex-direction: column; gap: 16px; max-width: 900px; width: 100%; box-sizing: border-box; align-self: center; font-weight: 400; }
 .honor-letterhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; border-bottom: 2px solid #13202d; padding-bottom: 14px; }
@@ -848,7 +852,7 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-weight:
 
 /* ---------- Divisions page: finder chart and editable text ---------- */
 .div-finder { margin-top: 56px; display: flex; flex-direction: column; gap: 8px; }
-.div-finder h2 { font-size: 52px; color: #fff; }
+.div-finder h2 { font-size: 52px; }
 .div-finder > .muted { margin: 0 0 12px; }
 .div-finder-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap: 16px; align-items: start; }
 .div-finder-group { background: var(--navy-2); padding: 16px 20px 8px; border-top: 4px solid var(--lime); }

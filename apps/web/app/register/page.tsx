@@ -232,7 +232,7 @@ function Register() {
 
           {step === "player" && (
             <section>
-              <h2 style={{ fontSize: 36, color: "#fff" }}>Who are you registering?</h2>
+              <h2 style={{ fontSize: 36 }}>Who are you registering?</h2>
               {players.length === 0 && <p className="muted">You haven't added any players yet.</p>}
               <div className="choice-grid">
                 {players.map((p) => {
@@ -277,7 +277,7 @@ function Register() {
 
           {step === "division" && player && (
             <section>
-              <h2 style={{ fontSize: 36, color: "#fff" }}>Choose a division for {player.firstName}</h2>
+              <h2 style={{ fontSize: 36 }}>Choose a division for {player.firstName}</h2>
               <div className="choice-grid">
                 {options.divisions.map((d) => {
                   const reason = eligibility[d.id] ?? null;
@@ -506,7 +506,7 @@ function Waivers({
 
   return (
     <form className="stack" onSubmit={submit}>
-      <h2 style={{ fontSize: 36, color: "#fff" }}>Waivers and forms</h2>
+      <h2 style={{ fontSize: 36 }}>Waivers and forms</h2>
       <p className="muted" style={{ margin: 0 }}>
         Registering <strong>{player.firstName}</strong> for <strong>{division.name}</strong>. Please read and complete each one.
       </p>

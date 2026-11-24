@@ -111,13 +111,13 @@ export default function AdminStaffApplicationPage() {
               </dl>
               {a.experience && (
                 <>
-                  <h3 style={{ fontSize: 22, color: "#fff", marginTop: 16 }}>Experience</h3>
+                  <h3 style={{ fontSize: 22, marginTop: 16 }}>Experience</h3>
                   <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{a.experience}</p>
                 </>
               )}
               {a.notes && (
                 <>
-                  <h3 style={{ fontSize: 22, color: "#fff", marginTop: 16 }}>Notes</h3>
+                  <h3 style={{ fontSize: 22, marginTop: 16 }}>Notes</h3>
                   <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{a.notes}</p>
                 </>
               )}

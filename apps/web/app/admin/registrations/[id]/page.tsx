@@ -145,7 +145,7 @@ export default function AdminRegistrationPage() {
                   }}
                 />
               )}
-              <h3 style={{ fontSize: 24, color: "#fff", marginTop: 16 }}>Division rules</h3>
+              <h3 style={{ fontSize: 24, marginTop: 16 }}>Division rules</h3>
               <p className="muted" style={{ margin: 0 }}>
                 {GENDER_POLICY[d.division.genderPolicy]} · born {d.division.birthDateFrom ? fmtDate(d.division.birthDateFrom) : "any time"} –{" "}
                 {d.division.birthDateTo ? fmtDate(d.division.birthDateTo) : "any time"}
@@ -282,7 +282,7 @@ export default function AdminRegistrationPage() {
               ))}
               {d.refunds.length > 0 && (
                 <>
-                  <h3 style={{ fontSize: 24, color: "#fff" }}>Refunds</h3>
+                  <h3 style={{ fontSize: 24 }}>Refunds</h3>
                   <ul>
                     {d.refunds.map((r) => (
                       <li key={r.id}>
@@ -431,7 +431,7 @@ function TeamLine({ team, canRemove, onRemoved }: { team: { entryId: string; nam
   const { busy, error, run } = useAction();
   return (
     <div style={{ marginTop: 16 }}>
-      <h3 style={{ fontSize: 24, color: "#fff", margin: "0 0 4px" }}>Team</h3>
+      <h3 style={{ fontSize: 24, margin: "0 0 4px" }}>Team</h3>
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <strong>{team.name}</strong>
         {canRemove && (

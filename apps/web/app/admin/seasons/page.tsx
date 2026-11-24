@@ -158,7 +158,7 @@ function SeasonCard({ season, canManage, onChanged }: { season: Season; canManag
         </dl>
       )}
 
-      <h3 style={{ fontSize: 28, color: "#fff", marginTop: 24 }}>Divisions</h3>
+      <h3 style={{ fontSize: 28, marginTop: 24 }}>Divisions</h3>
       <div className="table-wrap">
         <table className="simple stack">
           <thead>
