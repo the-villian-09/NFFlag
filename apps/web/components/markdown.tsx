@@ -8,9 +8,16 @@ import { isSiteImage, isSitePath } from "@/lib/links";
  * (react-markdown's default), so page content can't inject scripts.
  * Works in server and client components (used by the admin preview).
  */
-export function Markdown({ source }: { source: string }) {
+/**
+ * "##Heading" (no space) is a heading people mean, so give it the space
+ * Markdown needs. Only for two or more #, so "#1 team" stays as typed.
+ */
+export const fixHeadings = (s: string) => s.replace(/^([ \t]{0,3}#{2,6})(?=[^#\s])/gm, "$1 ");
+
+/** legal: waivers and forms (regular-weight text, headings sized for the box). */
+export function Markdown({ source, legal = false }: { source: string; legal?: boolean }) {
   return (
-    <div className="prose">
+    <div className={legal ? "prose legal" : "prose"}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -39,7 +46,7 @@ export function Markdown({ source }: { source: string }) {
           },
         }}
       >
-        {source}
+        {fixHeadings(source)}
       </ReactMarkdown>
     </div>
   );

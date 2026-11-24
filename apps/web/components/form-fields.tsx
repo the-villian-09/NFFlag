@@ -108,7 +108,7 @@ export function FormBlock({ form, value, onChange, scope = "" }: { form: PublicF
         {form.title}
         {!form.required && <span className="muted" style={{ fontSize: 15, fontWeight: 600 }}> · optional</span>}
       </strong>
-      <Markdown source={form.body} />
+      <Markdown source={form.body} legal />
       {showQuestions && (
         <div className="form-qs">
           {form.questions.map((q) => (

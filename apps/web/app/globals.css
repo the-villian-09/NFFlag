@@ -305,6 +305,13 @@ legend { padding: 0 8px; font-weight: 800; font-size: 14px; letter-spacing: 0.08
 .choice .price { font-family: var(--font-display); font-size: 28px; color: var(--lime); }
 .waiver { background: var(--navy); padding: 16px; border-left: 4px solid var(--gold); }
 .waiver .prose { font-size: 16px; max-height: 260px; overflow: auto; margin: 8px 0 12px; }
+/* Waivers and forms: regular-weight text so headings and bold stand out. */
+.prose.legal { font-weight: 400; font-size: 16px; line-height: 1.6; }
+.prose.legal strong { font-weight: 700; }
+.prose.legal h1, .prose.legal h2 { font-size: 24px; line-height: 1.1; margin: 20px 0 6px; }
+.prose.legal h3, .prose.legal h4 { font-size: 20px; line-height: 1.1; margin: 16px 0 4px; }
+.prose.legal > :first-child { margin-top: 0; }
+.prose.legal p, .prose.legal ul, .prose.legal ol { margin: 0 0 12px; }
 .summary { display: grid; gap: 6px; background: var(--navy); padding: 16px; font-size: 18px; }
 .summary div { display: flex; justify-content: space-between; gap: 16px; }
 .summary .total { border-top: 1px solid var(--line); padding-top: 8px; font-weight: 800; color: #fff; }

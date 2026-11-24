@@ -100,7 +100,7 @@ export function SignedFormsCard({ items }: { items: Completed[] }) {
           <p className="muted">
             {open.agreed ? "Signed" : "Declined"} {fmtSigned(open.signedAt)} by {open.signerName} · version {open.version}
           </p>
-          <Markdown source={open.body} />
+          <Markdown source={open.body} legal />
           {open.questions.length > 0 && (
             <dl className="kv">
               {open.questions.map((q) => (
