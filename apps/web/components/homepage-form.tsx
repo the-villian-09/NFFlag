@@ -46,6 +46,9 @@ export function HomepageForm({ initial }: { initial: Homepage }) {
       practiceTimes: s("practiceTimes"),
       gameDays: s("gameDays"),
       gameDates: s("gameDates"),
+      venueTitle: s("venueTitle"),
+      venueName: s("venueName"),
+      venueAddress: s("venueAddress"),
       boysDivisions: textToList(s("boysDivisions")),
       girlsDivisions: textToList(s("girlsDivisions")),
       registrationFee: s("registrationFee"),
@@ -120,6 +123,21 @@ export function HomepageForm({ initial }: { initial: Homepage }) {
               <input type="text" name="gameDates" maxLength={80} defaultValue={h.gameDates} />
             </label>
           </div>
+          <div className="form-row">
+            <label>
+              Location title
+              <input type="text" name="venueTitle" maxLength={40} defaultValue={h.venueTitle} placeholder="Game location" />
+            </label>
+            <label>
+              Field name
+              <input type="text" name="venueName" maxLength={80} defaultValue={h.venueName} />
+            </label>
+          </div>
+          <label>
+            Field address
+            <input type="text" name="venueAddress" maxLength={120} defaultValue={h.venueAddress} />
+          </label>
+          <span className="hint">Shown beside Practice and Games with a Get directions link. Leave the field name blank to hide it.</span>
         </fieldset>
         <fieldset>
           <legend>Divisions</legend>

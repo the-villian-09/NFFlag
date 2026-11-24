@@ -90,6 +90,22 @@ export default async function Home() {
           <p className="big-line">{h.gameDays}</p>
           <p className="muted-line">{h.gameDates}</p>
         </div>
+        {h.venueName && (
+          <div>
+            <h2 style={{ marginBottom: 0 }}>{h.venueTitle || "Game location"}</h2>
+            <div className="rule pink" />
+            <p className="big-line">{h.venueName}</p>
+            {h.venueAddress && <p className="muted-line">{h.venueAddress}</p>}
+            <a
+              className="directions"
+              href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent([h.venueName, h.venueAddress].filter(Boolean).join(", "))}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Get directions →
+            </a>
+          </div>
+        )}
       </section>
 
       <DivisionsSection h={h} images={images} />

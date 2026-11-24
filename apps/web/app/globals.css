@@ -178,6 +178,8 @@ img { max-width: 100%; }
 .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 24px; }
 .rule { height: 4px; width: 80px; background: var(--lime); margin: 8px 0 12px; }
 .rule.blue { background: var(--blue-bright); }
+.rule.pink { background: var(--pink-bright); }
+.directions { display: inline-block; margin-top: 10px; font-weight: 800; font-size: 17px; text-transform: uppercase; letter-spacing: 0.05em; }
 .big-line { margin: 0; font-size: 24px; font-weight: 700; }
 .muted-line { margin: 0; font-size: 22px; color: var(--ink-muted); }
 
