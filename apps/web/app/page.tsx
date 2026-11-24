@@ -5,6 +5,7 @@ import { SeasonHome, type NewsItem } from "@/components/season-home";
 import { serverGet } from "@/lib/server-api";
 import { imageFor, type HomeDivision } from "@/lib/season-home";
 import { DivisionsSection, FeesSection } from "@/components/home-sections";
+import { HeroVideo } from "@/components/hero-video";
 
 /**
  * Public home. Before and during registration: the "Split Field" sign-up page
@@ -56,6 +57,7 @@ export default async function Home() {
         <div className="hero-half girls">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={imageFor(images, "heroGirl")} alt="" className="hero-photo" fetchPriority="high" />
+          <HeroVideo src="/videos/hero-girls.mp4" phoneSrc="/videos/hero-girls-540.mp4" className="hero-photo hero-video" />
           <div className="hero-tint" aria-hidden="true" />
           <div className="hero-label">
             <strong>Girls</strong>
