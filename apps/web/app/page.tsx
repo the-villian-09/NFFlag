@@ -48,6 +48,7 @@ export default async function Home() {
         <div className="hero-half boys">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={imageFor(images, "heroBoy")} alt="" className="hero-photo" fetchPriority="high" />
+          <HeroVideo src="/videos/hero-boys.mp4" phoneSrc="/videos/hero-boys-540.mp4" className="hero-photo hero-video" />
           <div className="hero-tint" aria-hidden="true" />
           <div className="hero-label">
             <strong>Boys</strong>

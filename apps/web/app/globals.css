@@ -131,7 +131,7 @@ img { max-width: 100%; }
 .hero-photo { position: absolute !important; top: 0; height: 100% !important; width: 58% !important; object-fit: cover; }
 .hero-half.boys .hero-photo { left: 0 !important; object-position: 45% 20%; }
 .hero-half.girls .hero-photo { right: 0 !important; left: auto !important; object-position: 55% 20%; }
-.hero-half.girls .hero-video { object-position: 50% 50%; }
+.hero-half .hero-video { object-position: 50% 50%; }
 .hero-half.boys .hero-tint { background: linear-gradient(90deg, rgba(0, 98, 214, 0.45) 0%, rgba(0, 98, 214, 0.55) 38%, var(--blue) 58%); }
 .hero-half.girls .hero-tint { background: linear-gradient(270deg, rgba(196, 18, 127, 0.45) 0%, rgba(196, 18, 127, 0.55) 38%, var(--pink) 58%); }
 .hero-tint { position: absolute; inset: 0; }
