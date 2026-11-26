@@ -29,7 +29,8 @@ export default async function Home() {
     serverGet<{ season: { name: string; registrationOpensAt: string | null; registrationClosesAt: string | null } | null }>("/divisions/current"),
   ]);
   const reg = registrationWindow(current?.season?.registrationOpensAt, current?.season?.registrationClosesAt);
-  const h: Homepage = content?.homepage ?? DEFAULT_HOMEPAGE;
+  // Defaults fill any setting the server doesn't send yet (e.g. while a new field is rolling out).
+  const h: Homepage = { ...DEFAULT_HOMEPAGE, ...content?.homepage };
   const sh: SeasonSettings = { ...DEFAULT_SEASON_HOME, ...content?.seasonHome };
   const images = content?.images ?? {};
   const inSeason = schedule && (sh.mode === "season" || (sh.mode === "auto" && (schedule.season.status === "in_season" || schedule.season.status === "playoffs")));

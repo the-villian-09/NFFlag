@@ -52,7 +52,7 @@ export default async function DivisionsPage() {
 
   return (
     <main className="page">
-      <DivisionsSection h={c?.homepage ?? DEFAULT_HOMEPAGE} images={c?.images ?? {}} asPage />
+      <DivisionsSection h={{ ...DEFAULT_HOMEPAGE, ...c?.homepage }} images={c?.images ?? {}} asPage />
       <p style={{ marginTop: 24 }}>
         See every division&rsquo;s games and standings on the <Link href="/schedule">schedule</Link>.
       </p>

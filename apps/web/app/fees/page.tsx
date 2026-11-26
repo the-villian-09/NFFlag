@@ -31,7 +31,7 @@ function sections(body: string) {
  */
 export default async function FeesPage() {
   const [c, more] = await Promise.all([serverGet<{ homepage: Homepage }>("/homepage"), serverGet<{ page: ContentPage }>("/pages/fees")]);
-  const h = c?.homepage ?? DEFAULT_HOMEPAGE;
+  const h: Homepage = { ...DEFAULT_HOMEPAGE, ...c?.homepage };
   const all = sections(more?.page?.body ?? "");
   const included = all.find((s) => /includ/i.test(s.title));
   const questions = all.filter((s) => s !== included && /question|faq/i.test(s.title));

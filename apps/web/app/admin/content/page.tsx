@@ -1,5 +1,7 @@
 "use client";
 
+import { DEFAULT_HOMEPAGE } from "@nffl/shared";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -156,7 +158,7 @@ export default function AdminContentPage() {
         </p>
       </section>
 
-      {homepage && <HomepageForm initial={homepage} />}
+      {homepage && <HomepageForm initial={{ ...DEFAULT_HOMEPAGE, ...homepage }} />}
       {seasonHome && <SeasonHomeForm initial={seasonHome} />}
       {images && <PhotosCard initial={images} />}
 
