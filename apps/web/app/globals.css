@@ -932,3 +932,10 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-weight:
   /* Long section headings ("How registration works") fit a phone. */
   .section h2 { font-size: 44px; overflow-wrap: anywhere; }
 }
+
+/* Game location under Games on the home page. */
+.venue { display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.venue svg { flex: none; margin-top: 3px; color: var(--pink-bright); }
+.venue strong { display: block; font-size: 20px; line-height: 1.3; color: #fff; }
+.venue .muted-line { display: block; font-size: 18px; }
+.venue .directions { margin-top: 6px; }

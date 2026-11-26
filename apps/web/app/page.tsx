@@ -118,23 +118,28 @@ export default async function Home() {
           <div className="rule blue" />
           <p className="big-line">{h.gameDays}</p>
           <p className="muted-line">{h.gameDates}</p>
+          {h.venueName && (
+            <div className="venue">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z" />
+                <circle cx="12" cy="10" r="2.5" />
+              </svg>
+              <div>
+                <span className="sr-only">{h.venueTitle || "Game location"}: </span>
+                <strong>{h.venueName}</strong>
+                {h.venueAddress && <span className="muted-line">{h.venueAddress}</span>}
+                <a
+                  className="directions"
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent([h.venueName, h.venueAddress].filter(Boolean).join(", "))}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Get directions →
+                </a>
+              </div>
+            </div>
+          )}
         </div>
-        {h.venueName && (
-          <div>
-            <h2 style={{ marginBottom: 0 }}>{h.venueTitle || "Game location"}</h2>
-            <div className="rule pink" />
-            <p className="big-line">{h.venueName}</p>
-            {h.venueAddress && <p className="muted-line">{h.venueAddress}</p>}
-            <a
-              className="directions"
-              href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent([h.venueName, h.venueAddress].filter(Boolean).join(", "))}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Get directions →
-            </a>
-          </div>
-        )}
       </section>
 
       <HowItWorks />

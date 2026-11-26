@@ -125,19 +125,16 @@ export function HomepageForm({ initial }: { initial: Homepage }) {
           </div>
           <div className="form-row">
             <label>
-              Location title
-              <input type="text" name="venueTitle" maxLength={40} defaultValue={h.venueTitle} placeholder="Game location" />
-            </label>
-            <label>
-              Field name
+              Game field name
               <input type="text" name="venueName" maxLength={80} defaultValue={h.venueName} />
             </label>
+            <label>
+              Game field address
+              <input type="text" name="venueAddress" maxLength={120} defaultValue={h.venueAddress} />
+            </label>
           </div>
-          <label>
-            Field address
-            <input type="text" name="venueAddress" maxLength={120} defaultValue={h.venueAddress} />
-          </label>
-          <span className="hint">Shown beside Practice and Games with a Get directions link. Leave the field name blank to hide it.</span>
+          <input type="hidden" name="venueTitle" value={h.venueTitle} />
+          <span className="hint">Shown under Games with a Get directions link. Leave the field name blank to hide it.</span>
         </fieldset>
         <fieldset>
           <legend>Divisions</legend>
