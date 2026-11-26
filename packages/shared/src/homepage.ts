@@ -3,6 +3,13 @@ import { z } from "zod";
 /** Homepage facts the league edits in Admin → Site content → Homepage. Plain text, shown as typed. */
 const text = (max: number) => z.string().trim().max(max);
 const pair = z.object({ label: text(40), value: text(60) });
+const howStep = z.object({ title: text(50).min(1), text: text(200) });
+export const DEFAULT_HOW_STEPS = [
+    { title: "Create your account", text: "One free account per family. Confirm your email." },
+    { title: "Add your player", text: "Name, birth date and a photo of the birth certificate." },
+    { title: "Pick a division & sign", text: "You'll only see the divisions your child can join. Sign the waivers online." },
+    { title: "Pay & you're in", text: "Pay by card and get a receipt. You'll hear about your team after the draft." },
+  ];
 
 export const homepageSchema = z.object({
   /** Hero button, e.g. "Register · Dec 1 – Jan 3". */
@@ -22,6 +29,10 @@ export const homepageSchema = z.object({
   venueAddress: text(120).default("10727 Normandy Blvd, Jacksonville, FL 32221"),
   /** "What to bring" under Practice; empty hides it. */
   bringItems: z.array(text(60).min(1)).max(8).default(["Water bottle", "Cleats or sneakers (no metal)", "Shorts without pockets", "Mouthguard (recommended)"]),
+  /** "How registration works" on the home page; no steps hides the section. */
+  howTitle: text(60).default("How registration works"),
+  howIntro: text(200).default("About 10 minutes. Have your child's birth certificate and a card ready."),
+  howSteps: z.array(howStep).max(6).default(DEFAULT_HOW_STEPS),
   boysDivisions: z.array(text(20).min(1)).max(16),
   girlsDivisions: z.array(text(20).min(1)).max(16),
   registrationFee: text(20),
@@ -53,6 +64,9 @@ export const DEFAULT_HOMEPAGE: Homepage = {
   venueName: "Normandy Athletic Association Football Field",
   venueAddress: "10727 Normandy Blvd, Jacksonville, FL 32221",
   bringItems: ["Water bottle", "Cleats or sneakers (no metal)", "Shorts without pockets", "Mouthguard (recommended)"],
+  howTitle: "How registration works",
+  howIntro: "About 10 minutes. Have your child's birth certificate and a card ready.",
+  howSteps: DEFAULT_HOW_STEPS,
   boysDivisions: ["4U/5U", "6U", "7U", "8U", "9U", "10U", "11U", "12U"],
   girlsDivisions: ["4U/5U", "6U", "7U", "8U", "9U", "10U", "11U", "12U", "14U"],
   registrationFee: "$100",

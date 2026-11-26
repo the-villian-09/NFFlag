@@ -50,6 +50,11 @@ export function HomepageForm({ initial }: { initial: Homepage }) {
       venueName: s("venueName"),
       venueAddress: s("venueAddress"),
       bringItems: textToList(s("bringItems")),
+      howTitle: s("howTitle"),
+      howIntro: s("howIntro"),
+      howSteps: [0, 1, 2, 3, 4, 5]
+        .map((i) => ({ title: s(`howStep${i}Title`).trim(), text: s(`howStep${i}Text`).trim() }))
+        .filter((x) => x.title),
       boysDivisions: textToList(s("boysDivisions")),
       girlsDivisions: textToList(s("girlsDivisions")),
       registrationFee: s("registrationFee"),
@@ -141,6 +146,32 @@ export function HomepageForm({ initial }: { initial: Homepage }) {
             <input type="text" name="bringItems" defaultValue={listToText(h.bringItems)} />
           </label>
           <span className="hint">Up to 8 items. Leave blank to hide the list.</span>
+        </fieldset>
+        <fieldset>
+          <legend>How registration works</legend>
+          <div className="form-row">
+            <label>
+              Title
+              <input type="text" name="howTitle" maxLength={60} defaultValue={h.howTitle} />
+            </label>
+            <label>
+              Line under the title
+              <input type="text" name="howIntro" maxLength={200} defaultValue={h.howIntro} />
+            </label>
+          </div>
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div className="form-row" key={i}>
+              <label>
+                Step {i + 1} title
+                <input type="text" name={`howStep${i}Title`} maxLength={50} defaultValue={h.howSteps[i]?.title ?? ""} />
+              </label>
+              <label>
+                Step {i + 1} text
+                <input type="text" name={`howStep${i}Text`} maxLength={200} defaultValue={h.howSteps[i]?.text ?? ""} />
+              </label>
+            </div>
+          ))}
+          <span className="hint">Up to 6 steps, numbered in order. A step with no title is left out; clear them all to hide the section.</span>
         </fieldset>
         <fieldset>
           <legend>Divisions</legend>

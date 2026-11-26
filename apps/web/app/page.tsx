@@ -107,7 +107,7 @@ export default async function Home() {
       )}
 
 
-      <HowItWorks />
+      <HowItWorks h={h} />
 
       <section id="schedule" className="container section cols" aria-label="Weekly schedule">
         <div>

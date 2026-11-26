@@ -84,28 +84,23 @@ export function FeesSection({ h, asPage }: { h: Homepage; asPage?: boolean }) {
   );
 }
 
-const STEPS = [
-  { title: "Create your account", text: "One free account per family. Confirm your email." },
-  { title: "Add your player", text: "Name, birth date and a photo of the birth certificate." },
-  { title: "Pick a division & sign", text: "You'll only see the divisions your child can join. Sign the waivers online." },
-  { title: "Pay & you're in", text: "Pay by card and get a receipt. You'll hear about your team after the draft." },
-];
 
-/** Home page: the four steps of signing up. */
-export function HowItWorks() {
+/** Home page: the steps of signing up (Site content → Homepage). */
+export function HowItWorks({ h }: { h: Homepage }) {
+  if (!h.howSteps.length) return null;
   return (
     <section className="container section how" aria-labelledby="how-title">
       <div className="how-head">
         <div>
-          <h2 id="how-title">How registration works</h2>
-          <p className="muted">About 10 minutes. Have your child&rsquo;s birth certificate and a card ready.</p>
+          <h2 id="how-title">{h.howTitle || "How registration works"}</h2>
+          {h.howIntro && <p className="muted">{h.howIntro}</p>}
         </div>
         <Link href="/faq" className="directions">
           Questions? Read the FAQ →
         </Link>
       </div>
       <ol className="how-steps">
-        {STEPS.map((s, i) => (
+        {h.howSteps.map((s, i) => (
           <li key={s.title}>
             <b aria-hidden="true">{i + 1}</b>
             <strong>{s.title}</strong>
