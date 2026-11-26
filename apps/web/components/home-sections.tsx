@@ -1,4 +1,5 @@
 /** Divisions and fees from Site content → Homepage: on the registration home page and on their own pages. */
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Homepage, ImageSlots } from "@nffl/shared";
 import { imageFor } from "@/lib/season-home";
@@ -78,6 +79,76 @@ export function FeesSection({ h, asPage }: { h: Homepage; asPage?: boolean }) {
             </div>
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
+
+const STEPS = [
+  { title: "Create your account", text: "One free account per family. Confirm your email." },
+  { title: "Add your player", text: "Name, birth date and a photo of the birth certificate." },
+  { title: "Pick a division & sign", text: "You'll only see the divisions your child can join. Sign the waivers online." },
+  { title: "Pay & you're in", text: "Pay by card and get a receipt. You'll hear about your team after the draft." },
+];
+
+/** Home page: the four steps of signing up. */
+export function HowItWorks() {
+  return (
+    <section className="container section how" aria-labelledby="how-title">
+      <div className="how-head">
+        <div>
+          <h2 id="how-title">How registration works</h2>
+          <p className="muted">About 10 minutes. Have your child&rsquo;s birth certificate and a card ready.</p>
+        </div>
+        <Link href="/faq" className="directions">
+          Questions? Read the FAQ →
+        </Link>
+      </div>
+      <ol className="how-steps">
+        {STEPS.map((s, i) => (
+          <li key={s.title}>
+            <b aria-hidden="true">{i + 1}</b>
+            <strong>{s.title}</strong>
+            <span>{s.text}</span>
+          </li>
+        ))}
+      </ol>
+      <p className="how-cta">
+        <Link href="/sign-up" className="btn">
+          Create your family account
+        </Link>
+        <span className="muted">
+          Already have one? <Link href="/sign-in">Sign in</Link>
+        </span>
+      </p>
+    </section>
+  );
+}
+
+/** Home page: boys and girls cards that lead to the birth-date chart on the Divisions page. */
+export function DivisionFinderTeaser({ h }: { h: Homepage }) {
+  const sides = [
+    { key: "boys", label: "Boys", ages: h.boysDivisions, range: h.boysAgeRange },
+    { key: "girls", label: "Girls", ages: h.girlsDivisions, range: h.girlsAgeRange },
+  ];
+  return (
+    <section className="container section" aria-labelledby="finder-teaser-title">
+      <h2 id="finder-teaser-title">Find your division</h2>
+      <div className="finder-teaser">
+        {sides.map((s) => (
+          <Link key={s.key} href="/divisions#finder-title" className={`finder-card ${s.key}`}>
+            <span className="finder-card-head">
+              <strong>{s.label}</strong>
+              <span>See birth dates →</span>
+            </span>
+            <span className="finder-chips">
+              {s.ages.map((a) => (
+                <span key={a}>{a}</span>
+              ))}
+            </span>
+            {s.range && <span className="muted">{s.range}</span>}
+          </Link>
+        ))}
       </div>
     </section>
   );

@@ -888,3 +888,47 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-weight:
 .pw-toggle { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); min-height: 40px; min-width: 64px; padding: 0 12px; border: 0; background: transparent; color: var(--navy); font: inherit; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; }
 .pw-toggle:hover { text-decoration: underline; }
 .next-steps { margin: 16px 0 0; font-size: 16px; font-weight: 500; }
+
+/* ---------- Home: countdown, How registration works, division finder, fee strip, phone Register bar ---------- */
+.countdown-box { flex: none; justify-self: start; align-self: center; display: flex; align-items: center; gap: 14px; background: var(--navy); color: #fff; padding: 10px 18px 6px; clip-path: polygon(3% 0, 100% 0, 97% 100%, 0 100%); }
+.dates-band .countdown-box b { font-family: var(--font-display); font-weight: 700; font-size: 54px; line-height: 0.8; color: var(--lime); }
+.dates-band .countdown-box span { display: flex; flex-direction: column; font-size: 15px; font-weight: 600; letter-spacing: 0; line-height: 1.15; color: #fff; }
+.dates-band .countdown-box strong { font-family: var(--font-body); font-size: 15px; text-transform: uppercase; letter-spacing: 0.08em; color: #fff; }
+.how-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.how-head > div { flex: 1 1 280px; min-width: 0; }
+.how-head h2 { margin-bottom: 4px; }
+.how-head p { margin: 0; }
+.how-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 16px; }
+.how-steps li { background: var(--navy-2); border-top: 4px solid var(--lime); padding: 22px 22px 24px; display: flex; flex-direction: column; gap: 8px; }
+.how-steps b { font-family: var(--font-display); font-weight: 700; font-size: 48px; line-height: 0.8; color: var(--lime); }
+.how-steps strong { font-size: 21px; color: #fff; }
+.how-steps span { font-weight: 400; font-size: 17px; color: #c9d6e4; }
+.how-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin: 20px 0 0; }
+.finder-teaser { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr)); gap: 16px; }
+.finder-card { display: flex; flex-direction: column; gap: 12px; padding: 22px 24px; background: var(--navy-2); border-top: 4px solid var(--blue-bright); color: var(--ink); text-decoration: none; }
+.finder-card.girls { background: var(--pink-deep); border-top-color: var(--pink-bright); }
+.finder-card:hover { color: var(--ink); outline: 2px solid var(--lime); outline-offset: -2px; }
+.finder-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.finder-card-head strong { font-family: var(--font-display); font-weight: 600; font-size: 44px; line-height: 0.9; text-transform: uppercase; color: #fff; }
+.finder-card-head span { color: var(--lime); font-weight: 800; text-transform: uppercase; font-size: 15px; letter-spacing: 0.05em; }
+.finder-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.finder-chips span { background: var(--navy-3); padding: 4px 12px 0; font-family: var(--font-display); font-size: 26px; line-height: 1.2; }
+.finder-card.girls .finder-chips span { background: var(--pink-chip); }
+.fee-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; background: var(--navy-2); padding: 22px 28px; margin-top: 16px; }
+.fee-strip-main { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; }
+.fee-strip h2 { margin: 0; font-size: 40px; }
+.fee-strip-amount { font-family: var(--font-display); font-weight: 700; font-size: 54px; line-height: 0.8; color: var(--lime); }
+.register-bar { display: none; }
+@media (max-width: 960px) {
+  .register-bar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--navy); border-top: 3px solid var(--lime); box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5); }
+  .register-bar-text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+  .register-bar-text strong { font-size: 16px; color: #fff; }
+  .register-bar-text span { font-size: 14px; color: var(--ink-muted); }
+  .register-bar .btn.small { min-height: 48px; white-space: nowrap; color: var(--navy); }
+  /* Room so the bar never covers the bottom of the page. */
+  body:has(.register-bar) .site-footer { padding-bottom: 88px; }
+}
+@media (max-width: 600px) {
+  /* Long section headings ("How registration works") fit a phone. */
+  .section h2 { font-size: 44px; overflow-wrap: anywhere; }
+}

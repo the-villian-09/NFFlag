@@ -37,6 +37,10 @@ describe("divisions page", () => {
     const page = await agent().get("/api/v1/pages/divisions");
     expect(page.status).toBe(200);
     expect(page.body.page.body).toContain("What to expect at each age");
+    expect(res.body.season === null || "registrationOpensAt" in res.body.season).toBe(true);
+    const fees = await agent().get("/api/v1/pages/fees");
+    expect(fees.status).toBe(200);
+    expect(fees.body.page.body).toContain("What's included");
   });
 });
 
@@ -97,6 +101,7 @@ describe("admin content editing", () => {
     expect(list.body.items.filter((p: { custom: boolean }) => !p.custom).map((p: { slug: string }) => p.slug)).toEqual([
       "about",
       "divisions",
+      "fees",
       "rules",
       "coaches",
       "faq",

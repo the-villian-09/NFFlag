@@ -232,7 +232,16 @@ registrationRouter.get(
       })),
     );
     res.set("Cache-Control", "public, max-age=60");
-    res.json({ season: { name: season.name, ageCutoffDate: season.ageCutoffDate }, divisions: items });
+    res.json({
+      season: {
+        name: season.name,
+        ageCutoffDate: season.ageCutoffDate,
+        // For the home page countdown ("opens in 5 days" / "closes in 3 days").
+        registrationOpensAt: season.registrationOpensAt,
+        registrationClosesAt: season.registrationClosesAt,
+      },
+      divisions: items,
+    });
   }),
 );
 

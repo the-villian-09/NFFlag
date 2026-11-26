@@ -15,6 +15,7 @@ export interface DefaultPage {
 export const PAGE_SLUGS = [
   "about",
   "divisions",
+  "fees",
   "rules",
   "coaches",
   "faq",
@@ -35,6 +36,31 @@ export type PageSlug = (typeof PAGE_SLUGS)[number];
 export const FORM_PAGE_SLUGS = [...WAIVER_SLUGS, "volunteer-agreement"] as const;
 
 export const DEFAULT_PAGES: DefaultPage[] = [
+  {
+    slug: "fees",
+    title: "Fees page (below the price boxes)",
+    body: `## What's included
+
+- Every practice and regular-season game
+- Playoffs and championship weekend
+- Background-checked coaches who have signed the [Coaches Honor](/coaches-honor)
+
+## When you pay
+
+In full by card when you register. Your spot is held while you check out, and you'll get an emailed receipt. Any card processing fee is shown before you pay.
+
+## Promo codes
+
+Have a promo code? Enter it at checkout.
+
+## Refunds
+
+Refunds follow the refund policy in our [Rules and policies](/rules). You can request one from **My account**.
+
+## Questions about cost?
+
+[Contact us](/contact). We'll do our best to help.`,
+  },
   {
     slug: "divisions",
     title: "Divisions page (below the boys and girls cards)",

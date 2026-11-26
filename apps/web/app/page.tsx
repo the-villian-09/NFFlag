@@ -4,7 +4,9 @@ import { DEFAULT_HOMEPAGE, DEFAULT_SEASON_HOME, type Homepage, type ImageSlots, 
 import { SeasonHome, type NewsItem } from "@/components/season-home";
 import { serverGet } from "@/lib/server-api";
 import { imageFor, type HomeDivision } from "@/lib/season-home";
-import { DivisionsSection, FeesSection } from "@/components/home-sections";
+import { DivisionFinderTeaser, HowItWorks } from "@/components/home-sections";
+import { RegisterBar } from "@/components/register-bar";
+import { registrationWindow } from "@/lib/registration-window";
 import { HeroVideo } from "@/components/hero-video";
 
 /**
@@ -21,10 +23,12 @@ interface ScheduleData {
 }
 
 export default async function Home() {
-  const [content, schedule] = await Promise.all([
+  const [content, schedule, current] = await Promise.all([
     serverGet<{ homepage: Homepage; seasonHome?: SeasonSettings; images?: Partial<ImageSlots> }>("/homepage"),
     serverGet<ScheduleData>("/schedule"),
+    serverGet<{ season: { name: string; registrationOpensAt: string | null; registrationClosesAt: string | null } | null }>("/divisions/current"),
   ]);
+  const reg = registrationWindow(current?.season?.registrationOpensAt, current?.season?.registrationClosesAt);
   const h: Homepage = content?.homepage ?? DEFAULT_HOMEPAGE;
   const sh: SeasonSettings = { ...DEFAULT_SEASON_HOME, ...content?.seasonHome };
   const images = content?.images ?? {};
@@ -80,9 +84,18 @@ export default async function Home() {
         </div>
       </section>
 
-      {h.keyDates.length > 0 && (
+      {(h.keyDates.length > 0 || reg.days !== null) && (
         <section className="dates-band" aria-label="Key dates">
           <div className="container">
+            {reg.days !== null && (reg.state === "before" || reg.state === "open") && (
+              <div className="countdown-box">
+                <b>{reg.days}</b>
+                <span>
+                  <strong>{reg.days === 1 ? "day" : "days"}</strong>
+                  {reg.state === "before" ? "until registration opens" : "left to register"}
+                </span>
+              </div>
+            )}
             {h.keyDates.map((d) => (
               <div key={d.label + d.value}>
                 <span>{d.label}</span>
@@ -124,8 +137,21 @@ export default async function Home() {
         )}
       </section>
 
-      <DivisionsSection h={h} images={images} />
-      <FeesSection h={h} />
+      <HowItWorks />
+      <DivisionFinderTeaser h={h} />
+
+      <section className="container" aria-labelledby="fee-strip-title">
+        <div className="fee-strip">
+          <div className="fee-strip-main">
+            <h2 id="fee-strip-title">Fees</h2>
+            <span className="fee-strip-amount">{h.registrationFee}</span>
+            <span className="muted">{h.registrationFeeNote}</span>
+          </div>
+          <Link href="/fees" className="directions">
+            What&rsquo;s included &amp; refunds →
+          </Link>
+        </div>
+      </section>
 
       <section className="cta-band">
         <div className="container">
@@ -138,6 +164,7 @@ export default async function Home() {
           </Link>
         </div>
       </section>
+      <RegisterBar title={[current?.season?.name, h.registrationFee].filter(Boolean).join(" · ")} detail={reg.short} />
     </main>
   );
 }
