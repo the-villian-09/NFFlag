@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
 import { authApi } from "@/lib/api";
+import { PasswordInput } from "@/components/password-input";
 
 function ResetForm() {
   const token = useSearchParams().get("token");
@@ -24,7 +25,7 @@ function ResetForm() {
       <ErrorAlert error={error} />
       <label>
         New password
-        <input type="password" name="password" autoComplete="new-password" minLength={10} required />
+        <PasswordInput name="password" autoComplete="new-password" minLength={10} required />
       </label>
       <button className="btn" disabled={busy}>
         {busy ? "Saving…" : "Set new password"}

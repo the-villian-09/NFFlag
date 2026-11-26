@@ -152,7 +152,7 @@ img { max-width: 100%; }
 .hero-center { grid-column: 1 / -1; grid-row: 1; justify-self: center; align-self: start; width: min(560px, 46%); min-width: 0; padding: 36px 0 40px; display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; z-index: 2; }
 .hero-center img { width: 300px; max-width: 70%; height: auto; }
 .hero-center h1 { font-weight: 700; font-size: clamp(40px, 5vw, 76px); line-height: 0.9; color: #fff; background: var(--navy); padding: 12px 24px 4px; }
-.hero-center .tagline { margin: 0; font-weight: 800; font-size: 15px; letter-spacing: 0.16em; text-transform: uppercase; color: #fff; background: rgba(1, 19, 34, 0.75); padding: 4px 12px; }
+.hero-center .tagline { text-wrap: balance; margin: 0; font-weight: 800; font-size: 15px; letter-spacing: 0.16em; text-transform: uppercase; color: #fff; background: rgba(1, 19, 34, 0.75); padding: 4px 12px; }
 
 @media (max-width: 1180px) and (min-width: 761px) {
   .hero-center { width: min(460px, 42%); }
@@ -878,3 +878,13 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-weight:
 .div-more .prose h2 { margin-top: 48px; }
 .div-more .prose h2:first-child { margin-top: 0; }
 @media (max-width: 600px) { .div-finder h2 { font-size: 40px; } .div-finder-group { padding: 12px 12px 4px; } }
+
+/* Banner tagline: break between items only. */
+.tagline .tg-item { display: inline-block; white-space: nowrap; }
+
+/* Password boxes with a Show / Hide button. */
+.pw-field { position: relative; display: block; }
+.pw-field input { width: 100%; padding-right: 76px; }
+.pw-toggle { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); min-height: 40px; min-width: 64px; padding: 0 12px; border: 0; background: transparent; color: var(--navy); font: inherit; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; }
+.pw-toggle:hover { text-decoration: underline; }
+.next-steps { margin: 16px 0 0; font-size: 16px; font-weight: 500; }

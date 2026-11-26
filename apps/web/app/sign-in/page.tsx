@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
 import { ApiError, authApi } from "@/lib/api";
+import { PasswordInput } from "@/components/password-input";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -47,7 +48,7 @@ export default function SignInPage() {
           </label>
           <label>
             Password
-            <input type="password" name="password" autoComplete="current-password" required />
+            <PasswordInput name="password" autoComplete="current-password" required />
           </label>
           <button className="btn" disabled={busy}>
             {busy ? "Signing in…" : "Sign in"}

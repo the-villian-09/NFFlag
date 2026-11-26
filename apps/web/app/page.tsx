@@ -40,7 +40,20 @@ export default async function Home() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/images/nffl-logo.svg" alt="NFFL logo" className="logo-outline-lg" width={300} height={233} fetchPriority="high" />
           <h1 id="hero-title">North Florida Flag League</h1>
-          {h.tagline && <p className="tagline">{h.tagline}</p>}
+          {h.tagline && (
+            <p className="tagline">
+              {/* Wraps between items, never in the middle of one. */}
+              {h.tagline.split(" · ").map((t, i, all) => (
+                <span key={t + i}>
+                  <span className="tg-item">
+                    {t}
+                    {i < all.length - 1 && <span aria-hidden="true"> ·</span>}
+                  </span>
+                  {i < all.length - 1 && " "}
+                </span>
+              ))}
+            </p>
+          )}
           <Link href="/sign-up" className="btn">
             {h.registerButton}
           </Link>

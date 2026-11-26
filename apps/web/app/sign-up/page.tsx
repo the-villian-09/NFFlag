@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ErrorAlert, useAction } from "@/components/form";
 import { useTurnstile } from "@/components/turnstile";
 import { authApi } from "@/lib/api";
+import { PasswordInput } from "@/components/password-input";
 
 export default function SignUpPage() {
   const { busy, error, run } = useAction();
@@ -79,7 +80,7 @@ export default function SignUpPage() {
           </label>
           <label>
             Password
-            <input type="password" name="password" autoComplete="new-password" minLength={10} required />
+            <PasswordInput name="password" autoComplete="new-password" minLength={10} required />
             <span className="muted" style={{ fontWeight: 400 }}>
               At least 10 characters.
             </span>
@@ -89,6 +90,10 @@ export default function SignUpPage() {
           </button>
           {human.slot}
         </form>
+        <p className="muted next-steps">
+          Next: we&rsquo;ll email you a link to confirm your address. Then add your child and choose their division, sign the waivers and pay, all from{" "}
+          <strong>My account</strong>.
+        </p>
         <p className="muted" style={{ marginTop: 16 }}>
           Already have an account? <Link href="/sign-in">Sign in</Link>
         </p>
