@@ -106,6 +106,9 @@ export default async function Home() {
         </section>
       )}
 
+
+      <HowItWorks />
+
       <section id="schedule" className="container section cols" aria-label="Weekly schedule">
         <div>
           <h2 style={{ marginBottom: 0 }}>Practice</h2>
@@ -157,8 +160,6 @@ export default async function Home() {
           )}
         </div>
       </section>
-
-      <HowItWorks />
       <DivisionFinderTeaser h={h} />
 
       <section className="container" aria-labelledby="fee-strip-title">

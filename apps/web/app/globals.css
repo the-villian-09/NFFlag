@@ -942,3 +942,26 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-weight:
 .venue.bring svg { color: var(--lime); }
 .venue.bring > div { flex: 1; min-width: 0; }
 .venue.bring ul { margin: 4px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 2px 20px; color: #c9d6e4; font-size: 18px; }
+
+/* ---------- Fees page ---------- */
+.fees-page { display: flex; flex-direction: column; gap: 16px; }
+.fees-page .rule { margin-bottom: 8px; }
+.fees-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 16px; }
+.fees-price { background: var(--lime); color: var(--navy); padding: 26px 28px; display: flex; flex-direction: column; gap: 6px; }
+.fees-label { font-size: 15px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+.fees-amount { font-family: var(--font-display); font-weight: 700; font-size: 104px; line-height: 0.8; margin-top: 6px; }
+.btn.dark { align-self: flex-start; margin-top: 14px; background: var(--navy); color: #fff; }
+.btn.dark:hover { background: #0b2440; color: #fff; }
+.fees-card { background: var(--navy-2); padding: 22px 26px; display: flex; flex-direction: column; gap: 8px; }
+.fees-card h2 { font-size: 32px; line-height: 1; color: #fff; margin: 0; }
+.fees-card .prose { font-size: 17px; font-weight: 400; line-height: 1.55; }
+.fees-card .prose p:last-child, .fees-card .prose ul:last-child { margin-bottom: 0; }
+.fees-included .prose ul { list-style: none; padding: 0; display: grid; gap: 8px; }
+.fees-included .prose li { position: relative; padding-left: 30px; margin: 0; }
+.fees-included .prose li::before { content: ""; position: absolute; left: 2px; top: 5px; width: 14px; height: 8px; border-left: 3px solid var(--lime); border-bottom: 3px solid var(--lime); transform: rotate(-45deg); }
+.fees-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 16px; }
+.fees-cards.two { grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); }
+.fees-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 19px; }
+.fees-row b { font-family: var(--font-display); font-weight: 600; font-size: 34px; line-height: 1; }
+.fees-row b.free { color: var(--lime); }
+.fees-card > .muted { margin: 4px 0 0; font-size: 16px; }
