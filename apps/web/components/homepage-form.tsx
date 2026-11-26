@@ -49,6 +49,7 @@ export function HomepageForm({ initial }: { initial: Homepage }) {
       venueTitle: s("venueTitle"),
       venueName: s("venueName"),
       venueAddress: s("venueAddress"),
+      bringItems: textToList(s("bringItems")),
       boysDivisions: textToList(s("boysDivisions")),
       girlsDivisions: textToList(s("girlsDivisions")),
       registrationFee: s("registrationFee"),
@@ -135,6 +136,11 @@ export function HomepageForm({ initial }: { initial: Homepage }) {
           </div>
           <input type="hidden" name="venueTitle" value={h.venueTitle} />
           <span className="hint">Shown under Games with a Get directions link. Leave the field name blank to hide it.</span>
+          <label>
+            What to bring (under Practice), separated by commas
+            <input type="text" name="bringItems" defaultValue={listToText(h.bringItems)} />
+          </label>
+          <span className="hint">Up to 8 items. Leave blank to hide the list.</span>
         </fieldset>
         <fieldset>
           <legend>Divisions</legend>

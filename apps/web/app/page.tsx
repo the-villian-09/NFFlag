@@ -112,6 +112,22 @@ export default async function Home() {
           <div className="rule" />
           <p className="big-line">{h.practiceDays}</p>
           <p className="muted-line">{h.practiceTimes}</p>
+          {h.bringItems.length > 0 && (
+            <div className="venue bring">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 7h12l-1 13H7L6 7z" />
+                <path d="M9 7a3 3 0 0 1 6 0" />
+              </svg>
+              <div>
+                <strong>What to bring</strong>
+                <ul>
+                  {h.bringItems.map((i) => (
+                    <li key={i}>{i}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
         </div>
         <div>
           <h2 style={{ marginBottom: 0 }}>Games</h2>

@@ -20,6 +20,8 @@ export const homepageSchema = z.object({
   venueTitle: text(40).default("Game location"),
   venueName: text(80).default("Normandy Athletic Association Football Field"),
   venueAddress: text(120).default("10727 Normandy Blvd, Jacksonville, FL 32221"),
+  /** "What to bring" under Practice; empty hides it. */
+  bringItems: z.array(text(60).min(1)).max(8).default(["Water bottle", "Cleats or sneakers (no metal)", "Shorts without pockets", "Mouthguard (recommended)"]),
   boysDivisions: z.array(text(20).min(1)).max(16),
   girlsDivisions: z.array(text(20).min(1)).max(16),
   registrationFee: text(20),
@@ -50,6 +52,7 @@ export const DEFAULT_HOMEPAGE: Homepage = {
   venueTitle: "Game location",
   venueName: "Normandy Athletic Association Football Field",
   venueAddress: "10727 Normandy Blvd, Jacksonville, FL 32221",
+  bringItems: ["Water bottle", "Cleats or sneakers (no metal)", "Shorts without pockets", "Mouthguard (recommended)"],
   boysDivisions: ["4U/5U", "6U", "7U", "8U", "9U", "10U", "11U", "12U"],
   girlsDivisions: ["4U/5U", "6U", "7U", "8U", "9U", "10U", "11U", "12U", "14U"],
   registrationFee: "$100",
