@@ -31,6 +31,21 @@ export function SiteNav({ extra = [] }: { extra?: SiteLink[] }) {
   }, [open]);
 
   const close = () => setOpen(false);
+
+  // "Sign in" for visitors, "My account" once signed in. Rechecked on each page
+  // change so it updates right after signing in or out.
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/auth/get-session", { credentials: "same-origin", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => live && setSignedIn(!!s?.session))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [pathname]);
+  const account = signedIn ? { href: "/dashboard", label: "My account" } : { href: "/sign-in", label: "Sign in" };
   // Pages the league added: in the phone menu before Contact; on a computer under "More" so the header stays on one line.
   const links = [...LINKS.slice(0, -1), ...extra, LINKS[LINKS.length - 1]!];
   const [moreOpen, setMoreOpen] = useState(false);
@@ -71,16 +86,16 @@ export function SiteNav({ extra = [] }: { extra?: SiteLink[] }) {
           </div>
         )}
         <Link href={LINKS[LINKS.length - 1]!.href}>{LINKS[LINKS.length - 1]!.label}</Link>
-        <Link href="/dashboard" className="nav-signin">
-          My account
+        <Link href={account.href} className="nav-signin">
+          {account.label}
         </Link>
-        <Link href="/sign-up" className="btn small">
+        <Link href={signedIn ? "/register" : "/sign-up"} className="btn small">
           Register
         </Link>
       </nav>
 
       <div className="mobile-actions">
-        <Link href="/sign-up" className="btn small" onClick={close}>
+        <Link href={signedIn ? "/register" : "/sign-up"} className="btn small" onClick={close}>
           Register
         </Link>
         <button
@@ -107,8 +122,8 @@ export function SiteNav({ extra = [] }: { extra?: SiteLink[] }) {
             {l.label}
           </Link>
         ))}
-        <Link href="/dashboard" className="nav-signin" onClick={close}>
-          My account
+        <Link href={account.href} className="nav-signin" onClick={close}>
+          {account.label}
         </Link>
       </nav>
     </>

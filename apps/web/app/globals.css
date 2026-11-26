@@ -29,6 +29,9 @@
 }
 
 * { box-sizing: border-box; }
+/* Keep the footer at the bottom of the window on short pages. */
+body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.site-main { flex: 1 0 auto; }
 html, body { margin: 0; padding: 0; }
 body {
   background: var(--navy);
@@ -85,8 +88,10 @@ img { max-width: 100%; }
   }
   .mobile-menu a.nav-signin { color: var(--lime); }
 }
-@media (max-width: 360px) {
+@media (max-width: 600px) {
+  /* The shield already says NFFL; the full name wrapped to three lines beside the buttons. */
   .brand span { display: none; }
+  .brand img { height: 52px; }
 }
 
 /* Register button in the nav: dark navy text on lime (the nav link color must not override it) */
@@ -99,6 +104,11 @@ img { max-width: 100%; }
 .footer-brand span { font-size: 14px; }
 .footer-links { display: flex; flex-wrap: wrap; gap: 8px 20px; max-width: 520px; }
 .footer-links a, .footer-contact a { color: #c9d6e4; text-decoration: none; }
+@media (max-width: 960px), (pointer: coarse) {
+  /* Easy to tap with a thumb (44px). */
+  .footer-links { gap: 0 16px; }
+  .footer-links a, .footer-contact a { display: inline-flex; align-items: center; min-height: 44px; }
+}
 .footer-links a:hover, .footer-contact a:hover { color: var(--lime); text-decoration: underline; }
 .footer-contact { display: flex; flex-direction: column; gap: 4px; }
 .site-footer .footer-bottom { padding-top: 16px; padding-bottom: 24px; border-top: 1px solid var(--line); font-size: 14px; }

@@ -56,7 +56,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <SiteNav extra={[COACHES_HONOR_LINK, ...(site?.links?.menu ?? [])]} />
           </div>
         </header>
-        {children}
+        <div className="site-main">{children}</div>
         <footer className="site-footer">
           <div className="container footer-top">
             <div className="footer-brand">
