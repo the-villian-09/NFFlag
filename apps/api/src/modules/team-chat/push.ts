@@ -75,7 +75,9 @@ export async function pushTo(userIds: string[], teamId: string | null, msg: Push
         try {
           await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, {
             TTL: opts.urgent ? 6 * 3600 : 3600,
-            urgency: opts.urgent ? "high" : "normal",
+            // Always high, like a text: every push shows a visible notification, so
+            // Android and iPhone deliver it right away without penalty.
+            urgency: "high",
           });
           await db.update(pushSubscriptions).set({ lastUsedAt: new Date() }).where(eq(pushSubscriptions.id, s.id));
         } catch (err) {
