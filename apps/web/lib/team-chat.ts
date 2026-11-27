@@ -192,7 +192,18 @@ export async function enablePush(): Promise<{ ok: boolean; message: string }> {
   if (permission !== "granted") return { ok: false, message: "Notifications are blocked for this site. Turn them on in your browser's settings." };
   const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
   await navigator.serviceWorker.ready;
-  const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) }));
+  let sub: PushSubscription;
+  try {
+    sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) }));
+  } catch {
+    const brave = "brave" in navigator;
+    return {
+      ok: false,
+      message: brave
+        ? "Brave blocked it. In Brave, open Settings → Privacy and security and turn on \"Use Google services for push messaging\", then try again."
+        : "This browser's notification service didn't answer. Try again, or use Chrome.",
+    };
+  }
   await api.post("/push/subscriptions", sub.toJSON());
   return { ok: true, message: "Notifications are on for this device." };
 }

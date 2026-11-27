@@ -154,20 +154,25 @@ function Thread({ space, view, me, onRead, onOther }: { space: SpaceDetail; view
     void api.post(`/team-spaces/${teamId}/read`, { view }).then(onRead).catch(() => {});
   }, [teamId, view, space.role, onRead]);
 
-  const load = useCallback(() => {
+  const load = useCallback((attempt = 0) => {
     api
       .get<{ items: Message[]; more: boolean; members: number }>(`/team-spaces/${teamId}/messages?view=${view}`)
       .then((r) => {
+        setError(null);
         // The API returns oldest first (right for chat); updates read newest first.
         setItems(view === "feed" ? [...r.items].reverse() : r.items);
         setMore(r.more);
         setMembers(r.members);
         markRead();
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load messages."));
+      .catch((err) => {
+        // A phone waking up often has no connection for a moment: retry quietly first.
+        if (attempt < 3 && !(err instanceof ApiError)) setTimeout(() => load(attempt + 1), 1500 * (attempt + 1));
+        else setError(err instanceof ApiError ? err.message : "Couldn't reach NFFL. Check your connection and pull down to refresh.");
+      });
   }, [teamId, view, markRead]);
 
-  useEffect(load, [load]);
+  useEffect(() => load(), [load]);
   useEffect(() => {
     if (isChat) bottom.current?.scrollIntoView({ block: "end" });
   }, [items?.length, isChat]);
@@ -191,7 +196,7 @@ function Thread({ space, view, me, onRead, onOther }: { space: SpaceDetail; view
         load();
       }
     },
-    load,
+    () => load(),
   );
 
   async function older() {
@@ -554,6 +559,11 @@ function Schedule({ space }: { space: SpaceDetail }) {
 
 /* ---------------- members and notification settings ---------------- */
 
+/** Brave blocks website notifications on Android until a setting is turned on. */
+function isBrave() {
+  return typeof navigator !== "undefined" && "brave" in navigator && /android/i.test(navigator.userAgent);
+}
+
 function TeamInfo({ space, muted, setMuted }: { space: SpaceDetail; muted: boolean; setMuted: (v: boolean) => void }) {
   const [push, setPush] = useState<"unknown" | "on" | "off">("unknown");
   const [note, setNote] = useState<string | null>(null);
@@ -627,6 +637,11 @@ function TeamInfo({ space, muted, setMuted }: { space: SpaceDetail; muted: boole
       {space.role !== "admin" && (
         <div className="card">
           <h2>Notifications</h2>
+          {isBrave() && (
+            <p className="tc-note">
+              Using Brave? Notifications need one setting: Brave <strong>Settings → Privacy and security → Use Google services for push messaging</strong>. Turn it on, then tap Turn off and Turn on below. Chrome works without this.
+            </p>
+          )}
           {needsHomeScreen() && push !== "on" && (
             <p className="tc-note">
               On iPhone, tap <strong>Share</strong> then <strong>Add to Home Screen</strong>, and open NFFL from your Home Screen to turn on notifications.
