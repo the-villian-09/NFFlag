@@ -1027,8 +1027,9 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-weight:
 .tc-bubble-row.mine { align-self: flex-end; align-items: flex-end; }
 .tc-who { font-size: 15px; margin-bottom: 3px; }
 .tc-staff-tag { display: inline-block; padding: 1px 8px; background: var(--navy-3); color: #cfe6ff; font-size: 13px; font-weight: 700; }
-.tc-bubble { background: var(--navy-2); padding: 8px 14px; border-radius: 4px 16px 16px 16px; }
-.tc-bubble-row.mine .tc-bubble { background: #0b4a8f; border-radius: 16px 4px 16px 16px; }
+/* Same slanted, square-cornered shape as the site's buttons (fixed 10px slant so long messages don't lean more). */
+.tc-bubble { background: var(--navy-2); padding: 9px 24px; clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+.tc-bubble-row.mine .tc-bubble { background: var(--blue); }
 .tc-bubble .tc-body { margin: 0; font-size: 17px; }
 .tc-meta { display: none; gap: 10px; align-items: center; font-size: 13px; color: var(--ink-muted); }
 .tc-bubble-row:hover .tc-meta, .tc-bubble-row:focus-within .tc-meta, .tc-bubble-row:not(.grouped) .tc-meta { display: flex; }
