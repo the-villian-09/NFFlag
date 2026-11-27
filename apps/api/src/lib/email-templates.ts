@@ -383,4 +383,24 @@ export const templates = {
       button: { label: "Open My account", url: d.url },
     });
   },
+
+  teamAlert(to: string, d: { team: string; from: string; body: string; url: string }): EmailMessage {
+    const first = d.body.split("\n")[0]!.slice(0, 80);
+    return message(to, "team.alert", `${d.team}: ${first}`, {
+      preheader: `Alert from ${d.from}`,
+      heading: `Team alert: ${d.team}`,
+      paragraphs: [...d.body.split(/\n{2,}/).slice(0, 8), `Sent by ${d.from}. Open the team page for details and replies.`],
+      button: { label: "Open team page", url: d.url },
+    });
+  },
+
+  rsvpReminder(to: string, d: { team: string; event: string; when: string; url: string }): EmailMessage {
+    return message(to, "team.rsvp_reminder", `${d.team}: are you coming ${d.when}?`, {
+      preheader: `Let the coach know about ${d.event}.`,
+      heading: "Let the coach know",
+      paragraphs: [`The coach is planning for ${d.event} and hasn't heard from you yet. Tap below and choose Yes, Maybe or No for your player.`],
+      details: [["Team", d.team], ["Event", d.event], ["When", d.when]],
+      button: { label: "Answer now", url: d.url },
+    });
+  },
 };

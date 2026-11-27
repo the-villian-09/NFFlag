@@ -211,6 +211,13 @@ Refunds always go back through the provider that took the payment.
 
 Test cards: `4242 4242 4242 4242` (succeeds), `4000 0025 0000 3155` (asks for the bank check), `4000 0000 0000 9995` (declined).
 
+### Team page notifications (Web Push)
+
+Team pages work without this (alerts still go by email); this adds phone and browser notifications.
+In Cloud Shell, from the `infra` folder: `bash set-push.sh staging nffl-staging-513215` (or `prod nffl-production`).
+It makes the key pair in Cloud Shell, so there is nothing to copy or paste. Re-running keeps the existing keys.
+Turn the feature on for families in Admin → Release switches → `r6.team_chat` (league admins can use it while it's off).
+
 ### Referee pay (Stripe Connect)
 
 Referees get a Stripe connected account through embedded components on `/referees` (Stripe holds their tax ID and bank details).

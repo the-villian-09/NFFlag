@@ -4,3 +4,4 @@ export * from "./league.js";
 export * from "./content.js";
 export * from "./sms.js";
 export * from "./forms.js";
+export * from "./team-chat.js";

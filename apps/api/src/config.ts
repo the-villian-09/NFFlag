@@ -49,6 +49,12 @@ const envSchema = z.object({
   /** Signing secret of the webhook endpoint in the Stripe dashboard (whsec_…). */
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
+  /* Push alerts to phones and browsers (team spaces). Generate once with
+     infra/set-push.sh; without them the "Turn on alerts" button is hidden. */
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default("mailto:info@nfflag.com"),
+
   /* Uploaded documents and photos. Staging/production: a private Cloud Storage
      bucket (the API's service account reads and writes it). Local dev and
      tests: a folder on disk. */

@@ -42,6 +42,7 @@ export const FLAG = {
   practices: "r3.practices",
   games: "r4.games",
   announcements: "r4.announcements",
+  teamChat: "r6.team_chat",
 } as const;
 
 /**

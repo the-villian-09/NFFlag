@@ -151,6 +151,8 @@ export const DOMAIN_EVENTS = [
   "announcement.sent",
   "referee.application_submitted",
   "form.reminder",
+  "team.alert",
+  "team.rsvp_reminder",
   "referee.application_decided",
   "referee.assigned",
   "referee.unassigned",

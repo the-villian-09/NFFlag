@@ -32,6 +32,7 @@ import { adminFormsRouter, myFormsRouter } from "./modules/forms/routes.js";
 import { httpLogSerializers } from "./lib/http-log.js";
 import { websiteOnly } from "./http/website-only.js";
 import { tickRouter } from "./modules/platform/tick.js";
+import { adminTeamChatRouter, teamChatRouter } from "./modules/team-chat/routes.js";
 
 export function createApp() {
   const app = express();
@@ -83,12 +84,14 @@ export function createApp() {
   app.use("/api/v1", scheduleRouter);
   app.use("/api/v1", refereeRouter);
   app.use("/api/v1", documentsRouter);
+  app.use("/api/v1", teamChatRouter);
   app.use("/api/v1/admin/referees", adminRefereeRouter);
   app.use("/api/v1/admin/schedule", adminScheduleRouter);
   app.use("/api/v1/admin/promo-codes", adminPromoRouter);
   app.use("/api/v1/admin/content", adminSiteRouter);
   app.use("/api/v1/admin/content", adminContentRouter);
   app.use("/api/v1/admin/forms", adminFormsRouter);
+  app.use("/api/v1/admin/team-chat", adminTeamChatRouter);
   app.use("/api/v1/admin/league", adminLeagueRouter);
   app.use("/api/v1/admin/payments", adminPaymentsRouter);
   app.use("/api/v1/admin", adminRouter);

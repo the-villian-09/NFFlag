@@ -148,6 +148,13 @@
       "when": 1795030367120,
       "tag": "0020_pages_and_forms",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795741940172,
+      "tag": "0021_team_chat",
+      "breakpoints": true
     }
   ]
 }

@@ -18,6 +18,7 @@ import { logger } from "../lib/logger.js";
 import { publish, subscribe } from "./platform/outbox.js";
 import { divisions as divisionsTable, gameOfficials, games, refereeApplications, refereePayouts } from "../db/schema/index.js";
 import { inArray } from "drizzle-orm";
+import { teamMessages } from "../db/schema/index.js";
 
 const base = () => env.APP_BASE_URL.replace(/\/$/, "");
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -128,6 +129,29 @@ export function registerSubscribers() {
     await getEmailSender().send(
       templates.formReminder(u.email, { forms: items.slice(0, 12).map((i) => [i.form.title, i.label] as [string, string]), due: when, url: `${base()}/dashboard#forms` }),
     );
+  });
+
+  /* ---------------- team spaces (R6) ---------------- */
+  subscribe("team.alert", async (e) => {
+    const { userId } = e.payload as { userId: string };
+    const [m] = await db
+      .select({ body: teamMessages.body, deletedAt: teamMessages.deletedAt, teamId: teamMessages.teamId, team: teams.name, from: user.name })
+      .from(teamMessages)
+      .innerJoin(teams, eq(teams.id, teamMessages.teamId))
+      .innerJoin(user, eq(user.id, teamMessages.authorUserId))
+      .where(eq(teamMessages.id, e.aggregateId));
+    if (!m || m.deletedAt) return;
+    const [u] = await db.select({ email: user.email }).from(user).where(eq(user.id, userId));
+    if (!u) return;
+    await getEmailSender().send(templates.teamAlert(u.email, { team: m.team, from: m.from, body: m.body, url: `${base()}/team/${m.teamId}` }));
+  });
+
+  subscribe("team.rsvp_reminder", async (e) => {
+    const { userId, label, when } = e.payload as { userId: string; label: string; when: string };
+    const [t] = await db.select({ name: teams.name }).from(teams).where(eq(teams.id, e.aggregateId));
+    const [u] = await db.select({ email: user.email }).from(user).where(eq(user.id, userId));
+    if (!t || !u) return;
+    await getEmailSender().send(templates.rsvpReminder(u.email, { team: t.name, event: label, when, url: `${base()}/team/${e.aggregateId}?tab=schedule` }));
   });
 
   /* ---------------- referees (R5) ---------------- */

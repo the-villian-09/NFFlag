@@ -29,6 +29,7 @@ export const ADMIN_GROUPS: { title: string; items: AdminItem[] }[] = [
     items: [
       { label: "Teams & draft", href: "/admin/teams", blurb: "Teams, coaches, draft board, rosters", perm: "teams.manage", flag: "r3.teams_draft", keywords: "roster draft board" },
       { label: "Schedule & scores", href: "/admin/schedule", blurb: "Games, imports, final scores, standings", perm: "games.manage", flag: "r4.games", keywords: "games scores standings tickets import" },
+      { label: "Team chat", href: "/admin/team-chat", blurb: "Reported messages from team pages", perm: "teams.manage", flag: "r6.team_chat", keywords: "chat messages report moderation rsvp team page" },
     ],
   },
   {

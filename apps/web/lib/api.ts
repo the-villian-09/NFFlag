@@ -53,7 +53,7 @@ export const api = {
     request<T>("POST", `/api/v1${path}`, body ?? {}, human(humanToken)),
   patch: <T>(path: string, body: unknown) => request<T>("PATCH", `/api/v1${path}`, body),
   put: <T>(path: string, body: unknown) => request<T>("PUT", `/api/v1${path}`, body),
-  del: <T>(path: string) => request<T>("DELETE", `/api/v1${path}`),
+  del: <T>(path: string, body?: unknown) => request<T>("DELETE", `/api/v1${path}`, body),
 };
 
 /** Auth endpoints (Better Auth on the API). */

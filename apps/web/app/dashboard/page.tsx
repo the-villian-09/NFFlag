@@ -14,6 +14,7 @@ import { ActionNeeded, SignedFormsCard, useMyForms } from "@/components/my-forms
 import { GAME_STATUS, resultFor, type Game, type Practice } from "@/lib/schedule";
 import { useFlags } from "@/lib/use-flags";
 import { isAdmin, useMe } from "@/lib/use-me";
+import type { SpaceSummary } from "@/lib/team-chat";
 
 interface Household {
   id: string;
@@ -120,6 +121,7 @@ export default function DashboardPage() {
         </div>
       )}
 
+      <TeamChatCard />
       <div className="grid" style={{ marginTop: 24 }}>
         <section className="card">
           <h2>Your family</h2>
@@ -930,5 +932,40 @@ function Withdraw({ r, onChange }: { r: Reg; onChange: () => void }) {
         </form>
       )}
     </span>
+  );
+}
+
+/** Team pages: shown once the person is on at least one team (and the feature is on). */
+function TeamChatCard() {
+  const [items, setItems] = useState<SpaceSummary[] | null>(null);
+  useEffect(() => {
+    api
+      .get<{ items: SpaceSummary[] }>("/team-spaces")
+      .then((r) => setItems(r.items.filter((s) => !s.readOnly)))
+      .catch(() => setItems([]));
+  }, []);
+  if (!items?.length) return null;
+  const unread = items.reduce((n, s) => n + s.unread.feed + s.unread.chat + s.unread.staff, 0);
+  const alert = items.find((s) => s.pinned?.kind === "alert");
+  return (
+    <section className="card tc-dash" style={{ marginTop: 24 }}>
+      <div>
+        <h2 style={{ marginBottom: 4 }}>{items.length === 1 ? items[0]!.teamName : "My teams"}</h2>
+        <p className="muted" style={{ margin: 0 }}>
+          {alert ? (
+            <>
+              <strong style={{ color: "#ff8a8a" }}>Alert:</strong> {alert.pinned!.body.split("\n")[0]}
+            </>
+          ) : unread ? (
+            `${unread} new ${unread === 1 ? "message" : "messages"}`
+          ) : (
+            "Updates, team chat and who's coming to each game."
+          )}
+        </p>
+      </div>
+      <Link className="btn small" href={items.length === 1 ? `/team/${items[0]!.teamId}` : "/team"}>
+        Open team page{items.length > 1 ? "s" : ""}
+      </Link>
+    </section>
   );
 }
