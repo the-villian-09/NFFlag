@@ -89,3 +89,34 @@ export async function pushTo(userIds: string[], teamId: string | null, msg: Push
     logger.warn({ err: (err as Error).message }, "push fan-out failed");
   }
 }
+
+/**
+ * "Send a test notification": pushes straight to this person's devices (no
+ * mute or quiet overnight) and reports what happened, so a family can tell
+ * whether the problem is the server, the sign-up or the phone's settings.
+ */
+export async function sendTest(userId: string) {
+  if (!pushReady()) return { ready: false, devices: 0, sent: 0, failed: 0, removed: 0 };
+  const subs = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
+  let sent = 0;
+  let failed = 0;
+  let removed = 0;
+  const payload = JSON.stringify({ title: "NFFL", body: "Notifications are working on this device.", url: "/team", tag: "nffl-test" });
+  for (const s of subs) {
+    try {
+      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 600, urgency: "high" });
+      await db.update(pushSubscriptions).set({ lastUsedAt: new Date() }).where(eq(pushSubscriptions.id, s.id));
+      sent++;
+    } catch (err) {
+      const status = (err as { statusCode?: number }).statusCode;
+      if (status === 404 || status === 410) {
+        await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, s.id));
+        removed++;
+      } else {
+        logger.warn({ status, body: String((err as { body?: unknown }).body ?? "").slice(0, 200) }, "push test failed");
+        failed++;
+      }
+    }
+  }
+  return { ready: true, devices: subs.length, sent, failed, removed };
+}

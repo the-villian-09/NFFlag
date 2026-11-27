@@ -14,7 +14,9 @@ import {
   RSVP_LABEL,
   STAFF_ROLE,
   stamp,
+  syncPush,
   useTeamLive,
+  type PushTest,
   when,
   type EventWithRsvps,
   type Message,
@@ -73,6 +75,7 @@ function TeamSpace() {
         else setError(err instanceof ApiError && err.status === 404 ? "This team isn't one of yours." : err instanceof Error ? err.message : "Couldn't load the team.");
       });
     loadMine();
+    void syncPush();
   }, [me, teamId, router, loadMine]);
 
   const go = (t: Tab) => router.replace(`/team/${teamId}${t === "feed" ? "" : `?view=${t}`}`, { scroll: false });
@@ -559,11 +562,33 @@ function TeamInfo({ space, muted, setMuted }: { space: SpaceDetail; muted: boole
 
   useEffect(() => {
     void currentPush().then((s) => setPush(s ? "on" : "off"));
+    void syncPush();
     api
       .get<{ quietOvernight: boolean }>("/push/prefs")
       .then((r) => setQuiet(r.quietOvernight))
       .catch(() => setQuiet(false));
   }, []);
+
+  async function sendTest() {
+    setBusy(true);
+    try {
+      await syncPush();
+      const r = await api.post<PushTest>("/push/test");
+      setNote(
+        !r.ready
+          ? "Notifications aren't set up on the server yet."
+          : r.devices === 0
+            ? "No devices are signed up for your account. Tap Turn on (or Turn off, then Turn on) on this phone."
+            : r.sent > 0
+              ? `Sent to ${r.sent} ${r.sent === 1 ? "device" : "devices"}. If nothing shows up in a few seconds, notifications for this site are turned off in your phone's settings (Settings → Apps → Chrome → Notifications).`
+              : "Your phone's notification service refused it. Tap Turn off, then Turn on, and try again.",
+      );
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : "Couldn't send a test.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function toggleQuiet() {
     const r = await api.put<{ quietOvernight: boolean }>("/push/prefs", { quietOvernight: !quiet });
@@ -637,6 +662,11 @@ function TeamInfo({ space, muted, setMuted }: { space: SpaceDetail; muted: boole
               {quiet ? "Turn off" : "Turn on"}
             </button>
           </div>
+          {push === "on" && (
+            <button type="button" className="tc-link" disabled={busy} onClick={() => void sendTest()}>
+              Send a test notification
+            </button>
+          )}
           {note && <p className="muted">{note}</p>}
         </div>
       )}

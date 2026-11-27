@@ -289,6 +289,12 @@ describe("notification settings", () => {
     expect(await pushRecipients([famA.userId, split.userId], teamA, true, night)).toEqual([famA.userId, split.userId]);
   });
 
+  it("a test notification reports how many devices this person has signed up", async () => {
+    const r = await famA.a.post("/api/v1/push/test");
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ devices: 0, sent: 0 });
+  });
+
   it("muting a team stops its chat pushes but not alerts", async () => {
     await split.a.put(api(split.a, `/${teamA}/prefs`)).send({ muted: true });
     expect(await pushRecipients([split.userId], teamA, false, day)).toEqual([]);

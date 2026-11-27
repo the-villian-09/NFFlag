@@ -11,7 +11,7 @@ import { writeAudit } from "../platform/audit.js";
 import { FLAG, requireFlag } from "../platform/flags.js";
 import { openStream, setEnricher } from "./live.js";
 import { spaceFor } from "./membership.js";
-import { pushReady } from "./push.js";
+import { pushReady, sendTest } from "./push.js";
 import * as svc from "./service.js";
 
 setEnricher(async (e) => (e.type === "message" ? await svc.presentById(e.id) : e));
@@ -189,6 +189,14 @@ teamChatRouter.delete(
     const { endpoint } = z.object({ endpoint: z.string().max(1000) }).parse(req.body);
     await db.delete(pushSubscriptions).where(and(eq(pushSubscriptions.endpoint, endpoint), eq(pushSubscriptions.userId, me(req))));
     res.status(204).end();
+  }),
+);
+
+teamChatRouter.post(
+  "/push/test",
+  requireAuth,
+  handler(async (req, res) => {
+    res.json(await sendTest(me(req)));
   }),
 );
 

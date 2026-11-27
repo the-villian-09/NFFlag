@@ -119,22 +119,40 @@ export function useTeamLive(onEvent: (e: LiveEvent) => void, onReconnect?: () =>
   reconnect.current = onReconnect;
   useEffect(() => {
     if (typeof EventSource === "undefined") return;
-    const es = new EventSource("/api/v1/team-spaces/stream", { withCredentials: true });
+    let es: EventSource | null = null;
     let opened = false;
-    es.addEventListener("ready", () => {
-      if (opened) reconnect.current?.();
-      opened = true;
-    });
-    for (const type of ["message", "delete", "pin", "rsvp", "read"] as const) {
-      es.addEventListener(type, (ev) => {
-        try {
-          handler.current({ type, data: JSON.parse((ev as MessageEvent).data) });
-        } catch {
-          /* ignore a malformed event */
-        }
+    const open = () => {
+      if (es) return;
+      es = new EventSource("/api/v1/team-spaces/stream", { withCredentials: true });
+      es.addEventListener("ready", () => {
+        if (opened) reconnect.current?.();
+        opened = true;
       });
-    }
-    return () => es.close();
+      for (const type of ["message", "delete", "pin", "rsvp", "read"] as const) {
+        es.addEventListener(type, (ev) => {
+          try {
+            handler.current({ type, data: JSON.parse((ev as MessageEvent).data) });
+          } catch {
+            /* ignore a malformed event */
+          }
+        });
+      }
+    };
+    const close = () => {
+      es?.close();
+      es = null;
+    };
+    // While the page is hidden (another app, screen off) the connection is
+    // dropped, so the server knows to send notifications instead.
+    const onVisibility = () => (document.visibilityState === "visible" ? open() : close());
+    if (document.visibilityState === "visible") open();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", close);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", close);
+      close();
+    };
   }, []);
 }
 
@@ -184,4 +202,22 @@ export async function disablePush() {
   if (!sub) return;
   await api.del("/push/subscriptions", { endpoint: sub.endpoint }).catch(() => {});
   await sub.unsubscribe();
+}
+
+/** Re-saves this device's sign-up on the server (in case an earlier save didn't go through). */
+export async function syncPush() {
+  try {
+    const sub = await currentPush();
+    if (sub) await api.post("/push/subscriptions", sub.toJSON());
+  } catch {
+    /* best effort */
+  }
+}
+
+export interface PushTest {
+  ready: boolean;
+  devices: number;
+  sent: number;
+  failed: number;
+  removed: number;
 }
