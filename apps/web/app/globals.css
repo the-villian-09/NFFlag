@@ -1070,7 +1070,6 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-weight:
 .tc-setting { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px 16px; padding: 12px 0; border-top: 1px solid var(--line); }
 .tc-setting > span { flex: 1 1 260px; }
 @media (max-width: 600px) {
-  .tc-tabs { top: 64px; }
   .tc-tabs button { padding: 10px 12px; font-size: 16px; }
   .tc-bubble-row { max-width: 92%; }
   .tc-answers li { grid-template-columns: 1fr auto; }
@@ -1080,9 +1079,9 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-weight:
 .tc-setting .btn[aria-pressed="true"] { border-color: var(--lime); color: var(--lime); }
 
 /* ---------------- My account on phones: jump bar + folding sections ---------------- */
-.jump-wrap { position: sticky; top: 64px; z-index: 6; margin: 16px -16px 0; background: var(--navy); border-bottom: 1px solid var(--line); }
+.jump-wrap { position: sticky; top: 68px; z-index: 6; margin: 16px -16px 0; background: var(--navy); border-bottom: 1px solid var(--line); }
 .jump-wrap::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(to right, rgba(1, 19, 34, 0), var(--navy)); }
-.jump { display: flex; gap: 8px; overflow-x: auto; padding: 10px 40px 10px 16px; scrollbar-width: none; -ms-overflow-style: none; }
+.jump { display: flex; gap: 8px; overflow-x: auto; padding: 14px 40px 12px 16px; scrollbar-width: none; -ms-overflow-style: none; }
 .jump::-webkit-scrollbar { display: none; }
 .jump-chip { flex: none; min-height: 40px; padding: 0 14px; background: transparent; border: 2px solid var(--line); color: var(--ink); font: inherit; font-weight: 700; font-size: 15px; white-space: nowrap; cursor: pointer; }
 .jump-chip:hover, .jump-chip:focus-visible { border-color: var(--lime); color: var(--lime); }
@@ -1114,4 +1113,9 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-weight:
 .form-doc-view { font-weight: 700; font-size: 14px; color: var(--ink-muted); text-decoration: underline; }
 @media (max-width: 700px) {
   .dash-grid { gap: 10px; }
+}
+/* Under the sticky header: 69px tall on tablets, 73px on phones. */
+@media (max-width: 600px) {
+  .jump-wrap { top: 72px; }
+  .tc-tabs { top: 72px; }
 }
