@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Markdown } from "@/components/markdown";
+import { Fold, useIsPhone } from "./fold";
 import { Modal } from "@/components/modal";
 import type { FormQuestion, PublicForm } from "@/components/form-fields";
 import { api } from "@/lib/api";
@@ -27,6 +28,8 @@ interface Completed {
   signedAt: string;
   answers: Record<string, string>;
   questions: FormQuestion[];
+  /** Who or what it was for, e.g. "Marcus Brooks · Spring 2027". */
+  label?: string | null;
 }
 
 export const formLink = (o: Outstanding) => `/forms/${o.form.id}?for=${o.subjectType}:${o.subjectId}`;
@@ -76,10 +79,53 @@ export function ActionNeeded({ items }: { items: Outstanding[] }) {
 /** Everything completed, with the wording and answers as signed. */
 export function SignedFormsCard({ items }: { items: Completed[] }) {
   const [open, setOpen] = useState<Completed | null>(null);
+  const phone = useIsPhone();
+  const [showAll, setShowAll] = useState(false);
   if (!items.length) return null;
+  const declined = items.filter((c) => !c.agreed).length;
+  // Phones: one block per child (or application), newest first, with the forms inside.
+  const groups: { label: string; when: string; docs: Completed[] }[] = [];
+  for (const c of items) {
+    const label = c.label ?? "Other forms";
+    let g = groups.find((x) => x.label === label);
+    if (!g) groups.push((g = { label, when: c.signedAt, docs: [] }));
+    g.docs.push(c);
+  }
   return (
-    <section className="card">
-      <h2>Signed waivers &amp; forms</h2>
+    <Fold
+      id="forms"
+      title="Signed waivers & forms"
+      short="Signed forms"
+      chip="Forms"
+      order={6}
+      summary={`${items.length} ${items.length === 1 ? "form" : "forms"}${groups.length > 1 ? ` for ${groups.length} sign-ups` : ""}`}
+      badge={declined ? `${declined} DECLINED` : "ALL SIGNED"}
+      tone={declined ? "warn" : "ok"}
+    >
+      {phone ? (
+        <div className="form-groups">
+          {(showAll ? groups : groups.slice(0, 4)).map((g) => (
+            <div key={g.label} className="form-group">
+              <div className="form-group-head">
+                <strong>{g.label}</strong>
+                <span className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(g.when).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}</span>
+              </div>
+              {g.docs.map((c) => (
+                <button key={c.id} type="button" className="form-doc" onClick={() => setOpen(c)}>
+                  <span>{c.agreed ? "✓" : "✕"}</span>
+                  <span className="form-doc-title">{c.title}</span>
+                  <span className="form-doc-view">View</span>
+                </button>
+              ))}
+            </div>
+          ))}
+          {groups.length > 4 && !showAll && (
+            <button type="button" className="btn ghost small" onClick={() => setShowAll(true)}>
+              Show {groups.length - 4} more
+            </button>
+          )}
+        </div>
+      ) : (
       <ul className="action-list">
         {items.slice(0, 20).map((c) => (
           <li key={c.id}>
@@ -95,6 +141,7 @@ export function SignedFormsCard({ items }: { items: Completed[] }) {
           </li>
         ))}
       </ul>
+      )}
       {open && (
         <Modal open title={open.title} onClose={() => setOpen(null)}>
           <p className="muted">
@@ -113,6 +160,6 @@ export function SignedFormsCard({ items }: { items: Completed[] }) {
           )}
         </Modal>
       )}
-    </section>
+    </Fold>
   );
 }

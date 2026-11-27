@@ -335,7 +335,38 @@ export async function completedBy(userId: string) {
     .where(eq(formResponses.userId, userId))
     .orderBy(desc(formResponses.signedAt))
     .limit(200);
-  return rows;
+  // Who or what each form was for ("Marcus · Spring 2027"), so My account can group them.
+  const ids = (t: string) => [...new Set(rows.filter((r) => r.subjectType === t).map((r) => r.subjectId))];
+  const label = new Map<string, string>();
+  const regIds = ids("registration");
+  if (regIds.length) {
+    const regs = await db
+      .select({ id: registrations.id, first: players.firstName, preferred: players.preferredName, last: players.lastName, season: seasons.name })
+      .from(registrations)
+      .innerJoin(players, eq(players.id, registrations.playerId))
+      .innerJoin(seasons, eq(seasons.id, registrations.seasonId))
+      .where(inArray(registrations.id, regIds));
+    for (const r of regs) label.set(r.id, `${r.preferred || r.first} ${r.last} · ${r.season}`);
+  }
+  const staffIds = ids("staff_application");
+  if (staffIds.length) {
+    const apps = await db
+      .select({ id: volunteerApplications.id, season: seasons.name })
+      .from(volunteerApplications)
+      .innerJoin(seasons, eq(seasons.id, volunteerApplications.seasonId))
+      .where(inArray(volunteerApplications.id, staffIds));
+    for (const a of apps) label.set(a.id, `Coach / team staff · ${a.season}`);
+  }
+  const refIds = ids("referee_application");
+  if (refIds.length) {
+    const apps = await db
+      .select({ id: refereeApplications.id, season: seasons.name })
+      .from(refereeApplications)
+      .innerJoin(seasons, eq(seasons.id, refereeApplications.seasonId))
+      .where(inArray(refereeApplications.id, refIds));
+    for (const a of apps) label.set(a.id, `Referee · ${a.season}`);
+  }
+  return rows.map((r) => ({ ...r, label: label.get(r.subjectId) ?? null }));
 }
 
 /* ---------------- the original waivers become forms ---------------- */

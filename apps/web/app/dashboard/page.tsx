@@ -10,6 +10,7 @@ import { EventRow } from "@/components/event-row";
 import { TicketButton } from "@/components/ticket-button";
 import { Modal } from "@/components/modal";
 import { TextAlertsCard } from "@/components/text-alerts-card";
+import { Fold, FoldProvider, JumpBar } from "@/components/fold";
 import { ActionNeeded, SignedFormsCard, useMyForms } from "@/components/my-forms";
 import { GAME_STATUS, resultFor, type Game, type Practice } from "@/lib/schedule";
 import { useFlags } from "@/lib/use-flags";
@@ -92,6 +93,7 @@ export default function DashboardPage() {
   if (loading || !me) return <main className="page muted">Loading…</main>;
 
   return (
+    <FoldProvider>
     <main className="page">
       <div
         style={{
@@ -122,9 +124,9 @@ export default function DashboardPage() {
       )}
 
       <TeamChatCard />
-      <div className="grid" style={{ marginTop: 24 }}>
-        <section className="card">
-          <h2>Your family</h2>
+      <JumpBar />
+      <div className="grid dash-grid" style={{ marginTop: 24 }}>
+        <Fold id="family" title="Your family" chip="Family" order={5} summary={household ? [household.displayName, household.phone].filter(Boolean).join(" · ") : household === null ? "Add your family details" : "Loading…"} startOpen={household === null}>
           {household === undefined && <p className="muted">Loading…</p>}
           {household === null && (
             <FamilyForm submitLabel="Save" onSaved={setHousehold} create />
@@ -172,7 +174,7 @@ export default function DashboardPage() {
               onCancel={() => setEditingFamily(false)}
             />
           )}
-        </section>
+        </Fold>
         {household && <PlayersCard />}
         <ScheduleCard />
         {household && <RegistrationsCard />}
@@ -187,6 +189,7 @@ export default function DashboardPage() {
         />
       </div>
     </main>
+    </FoldProvider>
   );
 }
 
@@ -253,9 +256,16 @@ function ScheduleCard() {
   const upcoming = <T extends { startsAt: string; status: string }>(xs: T[]) => xs.find((x) => new Date(x.startsAt).getTime() > cutoff && x.status !== "cancelled");
   const shown = open ? items.find((t) => t.team.id === open.teamId) : undefined;
 
+  const nextAll = items
+    .flatMap((t) => [...t.games.map((g) => ({ at: g.startsAt, status: g.status, what: `${t.team.name} ${g.homeTeamId === t.team.id ? "vs" : "at"} ${g.homeTeamId === t.team.id ? g.away : g.home}` })), ...t.practices.map((p) => ({ at: p.startsAt, status: p.status, what: `${t.team.name} practice` }))])
+    .filter((x) => new Date(x.at).getTime() > cutoff && x.status !== "cancelled")
+    .sort((a, b) => a.at.localeCompare(b.at))[0];
+  const nextLine = nextAll
+    ? `Next: ${new Date(nextAll.at).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })} · ${nextAll.what}`
+    : "Nothing coming up yet";
+
   return (
-    <section className="card">
-      <h2>Schedule</h2>
+    <Fold id="schedule" title="Schedule" order={1} summary={nextLine}>
       {items.map((t) => {
         const nextGame = upcoming(t.games);
         const nextPractice = upcoming(t.practices);
@@ -307,7 +317,7 @@ function ScheduleCard() {
           </ul>
         )}
       </Modal>
-    </section>
+    </Fold>
   );
 }
 
@@ -338,13 +348,12 @@ function RefereeCard() {
       ? "Your referee sign-up is being reviewed."
       : "Referee NFFL games and get paid by direct deposit.";
   return (
-    <section className="card">
-      <h2>Referee</h2>
+    <Fold id="referee" title="Referee" order={8} summary={line}>
       <p className="muted">{line}</p>
       <Link className="btn ghost small" href="/referees">
         {home.approved ? "My referee page" : home.application?.status === "submitted" ? "View sign-up" : "Sign up to referee"}
       </Link>
-    </section>
+    </Fold>
   );
 }
 
@@ -373,8 +382,7 @@ function StaffCard() {
   const empty =
     teams?.length === 0 && waiting.length === 0 && other.length === 0;
   return (
-    <section className="card">
-      <h2>{teams?.length ? "My teams" : "Coaches & team staff"}</h2>
+    <Fold id="staff" title={teams?.length ? "My teams" : "Coaches & team staff"} short={teams?.length ? "My teams" : "Volunteer"} chip={teams?.length ? "Coaching" : "Volunteer"} order={7} summary={teams?.length ? teams.map((t) => `${t.name} · ${ROLE[t.roleKey] ?? t.roleKey}`).join(", ") : waiting.length || other.length ? "Application in progress" : "Coach a team or be a team mom"}>
       {empty && (
         <p className="muted">Coach a team or be a team mom this season.</p>
       )}
@@ -437,7 +445,7 @@ function StaffCard() {
       >
         {apps?.length ? "Applications" : "Apply"}
       </Link>
-    </section>
+    </Fold>
   );
 }
 
@@ -566,8 +574,7 @@ function PlayersCard() {
       .catch(() => setPlayers([]));
   }, []);
   return (
-    <section className="card">
-      <h2>Players</h2>
+    <Fold id="players" title="Players" order={4} summary={!players ? "Loading…" : players.length ? players.map((p) => p.firstName).join(", ") : "Add each child who will play"}>
       {!players ? (
         <p className="muted">Loading…</p>
       ) : players.length === 0 ? (
@@ -595,7 +602,7 @@ function PlayersCard() {
           + Add a player
         </Link>
       </p>
-    </section>
+    </Fold>
   );
 }
 
@@ -616,9 +623,13 @@ function RegistrationsCard() {
       .then((o) => setOpen(o.enabled && o.window.open))
       .catch(() => setOpen(false));
   }, []);
+  const toPay = (regs ?? []).filter((r) => r.status === "pending_payment").length;
+  const inReview = (regs ?? []).filter((r) => r.status === "paid" || r.status === "submitted").length;
+  const regBadge = toPay ? { text: `${toPay} TO PAY`, tone: "warn" as const } : inReview ? { text: `${inReview} IN REVIEW`, tone: "info" as const } : null;
+  const regSummary = !regs ? "Loading…" : regs.length ? `${regs.length} ${regs.length === 1 ? "player" : "players"} · ${[...new Set(regs.map((r) => r.seasonName))].join(", ")}` : open ? "Registration is open" : "Not registered yet";
+
   return (
-    <section className="card">
-      <h2>Registrations</h2>
+    <Fold id="regs" title="Registrations" order={2} summary={regSummary} badge={regBadge?.text} tone={regBadge?.tone} startOpen={regBadge?.tone === "warn"}>
       {!regs ? (
         <p className="muted">Loading…</p>
       ) : regs.length === 0 ? (
@@ -707,7 +718,7 @@ function RegistrationsCard() {
           </Link>
         </p>
       )}
-    </section>
+    </Fold>
   );
 }
 
@@ -739,9 +750,9 @@ function WaitlistCard() {
     void load();
   }
   if (!items || items.length === 0) return null;
+  const offered = items.some((w) => w.status === "offered");
   return (
-    <section className="card">
-      <h2>Waitlist</h2>
+    <Fold id="waitlist" title="Waitlist" order={3} summary={items.map((w) => `${w.playerName} · ${w.divisionName}`).join(", ")} badge={offered ? "SPOT OPEN" : `${items.length} WAITING`} tone={offered ? "warn" : "info"} startOpen={offered}>
       <ul className="list">
         {items.map((w) => (
           <li key={w.id}>
@@ -784,7 +795,7 @@ function WaitlistCard() {
           </li>
         ))}
       </ul>
-    </section>
+    </Fold>
   );
 }
 
@@ -810,8 +821,7 @@ function SecurityCard({
   }
 
   return (
-    <section className="card">
-      <h2>Security</h2>
+    <Fold id="security" title="Security" order={10} summary={`Two-step sign-in ${on ? "on" : "off"}`}>
       <p>
         Two-step sign-in: <strong>{on ? "On" : "Off"}</strong>
       </p>
@@ -859,7 +869,7 @@ function SecurityCard({
           </div>
         </form>
       )}
-    </section>
+    </Fold>
   );
 }
 

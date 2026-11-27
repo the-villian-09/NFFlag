@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { formatPhone } from "@nffl/shared";
 import { ErrorAlert, useAction } from "@/components/form";
 import { api } from "@/lib/api";
+import { Fold } from "./fold";
 
 interface Pref {
   phone: string | null;
@@ -14,7 +15,6 @@ interface Pref {
   stoppedVia: string | null;
   consentText: string;
 }
-
 export function TextAlertsCard() {
   const [pref, setPref] = useState<Pref | null>(null);
   const [phone, setPhone] = useState("");
@@ -52,8 +52,7 @@ export function TextAlertsCard() {
   }
 
   return (
-    <section className="card">
-      <h2>Text message alerts</h2>
+    <Fold id="texts" title="Text message alerts" short="Text alerts" chip="Text alerts" order={9} summary={pref.subscribed && pref.phone ? `On · ${formatPhone(pref.phone)}` : "Off"}>
       <p className="muted" style={{ marginTop: 0 }}>
         Rainouts, schedule changes, reminders and team messages by text. Optional.{" "}
         <Link href="/text-alerts">About text alerts</Link>
@@ -80,6 +79,6 @@ export function TextAlertsCard() {
           {busy ? "Saving…" : "Save"}
         </button>
       </form>
-    </section>
+    </Fold>
   );
 }
