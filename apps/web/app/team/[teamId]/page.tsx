@@ -555,10 +555,20 @@ function TeamInfo({ space, muted, setMuted }: { space: SpaceDetail; muted: boole
   const [push, setPush] = useState<"unknown" | "on" | "off">("unknown");
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [quiet, setQuiet] = useState<boolean | null>(null);
 
   useEffect(() => {
     void currentPush().then((s) => setPush(s ? "on" : "off"));
+    api
+      .get<{ quietOvernight: boolean }>("/push/prefs")
+      .then((r) => setQuiet(r.quietOvernight))
+      .catch(() => setQuiet(false));
   }, []);
+
+  async function toggleQuiet() {
+    const r = await api.put<{ quietOvernight: boolean }>("/push/prefs", { quietOvernight: !quiet });
+    setQuiet(r.quietOvernight);
+  }
 
   async function togglePush() {
     setBusy(true);
@@ -611,10 +621,20 @@ function TeamInfo({ space, muted, setMuted }: { space: SpaceDetail; muted: boole
             <span>
               <strong>Mute {space.team.name}</strong>
               <br />
-              <span className="muted">Muted teams still send alerts (rainouts, time changes). Nothing is sent 9 PM to 7 AM except alerts.</span>
+              <span className="muted">Stops chat and update notifications from this team. Alerts (rainouts, time changes) still come through.</span>
             </span>
             <button type="button" className="btn ghost small" aria-pressed={muted} onClick={() => void toggleMute()}>
               {muted ? "Unmute" : "Mute"}
+            </button>
+          </div>
+          <div className="tc-setting">
+            <span>
+              <strong>Quiet overnight</strong>
+              <br />
+              <span className="muted">No chat or update notifications from 9 PM to 7 AM, for all your teams. Alerts still come through.</span>
+            </span>
+            <button type="button" className="btn ghost small" aria-pressed={!!quiet} disabled={quiet === null} onClick={() => void toggleQuiet()}>
+              {quiet ? "Turn off" : "Turn on"}
             </button>
           </div>
           {note && <p className="muted">{note}</p>}

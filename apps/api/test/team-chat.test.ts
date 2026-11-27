@@ -23,6 +23,7 @@ import { resetFlagCache } from "../src/modules/platform/flags.js";
 import { clearSubscribers, processOutbox } from "../src/modules/platform/outbox.js";
 import { registerSubscribers } from "../src/modules/subscribers.js";
 import { closeLive } from "../src/modules/team-chat/live.js";
+import { pushRecipients } from "../src/modules/team-chat/push.js";
 import { agent, mail, signUp, uniqueEmail, type Agent } from "./helpers.js";
 
 const FLAG = "r6.team_chat";
@@ -271,5 +272,27 @@ describe("old seasons", () => {
     expect(s.can.chat).toBe(false);
     expect((await famA.a.post(api(famA.a, `/${teamA}/messages`)).send({ view: "chat", body: "late" })).status).toBe(409);
     await db.update(seasons).set({ isCurrent: "current" }).where(eq(seasons.id, seasonId));
+  });
+});
+
+describe("notification settings", () => {
+  const night = new Date("2027-03-10T03:30:00Z"); // 10:30 PM Eastern
+  const day = new Date("2027-03-10T17:00:00Z"); // noon Eastern
+
+  it("everyone gets chat pushes overnight unless they turn on quiet overnight; alerts always go", async () => {
+    expect((await famA.a.get("/api/v1/push/prefs")).body).toEqual({ quietOvernight: false });
+    expect(await pushRecipients([famA.userId, split.userId], teamA, false, night)).toEqual([famA.userId, split.userId]);
+
+    expect((await famA.a.put("/api/v1/push/prefs").send({ quietOvernight: true })).body).toEqual({ quietOvernight: true });
+    expect(await pushRecipients([famA.userId, split.userId], teamA, false, night)).toEqual([split.userId]);
+    expect(await pushRecipients([famA.userId, split.userId], teamA, false, day)).toEqual([famA.userId, split.userId]);
+    expect(await pushRecipients([famA.userId, split.userId], teamA, true, night)).toEqual([famA.userId, split.userId]);
+  });
+
+  it("muting a team stops its chat pushes but not alerts", async () => {
+    await split.a.put(api(split.a, `/${teamA}/prefs`)).send({ muted: true });
+    expect(await pushRecipients([split.userId], teamA, false, day)).toEqual([]);
+    expect(await pushRecipients([split.userId], teamB, false, day)).toEqual([split.userId]);
+    expect(await pushRecipients([split.userId], teamA, true, day)).toEqual([split.userId]);
   });
 });

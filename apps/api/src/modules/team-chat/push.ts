@@ -1,13 +1,14 @@
 /**
  * Push alerts to phones and browsers (Web Push). Alerts (rainouts, time
- * changes) always go through; posts and chat respect each person's mute and
- * league quiet hours (9 PM – 7 AM Eastern). Dead subscriptions are removed.
+ * changes) always go through; posts and chat respect each person's mute for
+ * that team and, if they turned it on, their "quiet overnight" setting
+ * (9 PM – 7 AM Eastern). Dead subscriptions are removed.
  */
 import { and, eq, inArray } from "drizzle-orm";
 import webpush from "web-push";
 import { env } from "../../config.js";
 import { db } from "../../db/client.js";
-import { pushSubscriptions, teamPrefs } from "../../db/schema/index.js";
+import { notificationPrefs, pushSubscriptions, teamPrefs } from "../../db/schema/index.js";
 import { logger } from "../../lib/logger.js";
 
 let configured: boolean | null = null;
@@ -35,24 +36,37 @@ export interface PushMessage {
 }
 
 /**
- * Sends to everyone listed. urgent = alert: ignores mute and quiet hours.
+ * Who should actually get a non-urgent push: drops people who muted this team
+ * and, between 9 PM and 7 AM, people who turned on quiet overnight.
+ */
+export async function pushRecipients(userIds: string[], teamId: string | null, urgent: boolean, now = new Date()) {
+  if (urgent || !userIds.length) return userIds;
+  const skip = new Set<string>();
+  if (teamId) {
+    const muted = await db
+      .select({ userId: teamPrefs.userId })
+      .from(teamPrefs)
+      .where(and(eq(teamPrefs.teamId, teamId), eq(teamPrefs.muted, true), inArray(teamPrefs.userId, userIds)));
+    for (const m of muted) skip.add(m.userId);
+  }
+  if (inQuietHours(now)) {
+    const quiet = await db
+      .select({ userId: notificationPrefs.userId })
+      .from(notificationPrefs)
+      .where(and(eq(notificationPrefs.quietOvernight, true), inArray(notificationPrefs.userId, userIds)));
+    for (const q of quiet) skip.add(q.userId);
+  }
+  return userIds.filter((u) => !skip.has(u));
+}
+
+/**
+ * Sends to everyone listed. urgent = alert: ignores mute and quiet overnight.
  * Fire-and-forget: never throws.
  */
 export async function pushTo(userIds: string[], teamId: string | null, msg: PushMessage, opts: { urgent?: boolean } = {}) {
   try {
     if (!pushReady() || !userIds.length) return;
-    let targets = userIds;
-    if (!opts.urgent) {
-      if (inQuietHours()) return;
-      if (teamId) {
-        const muted = await db
-          .select({ userId: teamPrefs.userId })
-          .from(teamPrefs)
-          .where(and(eq(teamPrefs.teamId, teamId), eq(teamPrefs.muted, true), inArray(teamPrefs.userId, userIds)));
-        const m = new Set(muted.map((r) => r.userId));
-        targets = userIds.filter((u) => !m.has(u));
-      }
-    }
+    const targets = await pushRecipients(userIds, teamId, !!opts.urgent);
     if (!targets.length) return;
     const subs = await db.select().from(pushSubscriptions).where(inArray(pushSubscriptions.userId, targets));
     const payload = JSON.stringify({ ...msg, body: msg.body.slice(0, 180) });

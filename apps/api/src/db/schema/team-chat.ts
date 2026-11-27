@@ -8,6 +8,7 @@
  *   team_channel_reads   last time someone opened a channel (unread counts)
  *   team_rsvps           going / maybe / can't, per child per game or practice
  *   team_prefs           per person, per team: muted
+ *   notification_prefs   per person: quiet overnight (9 PM – 7 AM)
  *   team_message_reports a member flagged a message for league admins
  *   push_subscriptions   browsers/phones that get push alerts
  */
@@ -95,6 +96,16 @@ export const teamRsvps = pgTable(
     check("team_rsvps_event_type", sql`${t.eventType} in ('game','practice')`),
   ],
 );
+
+/** Per person, across all their teams. */
+export const notificationPrefs = pgTable("notification_prefs", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  /** Hold everything but alerts from 9 PM to 7 AM Eastern. Off unless the person turns it on. */
+  quietOvernight: boolean("quiet_overnight").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const teamPrefs = pgTable(
   "team_prefs",

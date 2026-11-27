@@ -155,6 +155,13 @@
       "when": 1795741940172,
       "tag": "0021_team_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795746322342,
+      "tag": "0022_notification_prefs",
+      "breakpoints": true
     }
   ]
 }

@@ -1077,3 +1077,4 @@ label.inline { display: inline-flex; align-items: center; gap: 8px; font-weight:
   .tc-answers select { grid-column: 1 / -1; }
 }
 .tc-dash { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px 24px; }
+.tc-setting .btn[aria-pressed="true"] { border-color: var(--lime); color: var(--lime); }

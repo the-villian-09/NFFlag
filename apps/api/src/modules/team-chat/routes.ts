@@ -4,7 +4,7 @@ import { Router, type Request } from "express";
 import { z } from "zod";
 import { env } from "../../config.js";
 import { db } from "../../db/client.js";
-import { pushSubscriptions } from "../../db/schema/index.js";
+import { notificationPrefs, pushSubscriptions } from "../../db/schema/index.js";
 import { adminIdleTimeout, handler, requireAuth, requireMfa, requirePermission } from "../../http/context.js";
 import { HttpError } from "../../http/errors.js";
 import { writeAudit } from "../platform/audit.js";
@@ -189,6 +189,29 @@ teamChatRouter.delete(
     const { endpoint } = z.object({ endpoint: z.string().max(1000) }).parse(req.body);
     await db.delete(pushSubscriptions).where(and(eq(pushSubscriptions.endpoint, endpoint), eq(pushSubscriptions.userId, me(req))));
     res.status(204).end();
+  }),
+);
+
+/** Personal notification settings (all teams). */
+teamChatRouter.get(
+  "/push/prefs",
+  requireAuth,
+  handler(async (req, res) => {
+    const [p] = await db.select().from(notificationPrefs).where(eq(notificationPrefs.userId, me(req)));
+    res.set("cache-control", "no-store");
+    res.json({ quietOvernight: p?.quietOvernight ?? false });
+  }),
+);
+teamChatRouter.put(
+  "/push/prefs",
+  requireAuth,
+  handler(async (req, res) => {
+    const { quietOvernight } = z.object({ quietOvernight: z.boolean() }).parse(req.body);
+    await db
+      .insert(notificationPrefs)
+      .values({ userId: me(req), quietOvernight })
+      .onConflictDoUpdate({ target: notificationPrefs.userId, set: { quietOvernight, updatedAt: new Date() } });
+    res.json({ quietOvernight });
   }),
 );
 
