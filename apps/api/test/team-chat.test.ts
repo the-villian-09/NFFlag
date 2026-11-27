@@ -192,7 +192,6 @@ describe("posting", () => {
   });
 
   it("an alert pins itself, replaces the last one, and emails every family", async () => {
-    mail.clear?.();
     const first = await coach.a.post(api(coach.a, `/${teamA}/messages`)).send({ view: "feed", body: "Practice moved to 6 PM", alert: true });
     expect(first.status).toBe(201);
     expect(first.body.message.pinned).toBe(true);
@@ -257,7 +256,6 @@ describe("RSVPs", () => {
       ["Sam1 K.", null],
     ]);
 
-    mail.clear?.();
     const nudge = await coach.a.post(api(coach.a, `/${teamA}/events/practice/${practiceA}/remind`));
     expect(nudge.body).toEqual({ families: 1 });
     await drain();
